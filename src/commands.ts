@@ -1,6 +1,6 @@
 // commands.ts – registers Discord slash commands and routes interaction callbacks
 
-import { InteractionResponseType, InteractionType, APIInteraction } from "discord-interactions";
+import { InteractionResponseType, InteractionType } from "discord-interactions";
 
 // Define a minimal InteractionResponse shape used in responses
 interface InteractionResponse {
@@ -26,14 +26,14 @@ interface APIInteraction {
 
 export async function handleInteraction(req: Request): Promise<Response>{
   const body = await req.json();
-  const { type, data, guild_id } = body as APIInteraction;
+  const { type, data, guild_id } = body as any;
   if(type===InteractionType.Ping){
     return new Response(JSON.stringify({type: InteractionResponseType.PONG,}));
   }
   if(!guild_id) return respond("Use this command in a server.");
   switch(data?.name){
     case "setup":
-      const channel = data?.options?.find(o=>o.name==="channel")?.value as string;
+      const channel = data?.options?.find((o:any)=>o.name==="channel")?.value as string;
       if(!channel) return respond("Specify a channel.");
       await setGuildConfig(guild_id,{channelId:channel,roleIds:[]});
       return respond(`✅ Configured for <#${channel}>`);

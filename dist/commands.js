@@ -3,7 +3,7 @@ import { InteractionResponseType, InteractionType } from "discord-interactions";
 import { setGuildConfig, addGuildRole, removeGuildRole } from "./kv";
 function respond(content, flags = 0) {
     const resp = {
-        type: InteractionResponseType.ChannelMessageWithSource,
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: { content, flags },
     };
     return new Response(JSON.stringify(resp), { headers: { "Content-Type": "application/json" } });
@@ -12,7 +12,7 @@ export async function handleInteraction(req) {
     const body = await req.json();
     const { type, data, guild_id } = body;
     if (type === InteractionType.Ping) {
-        return new Response(JSON.stringify({ type: InteractionResponseType.Pong }));
+        return new Response(JSON.stringify({ type: InteractionResponseType.PONG, }));
     }
     if (!guild_id)
         return respond("Use this command in a server.");
