@@ -725,7 +725,9 @@ export function renderLandingPage(
           <div class="hero-eyebrow" style="margin-bottom:12px;">🔥 Live Bot Alerts Preview</div>
           <h2>Featured Limited Vehicle Drops</h2>
           <p>Most recently discovered releases, with availability tracked over time.${
-            monitorStatus ? ` Last checked ${new Date(monitorStatus.checkedAt).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" })} ET.` : ""
+            monitorStatus
+              ? ` ${monitorStatus.authoritative ? "Last verified" : "Last attempted (store verification was blocked)"} ${new Date(monitorStatus.checkedAt).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" })} ET.`
+              : ""
           }</p>
         </div>
 

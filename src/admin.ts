@@ -9,7 +9,7 @@ import {
   setGuildConfig,
   EmbedConfig,
 } from "./kv";
-import { getKnownCars, broadcastAllListings } from "./scraper";
+import { getKnownCars, broadcastAllListings, manualPullCurrentListings } from "./scraper";
 import { EF_LOGO_BASE64 } from "./assets";
 
 const REDIRECT_PATH = "/auth/callback";
@@ -393,6 +393,8 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
     return Response.redirect(`${url.origin}/dashboard`, 302);
   }
   const alertSent = url.searchParams.get("alert") === "sent";
+  const pulledListings = Number(url.searchParams.get("pulled") || "0");
+  const pullDeliveries = Number(url.searchParams.get("deliveries") || "0");
   const config = await getEmbedConfig(env);
   const listingHistory = await getListingHistory(env);
   const latestListing = listingHistory[0]?.payload || getKnownCars()[0];
@@ -609,6 +611,13 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
           </div>`
         : ""
     }
+    ${
+      pulledListings > 0
+        ? `<div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #34D399; padding: 14px 18px; border-radius: 10px; margin-bottom: 24px; font-weight: 600;">
+            ✅ Manual pull recorded ${pulledListings} currently available listing(s) and completed ${pullDeliveries} new server delivery/deliveries.
+          </div>`
+        : ""
+    }
 
     ${
       user.isAdmin
@@ -618,6 +627,16 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
         <div class="card">
           <h2>🎨 Listing Presentation Controls</h2>
           ${adminAppearanceControls}
+
+          <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border);">
+            <h2>🔄 Pull Current Store Listings</h2>
+            <p style="color:var(--muted); font-size:0.85rem; margin-bottom:14px;">
+              Refreshes current availability, records newly discovered products, archives their images, and publishes unsent listings through the normal workflow. Use this when automated storefront verification is challenged.
+            </p>
+            <form action="/admin/pull-current" method="POST">
+              <button type="submit" class="btn">🔄 Pull and Publish Current Listings</button>
+            </form>
+          </div>
 
           <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border);">
             <h2>🚀 Test Live Drop Broadcast</h2>
@@ -852,6 +871,20 @@ export async function handleTestAlert(request: Request, env: any): Promise<Respo
   await broadcastAllListings(env, true);
 
   return Response.redirect(new URL("/admin?alert=sent", request.url).toString(), 303);
+}
+
+export async function handleManualPull(request: Request, env: any): Promise<Response> {
+  const sessionSecret = getSessionSecret(env);
+  const user = await verifySessionCookie(
+    request.headers.get("Cookie"), sessionSecret, env.DISCORD_PRIMARY_ADMINISTRATOR
+  );
+  if (!user || !user.isAdmin) return new Response("Unauthorized", { status: 401 });
+
+  const result = await manualPullCurrentListings(env);
+  const destination = new URL("/admin", request.url);
+  destination.searchParams.set("pulled", String(result.listings));
+  destination.searchParams.set("deliveries", String(result.deliveries));
+  return Response.redirect(destination.toString(), 303);
 }
 
 function renderOAuthSetupNotice(msg: string): string {

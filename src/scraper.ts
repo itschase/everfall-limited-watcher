@@ -300,6 +300,29 @@ export async function broadcastAllListings(env: any, force: boolean = true): Pro
   return count;
 }
 
+export async function manualPullCurrentListings(
+  env: any
+): Promise<{ listings: number; deliveries: number; usedVerifiedStoreResponse: boolean }> {
+  const fetched = await fetchStoreListings();
+  // A manual administrator pull is an explicit confirmation that the maintained
+  // catalog snapshot reflects the storefront when Cloudflare blocks server-side HTML.
+  const confirmed = fetched.authoritative
+    ? fetched
+    : {
+        listings: KNOWN_LIMITED_CARS,
+        authoritative: true,
+        notice: "Administrator-confirmed catalog snapshot used because storefront verification was challenged.",
+      };
+  const listings = await syncListingHistory(env, confirmed);
+  let deliveries = 0;
+  for (const listing of listings) deliveries += await broadcastListing(env, listing, false);
+  return {
+    listings: listings.length,
+    deliveries,
+    usedVerifiedStoreResponse: fetched.authoritative,
+  };
+}
+
 export async function publishActiveListingsToGuildOnSetup(
   env: any,
   guildId: string

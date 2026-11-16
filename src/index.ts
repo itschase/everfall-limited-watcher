@@ -9,6 +9,7 @@ import {
   handleSaveConfig,
   handleSaveGuildConfig,
   handleTestAlert,
+  handleManualPull,
   verifySessionCookie,
   getCreatorProfile,
 } from "./admin";
@@ -89,6 +90,10 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/admin/test-alert") {
       return handleTestAlert(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/admin/pull-current") {
+      return handleManualPull(request, env);
     }
 
     if (url.pathname === "/logout") {
