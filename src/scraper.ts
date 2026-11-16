@@ -3,6 +3,7 @@ import {
   getGuildConfig,
   getEffectiveEmbedConfig,
   getListingHistory,
+  getMonitorStatus,
   setListingAvailability,
   setMonitorStatus,
   upsertListingRecord,
@@ -21,6 +22,7 @@ export interface CarListing {
 }
 
 const PUBLIC_ORIGIN = "https://everfall-limited-watcher.itschase.workers.dev";
+const MIN_STORE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
 
 async function archiveListingImages(env: any, car: CarListing): Promise<CarListing> {
   const kv = env.DISCORD_BOT as KVNamespace;
@@ -59,15 +61,19 @@ export async function getArchivedListingImage(env: any, listingId: string, index
 
 async function syncListingHistory(
   env: any,
-  result: { listings: CarListing[]; notice?: string; authoritative: boolean }
+  result: { listings: CarListing[]; notice?: string; authoritative: boolean },
+  options: { acceptNonAuthoritativeListings?: boolean; updateMonitorStatus?: boolean } = {}
 ): Promise<CarListing[]> {
-  if (!result.authoritative) {
-    await setMonitorStatus(env, {
-      checkedAt: Date.now(),
-      listingCount: result.listings.length,
-      authoritative: false,
-      notice: result.notice,
-    });
+  const updateMonitorStatus = options.updateMonitorStatus !== false;
+  if (!result.authoritative && !options.acceptNonAuthoritativeListings) {
+    if (updateMonitorStatus) {
+      await setMonitorStatus(env, {
+        checkedAt: Date.now(),
+        listingCount: result.listings.length,
+        authoritative: false,
+        notice: result.notice,
+      });
+    }
     const history = await getListingHistory(env);
     return history
       .filter((record) => record.isAvailable)
@@ -81,22 +87,59 @@ async function syncListingHistory(
 
   const currentIds = new Set(result.listings.map((listing) => listing.id));
   const enriched: CarListing[] = [];
+  const existingAvailability = !result.authoritative
+    ? new Map((await getListingHistory(env)).map((record) => [record.id, record.isAvailable]))
+    : new Map<string, boolean>();
   for (const listing of result.listings) {
     const archived = await archiveListingImages(env, listing);
-    const record = await upsertListingRecord(env, listing.id, archived, true);
-    enriched.push({ ...archived, isAvailable: true, detectedAt: record.firstSeenAt });
+    const isAvailable = result.authoritative ? true : (existingAvailability.get(listing.id) ?? true);
+    const record = await upsertListingRecord(env, listing.id, archived, isAvailable);
+    enriched.push({ ...archived, isAvailable, detectedAt: record.firstSeenAt });
   }
+  if (result.authoritative) {
+    const history = await getListingHistory(env);
+    await Promise.all(history
+      .filter((record) => record.isAvailable && !currentIds.has(record.id))
+      .map((record) => setListingAvailability(env, record.id, false)));
+  }
+  if (updateMonitorStatus) {
+    await setMonitorStatus(env, {
+      checkedAt: Date.now(),
+      listingCount: enriched.length,
+      authoritative: result.authoritative,
+      notice: result.notice,
+    });
+  }
+  return enriched.filter((listing) => listing.isAvailable !== false);
+}
+
+async function getAvailableHistoryListings(env: any): Promise<CarListing[]> {
   const history = await getListingHistory(env);
-  await Promise.all(history
-    .filter((record) => record.isAvailable && !currentIds.has(record.id))
-    .map((record) => setListingAvailability(env, record.id, false)));
-  await setMonitorStatus(env, {
-    checkedAt: Date.now(),
-    listingCount: enriched.length,
-    authoritative: result.authoritative,
+  return history.filter((record) => record.isAvailable).map((record) => ({
+    ...record.payload,
+    id: record.id,
+    isAvailable: true,
+    detectedAt: record.firstSeenAt,
+  } as CarListing));
+}
+
+async function getRateLimitedStoreListings(
+  env: any
+): Promise<{ listings: CarListing[]; notice?: string; checkedStore: boolean }> {
+  const status = await getMonitorStatus(env);
+  if (status && Date.now() - status.checkedAt < MIN_STORE_CHECK_INTERVAL_MS) {
+    return {
+      listings: await getAvailableHistoryListings(env),
+      notice: "Using recorded listing history; storefront was checked less than 10 minutes ago.",
+      checkedStore: false,
+    };
+  }
+  const result = await fetchStoreListings();
+  return {
+    listings: await syncListingHistory(env, result),
     notice: result.notice,
-  });
-  return enriched;
+    checkedStore: true,
+  };
 }
 
 export const KNOWN_LIMITED_CARS: CarListing[] = [
@@ -279,7 +322,7 @@ export async function broadcastListing(
 export async function broadcastAllListings(env: any, force: boolean = true): Promise<number> {
   let history = await getListingHistory(env);
   if (history.length === 0) {
-    await syncListingHistory(env, await fetchStoreListings());
+    await getRateLimitedStoreListings(env);
     history = await getListingHistory(env);
   }
   const availableHistory = history.filter((record) => record.isAvailable);
@@ -303,17 +346,20 @@ export async function broadcastAllListings(env: any, force: boolean = true): Pro
 export async function manualPullCurrentListings(
   env: any
 ): Promise<{ listings: number; deliveries: number; usedVerifiedStoreResponse: boolean }> {
-  const fetched = await fetchStoreListings();
-  // A manual administrator pull is an explicit confirmation that the maintained
-  // catalog snapshot reflects the storefront when Cloudflare blocks server-side HTML.
-  const confirmed = fetched.authoritative
-    ? fetched
-    : {
-        listings: KNOWN_LIMITED_CARS,
-        authoritative: true,
-        notice: "Administrator-confirmed catalog snapshot used because storefront verification was challenged.",
-      };
-  const listings = await syncListingHistory(env, confirmed);
+  const status = await getMonitorStatus(env);
+  const checkedRecently = Boolean(status && Date.now() - status.checkedAt < MIN_STORE_CHECK_INTERVAL_MS);
+  const fetched = checkedRecently
+    ? { listings: KNOWN_LIMITED_CARS, authoritative: false, notice: "Storefront check skipped to honor the 10-minute minimum interval." }
+    : await fetchStoreListings();
+  // When verification is blocked, a manual pull may record known active products,
+  // but it must never mark any historical listing out of stock.
+  const listings = fetched.authoritative
+    ? await syncListingHistory(env, fetched)
+    : await syncListingHistory(
+        env,
+        { ...fetched, listings: KNOWN_LIMITED_CARS },
+        { acceptNonAuthoritativeListings: true, updateMonitorStatus: !checkedRecently }
+      );
   let deliveries = 0;
   for (const listing of listings) deliveries += await broadcastListing(env, listing, false);
   return {
@@ -330,8 +376,7 @@ export async function publishActiveListingsToGuildOnSetup(
   const cfg = await getGuildConfig(env, guildId);
   if (!cfg || !cfg.channelId) return 0;
 
-  const result = await fetchStoreListings();
-  const listings = await syncListingHistory(env, result);
+  const { listings } = await getRateLimitedStoreListings(env);
   const embedConfig = await getEffectiveEmbedConfig(env, guildId);
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return 0;
@@ -373,8 +418,7 @@ export async function postAllListingsToGuild(
     return { count: 0 };
   }
 
-  const result = await fetchStoreListings();
-  const listings = await syncListingHistory(env, result);
+  const { listings } = await getRateLimitedStoreListings(env);
   const embedConfig = await getEffectiveEmbedConfig(env, guildId);
   const token = env.DISCORD_BOT_TOKEN;
 
@@ -421,12 +465,13 @@ export async function fetchStoreListings(): Promise<{ listings: CarListing[]; no
 
     const html = await res.text();
 
-    // Check if Cloudflare Turnstile / Managed Challenge intercepted
-    if (html.includes("challenges.cloudflare.com") || html.includes("Just a moment...")) {
+    // Any failed, challenged, or unrecognizable response is non-authoritative.
+    // It must never change availability history.
+    if (!res.ok || html.includes("challenges.cloudflare.com") || html.includes("Just a moment...")) {
       // Use active catalog packages when store HTML is protected
       return {
         listings: KNOWN_LIMITED_CARS,
-        notice: "Everfall store active catalog synced.",
+        notice: "Store verification was blocked; recorded history was preserved without availability changes.",
         authoritative: false,
       };
     }
@@ -441,8 +486,17 @@ export async function fetchStoreListings(): Promise<{ listings: CarListing[]; no
       foundIds.add(match[1]);
     }
 
+    const confirmedCategoryPage = html.length > 200 && /Limited\s+Cars/i.test(html) && /Tebex/i.test(html);
+    if (!confirmedCategoryPage) {
+      return {
+        listings: KNOWN_LIMITED_CARS,
+        notice: "Store response could not be verified as the Limited Cars category; availability history was preserved.",
+        authoritative: false,
+      };
+    }
+
     if (foundIds.size === 0) {
-      // Empty category: no limited vehicles currently available
+      // A successfully rendered, positively identified empty category confirms delisting.
       return { listings: [], authoritative: true };
     }
 
@@ -473,9 +527,7 @@ export async function fetchStoreListings(): Promise<{ listings: CarListing[]; no
 }
 
 export async function runCron(env: any): Promise<{ checked: number; newDrops: number; notice?: string }> {
-  const result = await fetchStoreListings();
-  const { notice } = result;
-  const listings = await syncListingHistory(env, result);
+  const { listings, notice } = await getRateLimitedStoreListings(env);
   let newDrops = 0;
 
   for (const car of listings) {

@@ -723,10 +723,10 @@ export function renderLandingPage(
       <section class="showcase" id="showcase">
         <div class="showcase-header">
           <div class="hero-eyebrow" style="margin-bottom:12px;">🔥 Live Bot Alerts Preview</div>
-          <h2>Featured Limited Vehicle Drops</h2>
+          <h2>Limited Drop History</h2>
           <p>Most recently discovered releases, with availability tracked over time.${
             monitorStatus
-              ? ` ${monitorStatus.authoritative ? "Last verified" : "Last attempted (store verification was blocked)"} ${new Date(monitorStatus.checkedAt).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" })} ET.`
+              ? ` ${monitorStatus.authoritative ? "Last verified" : "Last checked; verified history preserved"} ${new Date(monitorStatus.checkedAt).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" })} ET.`
               : ""
           }</p>
         </div>
@@ -750,11 +750,7 @@ export function renderLandingPage(
                 <div class="car-title">${car.name}</div>
                 <span class="car-meta-tag ${car.isAvailable === false ? "out-of-stock" : ""}">
                   ${
-                    car.isAvailable === false
-                      ? "🔴 Out of Stock"
-                      : car.detectedAt && Date.now() - car.detectedAt <= 24 * 60 * 60 * 1000
-                        ? "🆕 Newly Discovered"
-                        : "🟢 Available"
+                    car.isAvailable === false ? "🔴 Out of Stock" : "🆕 Newly Discovered"
                   }
                 </span>
               </div>
