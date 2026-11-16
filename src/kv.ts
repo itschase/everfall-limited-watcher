@@ -71,6 +71,28 @@ export async function markListingSeen(env: any, listingId: string, payload: any 
   await kv.put(`listing:${listingId}`, JSON.stringify(data));
 }
 
+// Per-Server (Guild) Delivery Tracking
+export async function isListingSentToGuild(
+  env: any,
+  guildId: string,
+  listingId: string
+): Promise<boolean> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return false;
+  const val = await kv.get(`guild:${guildId}:sent:${listingId}`);
+  return !!val;
+}
+
+export async function markListingSentToGuild(
+  env: any,
+  guildId: string,
+  listingId: string
+): Promise<void> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return;
+  await kv.put(`guild:${guildId}:sent:${listingId}`, Date.now().toString());
+}
+
 export async function getEmbedConfig(env: any): Promise<EmbedConfig> {
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) {

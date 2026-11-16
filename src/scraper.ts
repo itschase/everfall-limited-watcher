@@ -1,4 +1,12 @@
-import { getAllGuildIds, getGuildConfig, getEmbedConfig, isListingSeen, markListingSeen } from "./kv";
+import {
+  getAllGuildIds,
+  getGuildConfig,
+  getEmbedConfig,
+  isListingSeen,
+  markListingSeen,
+  isListingSentToGuild,
+  markListingSentToGuild,
+} from "./kv";
 
 export interface CarListing {
   id: string; // Package ID, e.g. "7815813"
@@ -160,23 +168,33 @@ export function buildCarDropMessage(
   };
 }
 
-export async function broadcastListing(env: any, car: CarListing): Promise<void> {
+export async function broadcastListing(
+  env: any,
+  car: CarListing,
+  force: boolean = false
+): Promise<number> {
   const token = env.DISCORD_BOT_TOKEN;
-  if (!token) return;
+  if (!token) return 0;
 
   const embedConfig = await getEmbedConfig(env);
   const guildIds = await getAllGuildIds(env);
 
   await saveCarPackage(env, car);
+  let sentCount = 0;
 
   for (const guildId of guildIds) {
     const config = await getGuildConfig(env, guildId);
     if (!config || !config.channelId) continue;
 
+    if (!force) {
+      const alreadySent = await isListingSentToGuild(env, guildId, car.id);
+      if (alreadySent) continue;
+    }
+
     const messagePayload = buildCarDropMessage(car, embedConfig, config.roleIds);
 
     try {
-      await fetch(`https://discord.com/api/v10/channels/${config.channelId}/messages`, {
+      const res = await fetch(`https://discord.com/api/v10/channels/${config.channelId}/messages`, {
         method: "POST",
         headers: {
           Authorization: `Bot ${token}`,
@@ -184,20 +202,66 @@ export async function broadcastListing(env: any, car: CarListing): Promise<void>
         },
         body: JSON.stringify(messagePayload),
       });
+      if (res.ok) {
+        await markListingSentToGuild(env, guildId, car.id);
+        sentCount++;
+      }
     } catch (err) {
       console.error(`Failed to post drop alert to channel ${config.channelId}:`, err);
     }
   }
+
+  return sentCount;
 }
 
-export async function broadcastAllListings(env: any): Promise<number> {
+export async function broadcastAllListings(env: any, force: boolean = true): Promise<number> {
   const { listings } = await fetchStoreListings();
   let count = 0;
   for (const car of listings) {
-    await broadcastListing(env, car);
+    await broadcastListing(env, car, force);
     count++;
   }
   return count;
+}
+
+export async function publishActiveListingsToGuildOnSetup(
+  env: any,
+  guildId: string
+): Promise<number> {
+  const cfg = await getGuildConfig(env, guildId);
+  if (!cfg || !cfg.channelId) return 0;
+
+  const { listings } = await fetchStoreListings();
+  const embedConfig = await getEmbedConfig(env);
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return 0;
+
+  let published = 0;
+  for (const car of listings) {
+    await saveCarPackage(env, car);
+    const alreadySent = await isListingSentToGuild(env, guildId, car.id);
+    if (!alreadySent) {
+      const payload = buildCarDropMessage(car, embedConfig, cfg.roleIds);
+      try {
+        const res = await fetch(`https://discord.com/api/v10/channels/${cfg.channelId}/messages`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bot ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          await markListingSentToGuild(env, guildId, car.id);
+          published++;
+        }
+      } catch (err) {
+        console.error(`Failed to auto-publish listing on setup to guild ${guildId}:`, err);
+      }
+    }
+  }
+
+  return published;
 }
 
 export async function postAllListingsToGuild(
@@ -220,7 +284,7 @@ export async function postAllListingsToGuild(
 
     if (token) {
       try {
-        await fetch(`https://discord.com/api/v10/channels/${cfg.channelId}/messages`, {
+        const res = await fetch(`https://discord.com/api/v10/channels/${cfg.channelId}/messages`, {
           method: "POST",
           headers: {
             Authorization: `Bot ${token}`,
@@ -228,7 +292,10 @@ export async function postAllListingsToGuild(
           },
           body: JSON.stringify(payload),
         });
-        count++;
+        if (res.ok) {
+          await markListingSentToGuild(env, guildId, car.id);
+          count++;
+        }
       } catch (err) {
         console.error(`Failed to post to channel ${cfg.channelId}:`, err);
       }
@@ -307,11 +374,11 @@ export async function runCron(env: any): Promise<{ checked: number; newDrops: nu
   let newDrops = 0;
 
   for (const car of listings) {
-    const seen = await isListingSeen(env, car.id);
-    if (!seen) {
-      newDrops++;
-      await markListingSeen(env, car.id, car);
-      await broadcastListing(env, car);
+    await markListingSeen(env, car.id, car);
+    // Broadcast only to servers that haven't received this drop yet
+    const sent = await broadcastListing(env, car, false);
+    if (sent > 0) {
+      newDrops += sent;
     }
   }
 

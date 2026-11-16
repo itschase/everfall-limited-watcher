@@ -2,7 +2,13 @@
 
 import { InteractionResponseType, InteractionType, verifyKey } from "discord-interactions";
 import { getGuildConfig, setGuildConfig, addGuildRole, removeGuildRole, getEmbedConfig, GuildConfig } from "./kv";
-import { fetchStoreListings, getCarPackage, postAllListingsToGuild, CarListing } from "./scraper";
+import {
+  fetchStoreListings,
+  getCarPackage,
+  postAllListingsToGuild,
+  publishActiveListingsToGuildOnSetup,
+  CarListing,
+} from "./scraper";
 
 const EPHEMERAL_FLAG = 64;
 
@@ -390,10 +396,17 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
         const existing = (await getGuildConfig(env, guild_id)) ?? { channelId: "", roleIds: [] };
         await setGuildConfig(env, guild_id, { ...existing, channelId: selectedChannel });
 
+        // Auto-publish any currently active store listings that haven't been sent to this server yet
+        const publishedCount = await publishActiveListingsToGuildOnSetup(env, guild_id);
+
         const updatedEmbed = {
           title: "✅ Alert Channel Updated",
           color: 0x10b981,
-          description: `Vehicle drop alerts will now be posted to <#${selectedChannel}>!`,
+          description:
+            `Vehicle drop alerts will now be posted to <#${selectedChannel}>!\n\n` +
+            (publishedCount > 0
+              ? `🎉 **Auto-Published ${publishedCount} Active Listing(s)** directly to <#${selectedChannel}>!`
+              : `ℹ️ All currently active store listings have already been published in this server.`),
           fields: [
             {
               name: "Mention Roles",
@@ -456,12 +469,19 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
       const existing = (await getGuildConfig(env, guild_id)) ?? { channelId: "", roleIds: [] };
       await setGuildConfig(env, guild_id, { ...existing, channelId: channel });
 
+      // Auto-publish any currently active store listings that haven't been sent to this server yet
+      const publishedCount = await publishActiveListingsToGuildOnSetup(env, guild_id);
+
       return jsonResponse({
         flags: EPHEMERAL_FLAG,
         embeds: [
           {
             title: "✅ Alert Channel Configured",
-            description: `Successfully set <#${channel}> as the vehicle alerts channel.`,
+            description:
+              `Successfully set <#${channel}> as the vehicle alerts channel.\n\n` +
+              (publishedCount > 0
+                ? `🎉 **Auto-Published ${publishedCount} Active Listing(s)** directly to <#${channel}>!`
+                : `ℹ️ All currently active store listings have already been published in this server.`),
             color: 0x10b981,
             fields: [
               {
