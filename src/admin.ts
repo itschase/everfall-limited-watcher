@@ -118,13 +118,12 @@ export async function handleLoginRedirect(request: Request, env: any): Promise<R
   // If the user already has a valid session, bypass the OAuth flow
   const sessionSecret = env.DISCORD_PUBLIC_KEY || "everfall-fallback-session-key";
   const existingUser = await verifySessionCookie(request.headers.get("Cookie"), sessionSecret);
+  const url = new URL(request.url);
   if (existingUser) {
     // Redirect to dashboard (or home) where the user can see their servers
-    return Response.redirect("/dashboard", 302);
+    return Response.redirect(`${url.origin}/dashboard`, 302);
   }
 
-
-   const url = new URL(request.url);
    const redirectUri = `${url.origin}${REDIRECT_PATH}`;
    const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
 
@@ -268,8 +267,8 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
   <meta charset="UTF-8">
   <title>Everfall Watcher – Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/jpeg" href="${EF_LOGO_BASE64}?v=1">
-  <link rel="shortcut icon" type="image/jpeg" href="${EF_LOGO_BASE64}?v=1">
+  <link rel="icon" type="image/webp" href="${EF_LOGO_BASE64}">
+  <link rel="shortcut icon" type="image/webp" href="${EF_LOGO_BASE64}">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
