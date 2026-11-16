@@ -82,9 +82,6 @@ export function buildCarDropMessage(
   roleIds?: string[]
 ) {
   const totalImages = car.images?.length || 0;
-  const mainImage = totalImages > 0 ? car.images[0] : "";
-  const galleryImages = totalImages > 1 ? car.images.slice(1) : [];
-
   // Color parsing
   const hexStr = embedConfig?.color ? embedConfig.color.replace("#", "") : "F59E0B";
   const color = parseInt(hexStr, 16) || 0xf59e0b;
@@ -93,78 +90,60 @@ export function buildCarDropMessage(
     embedConfig?.titlePrefix || "<:everfall:1571981507973746868> Limited Edition Drop:";
   const footerText =
     embedConfig?.footerText || "Everfall Limited Watcher • Verified Drop Alert";
+  const galleryHeading = embedConfig?.galleryHeading || "Vehicle Gallery";
+  const storeButtonLabel = embedConfig?.storeButtonLabel || "View Package on Everfall Store";
+  const showDetectionTime = embedConfig?.showDetectionTime !== false;
 
   // Mention string in message content so Discord actively pings roles
   const pings =
     roleIds && roleIds.length > 0 ? roleIds.map((r) => `<@&${r}>`).join(" ") : "";
 
-  const embeds: any[] = [];
+  const detected = Math.floor(Date.now() / 1000);
+  const details = [
+    `# ${titlePrefix} ${car.name}`,
+    car.description,
+    `### 📸 ${galleryHeading}`,
+    `**${totalImages}** photo${totalImages === 1 ? "" : "s"}`,
+  ];
+  if (showDetectionTime) details.push(`🕒 **Detected:** <t:${detected}:R>`);
 
-  // 1. Primary Main Embed with big hero image & details
-  embeds.push({
-    title: `${titlePrefix} ${car.name}`,
-    url: car.url,
-    color,
-    description: car.description,
-    fields: [
-      {
-        name: "📸 Gallery",
-        value: `**${totalImages}** Photos *(Full gallery below)*`,
-        inline: true,
-      },
-      {
-        name: "🕒 Detected",
-        value: `<t:${Math.floor(Date.now() / 1000)}:R>`,
-        inline: true,
-      },
-    ],
-    image: mainImage ? { url: mainImage } : undefined,
-    footer: { text: footerText },
-    timestamp: new Date().toISOString(),
-  });
+  const containerComponents: any[] = [
+    { type: 10, content: details.join("\n\n") },
+  ];
 
-  // 2. Multi-image gallery embeds directly below the main image
-  // Discord groups embeds sharing the exact same URL into a 4-image grid.
-  // Group 1: Up to 4 images
-  if (galleryImages.length > 0) {
-    const group1 = galleryImages.slice(0, 4);
-    for (const imgUrl of group1) {
-      embeds.push({
-        url: `${car.url}#gallery1`,
-        image: { url: imgUrl },
-        color,
-      });
-    }
-
-    // Group 2: Next up to 4 images
-    const group2 = galleryImages.slice(4, 8);
-    for (const imgUrl of group2) {
-      embeds.push({
-        url: `${car.url}#gallery2`,
-        image: { url: imgUrl },
-        color,
-      });
-    }
+  if (totalImages > 0) {
+    containerComponents.push({
+      type: 12,
+      items: car.images.slice(0, 10).map((url, index) => ({
+        media: { url },
+        description: `${car.name} — gallery image ${index + 1} of ${totalImages}`,
+      })),
+    });
   }
 
-  const components = [
+  containerComponents.push(
     {
-      type: 1, // Action Row
+      type: 1,
       components: [
         {
           type: 2,
-          style: 5, // Link button
-          label: "View Package on Everfall Store",
+          style: 5,
+          label: storeButtonLabel.slice(0, 80),
           url: car.url,
           emoji: { id: "1571981507973746868", name: "everfall" },
         },
       ],
     },
-  ];
+    { type: 10, content: `-# ${footerText}${showDetectionTime ? ` • <t:${detected}:f>` : ""}` }
+  );
+
+  const components: any[] = [];
+  if (pings) components.push({ type: 10, content: pings });
+  components.push({ type: 17, accent_color: color, components: containerComponents });
 
   return {
-    content: pings || undefined,
-    embeds,
+    flags: 1 << 15,
+    allowed_mentions: { parse: [], roles: roleIds || [] },
     components,
   };
 }

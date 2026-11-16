@@ -15,6 +15,13 @@ export interface SessionUser {
   isAdmin: boolean;
 }
 
+interface BotGuild {
+  id: string;
+  name: string;
+  icon?: string | null;
+  approximate_member_count?: number;
+}
+
 // Helper: HMAC sign & verify for secure session cookies
 async function getCryptoKey(secret: string): Promise<CryptoKey> {
   const encoder = new TextEncoder();
@@ -153,6 +160,35 @@ export async function getCreatorProfile(env: any): Promise<{ username: string; a
   return defaultProfile;
 }
 
+async function getBotGuilds(env: any): Promise<BotGuild[]> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return [];
+
+  const guilds: BotGuild[] = [];
+  let after = "";
+  try {
+    for (;;) {
+      const params = new URLSearchParams({ limit: "200", with_counts: "true" });
+      if (after) params.set("after", after);
+      const response = await fetch(`https://discord.com/api/v10/users/@me/guilds?${params}`, {
+        headers: { Authorization: `Bot ${token}` },
+      });
+      if (!response.ok) {
+        console.error("Failed to fetch bot guilds:", response.status, await response.text());
+        return [];
+      }
+      const page = (await response.json()) as BotGuild[];
+      guilds.push(...page);
+      if (page.length < 200) break;
+      after = page[page.length - 1].id;
+    }
+  } catch (error) {
+    console.error("Failed to fetch bot guilds:", error);
+    return [];
+  }
+  return guilds;
+}
+
 export async function handleLoginRedirect(request: Request, env: any): Promise<Response> {
   // If the user already has a valid session, bypass the OAuth flow
   const sessionSecret = getSessionSecret(env);
@@ -267,10 +303,11 @@ export async function handleOAuthCallback(request: Request, env: any): Promise<R
 
   const cookie = await createSessionCookie(userData.id, userData.username, avatarUrl, sessionSecret);
 
+  const destination = userData.id === env.DISCORD_PRIMARY_ADMINISTRATOR ? "/admin" : "/dashboard";
   return new Response(null, {
     status: 302,
     headers: {
-      Location: "/dashboard",
+      Location: destination,
       "Set-Cookie": cookie,
       "Cache-Control": "no-store",
     },
@@ -288,16 +325,34 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
   }
 
   const url = new URL(request.url);
+  if (user.isAdmin && url.pathname === "/dashboard") {
+    return Response.redirect(`${url.origin}/admin`, 302);
+  }
+  if (!user.isAdmin && url.pathname === "/admin") {
+    return Response.redirect(`${url.origin}/dashboard`, 302);
+  }
   const alertSent = url.searchParams.get("alert") === "sent";
   const config = await getEmbedConfig(env);
   const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
 
-  // Check connected bot servers in KV
+  // Discord is authoritative for bot membership; KV only stores per-server configuration.
   const guildIds = await getAllGuildIds(env);
+  const botGuilds = await getBotGuilds(env);
+  const botGuildIds = new Set(botGuilds.map((guild) => guild.id));
   const connectedGuilds: any[] = [];
-  for (const id of guildIds) {
-    const g = await getGuildConfig(env, id);
-    if (g) connectedGuilds.push({ id, ...g });
+  for (const guild of botGuilds) {
+    const guildConfig = await getGuildConfig(env, guild.id);
+    connectedGuilds.push({ ...guild, config: guildConfig });
+  }
+  // Preserve configured entries if Discord is temporarily unavailable.
+  if (connectedGuilds.length === 0) {
+    for (const id of guildIds) {
+      const guildConfig = await getGuildConfig(env, id);
+      if (guildConfig) {
+        botGuildIds.add(id);
+        connectedGuilds.push({ id, name: `Server ${id}`, config: guildConfig });
+      }
+    }
   }
 
   // If regular user, read their cached guilds
@@ -321,7 +376,7 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Everfall Watcher – Dashboard</title>
+  <title>Everfall Watcher – ${user.isAdmin ? "Administrator Dashboard" : "Server Dashboard"}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/webp" href="${EF_LOGO_BASE64}">
   <link rel="shortcut icon" type="image/webp" href="${EF_LOGO_BASE64}">
@@ -460,7 +515,9 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
         <img src="${user.avatarUrl}" alt="${user.username}" class="avatar-header">
         <div>
           <h1 style="font-size: 1.35rem; font-weight: 800;">${user.username}</h1>
-          <p style="color:var(--muted); font-size:0.85rem;">Discord ID: ${user.id}</p>
+          <p style="color:var(--muted); font-size:0.85rem;">
+            ${user.isAdmin ? "Administrator Dashboard" : "Server Manager Dashboard"} &bull; Discord ID: ${user.id}
+          </p>
         </div>
       </div>
       <div style="display:flex; align-items:center; gap:14px;">
@@ -486,7 +543,7 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
       <!-- Master Administrator View -->
       <div class="grid">
         <div class="card">
-          <h2>🎨 Embed Appearance Settings</h2>
+          <h2>🎨 Listing Presentation Controls</h2>
           <form action="/admin/save-config" method="POST">
             <label for="color">Embed Accent Color</label>
             <input type="text" id="color" name="color" value="${config.color || "#F59E0B"}" placeholder="#F59E0B">
@@ -501,7 +558,22 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
               config.footerText || "Everfall Limited Watcher • Verified Drop Alert"
             }">
 
-            <button type="submit" class="btn">💾 Save Embed Appearance</button>
+            <label for="galleryHeading">Gallery Heading</label>
+            <input type="text" id="galleryHeading" name="galleryHeading" value="${
+              config.galleryHeading || "Vehicle Gallery"
+            }">
+
+            <label for="storeButtonLabel">Store Button Label</label>
+            <input type="text" id="storeButtonLabel" name="storeButtonLabel" maxlength="80" value="${
+              config.storeButtonLabel || "View Package on Everfall Store"
+            }">
+
+            <label style="display:flex; align-items:center; gap:9px; margin-bottom:18px; cursor:pointer;">
+              <input type="checkbox" name="showDetectionTime" ${config.showDetectionTime !== false ? "checked" : ""}>
+              Show detection time in listing alerts
+            </label>
+
+            <button type="submit" class="btn">💾 Save Listing Appearance</button>
           </form>
 
           <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border);">
@@ -518,24 +590,26 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
         <div class="card">
           <h2>📡 All Connected Discord Servers (${connectedGuilds.length})</h2>
           <p style="color:var(--muted); font-size:0.85rem; margin-bottom:16px;">
-            Servers where the bot is installed and configured for vehicle drop alerts:
+            Every server Discord reports the bot is currently installed in. Configuration status is shown separately.
           </p>
           ${
             connectedGuilds.length === 0
-              ? '<p style="color:var(--muted); font-size:0.88rem;">No servers have configured an alert channel yet.</p>'
+              ? '<p style="color:var(--muted); font-size:0.88rem;">Discord did not return any installed servers.</p>'
               : connectedGuilds
                   .map(
                     (g) => `
                 <div class="server-item">
                   <div>
-                    <div class="server-name">🖥️ Server ID: ${g.id}</div>
+                    <div class="server-name">${g.name || `Server ${g.id}`}</div>
                     <div style="font-size:0.85rem; color:var(--muted); margin-top:4px;">
-                      <b>Alert Channel:</b> &lt;#${g.channelId}&gt; &bull; <b>Roles:</b> ${
-                      g.roleIds?.length ? g.roleIds.join(", ") : "None"
+                      <b>ID:</b> ${g.id} &bull; <b>Alert Channel:</b> ${g.config?.channelId ? `&lt;#${g.config.channelId}&gt;` : "Not configured"} &bull; <b>Roles:</b> ${
+                      g.config?.roleIds?.length ? g.config.roleIds.join(", ") : "None"
                     }
                     </div>
                   </div>
-                  <span style="font-size:0.8rem; color:#34D399; font-weight:600;">🟢 Active</span>
+                  <span style="font-size:0.8rem; color:${g.config?.channelId ? "#34D399" : "#F59E0B"}; font-weight:600;">
+                    ${g.config?.channelId ? "🟢 Configured" : "🟠 Setup needed"}
+                  </span>
                 </div>`
                   )
                   .join("")
@@ -561,8 +635,8 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
               </div>`
             : userManagedGuilds
                 .map((g) => {
-                  const botConfig = connectedGuilds.find((cg) => cg.id === g.id);
-                  const isInstalled = !!botConfig;
+                  const botConfig = connectedGuilds.find((guild) => guild.id === g.id)?.config;
+                  const isInstalled = botGuildIds.has(g.id);
                   const iconUrl = g.icon
                     ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64`
                     : null;
@@ -583,9 +657,11 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
                     <div style="font-size:0.82rem; color:var(--muted);">
                       ${
                         isInstalled
-                          ? `Alert Channel: &lt;#${botConfig.channelId}&gt; &bull; Roles: ${
-                              botConfig.roleIds?.length ? botConfig.roleIds.length + " configured" : "None"
-                            }`
+                          ? botConfig?.channelId
+                            ? `Alert Channel: &lt;#${botConfig.channelId}&gt; &bull; Roles: ${
+                                botConfig.roleIds?.length ? botConfig.roleIds.length + " configured" : "None"
+                              }`
+                            : "Bot installed • Alert channel not configured"
                           : "Bot not yet installed"
                       }
                     </div>
@@ -618,7 +694,13 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
 </body>
 </html>`;
 
-  return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
+  return new Response(html, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
 export async function handleSaveConfig(request: Request, env: any): Promise<Response> {
@@ -635,10 +717,20 @@ export async function handleSaveConfig(request: Request, env: any): Promise<Resp
   const color = formData.get("color") as string;
   const titlePrefix = formData.get("titlePrefix") as string;
   const footerText = formData.get("footerText") as string;
+  const galleryHeading = formData.get("galleryHeading") as string;
+  const storeButtonLabel = formData.get("storeButtonLabel") as string;
+  const showDetectionTime = formData.get("showDetectionTime") === "on";
 
-  await setEmbedConfig(env, { color, titlePrefix, footerText });
+  await setEmbedConfig(env, {
+    color,
+    titlePrefix,
+    footerText,
+    galleryHeading,
+    storeButtonLabel,
+    showDetectionTime,
+  });
 
-  return Response.redirect(new URL("/dashboard", request.url).toString(), 303);
+  return Response.redirect(new URL("/admin", request.url).toString(), 303);
 }
 
 export async function handleTestAlert(request: Request, env: any): Promise<Response> {
@@ -653,7 +745,7 @@ export async function handleTestAlert(request: Request, env: any): Promise<Respo
 
   await broadcastAllListings(env, true);
 
-  return Response.redirect(new URL("/dashboard?alert=sent", request.url).toString(), 303);
+  return Response.redirect(new URL("/admin?alert=sent", request.url).toString(), 303);
 }
 
 function renderOAuthSetupNotice(msg: string): string {

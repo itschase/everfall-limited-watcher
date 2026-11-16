@@ -10,6 +10,9 @@ export type EmbedConfig = {
   color?: string;
   titlePrefix?: string;
   footerText?: string;
+  galleryHeading?: string;
+  storeButtonLabel?: string;
+  showDetectionTime?: boolean;
 };
 
 export async function getGuildConfig(env: any, guildId: string): Promise<GuildConfig | null> {
@@ -100,6 +103,9 @@ export async function getEmbedConfig(env: any): Promise<EmbedConfig> {
       color: "#F59E0B",
       titlePrefix: "<:everfall:1571981507973746868> Limited Edition Drop:",
       footerText: "Everfall Limited Watcher • Verified Drop Alert",
+      galleryHeading: "Vehicle Gallery",
+      storeButtonLabel: "View Package on Everfall Store",
+      showDetectionTime: true,
     };
   }
   const raw = await kv.get("admin:embed_config");
@@ -108,6 +114,9 @@ export async function getEmbedConfig(env: any): Promise<EmbedConfig> {
       color: "#F59E0B",
       titlePrefix: "<:everfall:1571981507973746868> Limited Edition Drop:",
       footerText: "Everfall Limited Watcher • Verified Drop Alert",
+      galleryHeading: "Vehicle Gallery",
+      storeButtonLabel: "View Package on Everfall Store",
+      showDetectionTime: true,
     };
   }
   return JSON.parse(raw);
