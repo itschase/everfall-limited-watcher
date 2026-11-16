@@ -1,6 +1,16 @@
 import { CarListing } from "./scraper";
+import { SessionUser } from "./admin";
+import { EF_LOGO_BASE64 } from "./assets";
 
-export function renderLandingPage(appId: string, cars: CarListing[] = []): Response {
+export function renderLandingPage(
+  appId: string,
+  cars: CarListing[] = [],
+  currentUser: SessionUser | null = null,
+  creatorProfile: { username: string; avatarUrl: string } = {
+    username: "xchasex",
+    avatarUrl: "https://cdn.discordapp.com/embed/avatars/0.png",
+  }
+): Response {
   const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${appId}&permissions=8462865837583424&integration_type=0&scope=bot+applications.commands`;
 
   const html = `<!DOCTYPE html>
@@ -10,6 +20,8 @@ export function renderLandingPage(appId: string, cars: CarListing[] = []): Respo
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Everfall Limited Watcher – Discord Bot</title>
   <meta name="description" content="Automated stock monitoring and instant Discord alerts for Everfall limited car drops.">
+  <link rel="icon" type="image/webp" href="${EF_LOGO_BASE64}">
+  <link rel="shortcut icon" type="image/webp" href="${EF_LOGO_BASE64}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -75,7 +87,7 @@ export function renderLandingPage(appId: string, cars: CarListing[] = []): Respo
     }
 
     header {
-      padding: 32px 0;
+      padding: 28px 0;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -85,20 +97,21 @@ export function renderLandingPage(appId: string, cars: CarListing[] = []): Respo
       display: flex;
       align-items: center;
       gap: 12px;
-      font-weight: 700;
-      font-size: 1.15rem;
+      font-weight: 800;
+      font-size: 1.2rem;
       color: #fff;
       text-decoration: none;
     }
     .logo-badge {
-      width: 38px;
-      height: 38px;
-      border-radius: 10px;
-      background: linear-gradient(135deg, #5865F2, #8B5CF6);
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 14px rgba(88, 101, 242, 0.35);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
     }
     .header-nav {
       display: flex;
@@ -115,7 +128,7 @@ export function renderLandingPage(appId: string, cars: CarListing[] = []): Respo
       border: 1px solid rgba(16, 185, 129, 0.25);
       color: var(--success);
       font-size: 0.82rem;
-      font-weight: 600;
+      font-weight: 700;
     }
     .status-dot {
       width: 8px;
@@ -125,20 +138,55 @@ export function renderLandingPage(appId: string, cars: CarListing[] = []): Respo
       box-shadow: 0 0 10px var(--success);
       animation: pulse 2s infinite ease-in-out;
     }
-    .nav-admin-link {
-      color: var(--text-muted);
-      text-decoration: none;
+    .btn-login {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 18px;
+      border-radius: 10px;
+      background: var(--primary);
+      color: #fff;
       font-size: 0.9rem;
       font-weight: 600;
-      padding: 6px 14px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
+      text-decoration: none;
       transition: all 0.2s ease;
+      box-shadow: 0 4px 14px rgba(88, 101, 242, 0.35);
     }
-    .nav-admin-link:hover {
+    .btn-login:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+    .user-nav-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 12px 4px 6px;
       background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 30px;
+    }
+    .user-nav-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1px solid var(--primary);
+    }
+    .user-nav-name {
+      font-size: 0.88rem;
+      font-weight: 600;
       color: var(--text-main);
-      border-color: var(--border-focus);
+    }
+    .user-nav-link {
+      color: #93C5FD;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-decoration: none;
+      padding-left: 6px;
+      border-left: 1px solid var(--border);
+    }
+    .user-nav-link:hover {
+      text-decoration: underline;
     }
 
     @keyframes pulse {
@@ -517,17 +565,82 @@ export function renderLandingPage(appId: string, cars: CarListing[] = []): Respo
       min-width: 240px;
     }
 
+    /* Footer styling with creator badge & legal disclaimer */
     footer {
       margin-top: auto;
-      padding: 40px 0;
+      padding: 48px 0 36px;
       border-top: 1px solid var(--border);
-      color: var(--text-muted);
-      font-size: 0.88rem;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .footer-top {
       display: flex;
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 16px;
+      gap: 20px;
+    }
+    .footer-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--text-main);
+    }
+    .creator-badge-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .creator-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 14px 6px 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 30px;
+      text-decoration: none;
+      color: var(--text-main);
+      transition: all 0.2s ease;
+    }
+    .creator-link:hover {
+      background: rgba(88, 101, 242, 0.15);
+      border-color: rgba(88, 101, 242, 0.4);
+      transform: translateY(-2px);
+    }
+    .creator-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--primary);
+      box-shadow: 0 0 10px rgba(88, 101, 242, 0.4);
+    }
+    .creator-name {
+      font-weight: 700;
+      font-size: 0.92rem;
+      color: #fff;
+    }
+    .creator-tag {
+      font-size: 0.72rem;
+      font-weight: 700;
+      background: rgba(88, 101, 242, 0.25);
+      color: #93C5FD;
+      padding: 2px 8px;
+      border-radius: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .footer-disclaimer {
+      font-size: 0.8rem;
+      color: #6B7280;
+      line-height: 1.6;
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+      padding-top: 20px;
+      text-align: center;
     }
   </style>
 </head>
@@ -539,21 +652,33 @@ export function renderLandingPage(appId: string, cars: CarListing[] = []): Respo
     <header>
       <a href="/" class="logo-group">
         <div class="logo-badge">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/>
-            <circle cx="7" cy="17" r="2"/>
-            <path d="M9 17h6"/>
-            <circle cx="17" cy="17" r="2"/>
-          </svg>
+          <img src="${EF_LOGO_BASE64}" alt="EF Logo" style="width:26px; height:26px; object-fit:contain;">
         </div>
         <span>Everfall Watcher</span>
       </a>
       <div class="header-nav">
         <div class="status-pill">
           <span class="status-dot"></span>
-          <span>Edge Live</span>
+          <span>Online</span>
         </div>
-        <a href="/admin" class="nav-admin-link">⚙️ Admin Portal</a>
+
+        ${
+          currentUser
+            ? `
+          <div class="user-nav-badge">
+            <img src="${currentUser.avatarUrl}" alt="${currentUser.username}" class="user-nav-avatar">
+            <span class="user-nav-name">${currentUser.username}</span>
+            <a href="/dashboard" class="user-nav-link">Dashboard</a>
+            <a href="/logout" class="user-nav-link" style="color:#EF4444;">Log Out</a>
+          </div>`
+            : `
+          <a href="/login" class="btn-login">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.893.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+            </svg>
+            Login with Discord
+          </a>`
+        }
       </div>
     </header>
 
@@ -698,8 +823,23 @@ export function renderLandingPage(appId: string, cars: CarListing[] = []): Respo
     </main>
 
     <footer>
-      <p>Everfall Limited Watcher • Powered by Cloudflare Workers & Discord API</p>
-      <a href="/admin" style="color:var(--text-muted); text-decoration:none;">Owner Dashboard &rarr;</a>
+      <div class="footer-top">
+        <div class="footer-brand">
+          <img src="${EF_LOGO_BASE64}" alt="EF Logo" style="width:24px; height:24px; object-fit:contain;">
+          <span>Everfall Limited Watcher</span>
+        </div>
+        <div class="creator-badge-container">
+          <span style="font-size:0.85rem; color:var(--text-muted);">Built by</span>
+          <a href="https://discord.com/users/151037568484507648" target="_blank" rel="noopener noreferrer" class="creator-link">
+            <img src="${creatorProfile.avatarUrl}" alt="${creatorProfile.username}" class="creator-avatar">
+            <span class="creator-name">${creatorProfile.username}</span>
+            <span class="creator-tag">Developer</span>
+          </a>
+        </div>
+      </div>
+      <div class="footer-disclaimer">
+        <b>Disclaimer:</b> Everfall Limited Watcher is an independent, community-created utility. It is not affiliated with, endorsed by, sponsored by, or powered by Everfall or Tebex.
+      </div>
     </footer>
   </div>
 

@@ -50,7 +50,7 @@ function buildMultiCarCheckResponse(cfg: GuildConfig, listings: CarListing[], em
           color: 0x10b981,
           description:
             "✅ Store scanned. **No limited vehicles are currently listed** on the Everfall store.\n\n" +
-            "Automated background sweeps will continue checking every 15 minutes on the Cloudflare edge.",
+            "Automated background sweeps will continue checking every 15 minutes around the clock.",
           fields: [
             { name: "🎯 Target Channel", value: `<#${cfg.channelId}>`, inline: true },
             {
