@@ -85,15 +85,17 @@ export default {
         status: 302,
         headers: {
           Location: "/",
-          "Set-Cookie": "session=; Path=/; HttpOnly; Max-Age=0",
+          "Set-Cookie": "everfall_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0",
         },
       });
     }
 
     // 5. Default Public Landing Page
     const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
-    const sessionSecret = env.DISCORD_PUBLIC_KEY || "everfall-fallback-session-key";
-    const currentUser = await verifySessionCookie(request.headers.get("Cookie"), sessionSecret);
+    const sessionSecret = env.DISCORD_CLIENT_SECRET || "";
+    const currentUser = await verifySessionCookie(
+      request.headers.get("Cookie"), sessionSecret, env.DISCORD_PRIMARY_ADMINISTRATOR
+    );
     const creatorProfile = await getCreatorProfile(env);
 
     const { listings } = await fetchStoreListings();

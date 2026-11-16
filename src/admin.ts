@@ -4,8 +4,9 @@ import { getAllGuildIds, getGuildConfig, getEmbedConfig, setEmbedConfig, EmbedCo
 import { getKnownCars, broadcastAllListings } from "./scraper";
 import { EF_LOGO_BASE64 } from "./assets";
 
-export const ADMIN_DISCORD_ID = "151037568484507648";
 const REDIRECT_PATH = "/auth/callback";
+const SESSION_COOKIE = "everfall_session";
+const OAUTH_STATE_COOKIE = "everfall_oauth_state";
 
 export interface SessionUser {
   id: string;
@@ -26,53 +27,89 @@ async function getCryptoKey(secret: string): Promise<CryptoKey> {
   );
 }
 
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  const binary = atob(base64);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function readCookie(cookieHeader: string | null, name: string): string | null {
+  if (!cookieHeader) return null;
+  for (const entry of cookieHeader.split(";")) {
+    const separator = entry.indexOf("=");
+    if (separator < 0) continue;
+    if (entry.slice(0, separator).trim() === name) return entry.slice(separator + 1).trim();
+  }
+  return null;
+}
+
+function getSessionSecret(env: any): string {
+  // This reuses an existing server-side secret without exposing or modifying it.
+  // DISCORD_PUBLIC_KEY is public and must never be used to sign authentication cookies.
+  return env.DISCORD_CLIENT_SECRET || "";
+}
+
 export async function createSessionCookie(
   userId: string,
   username: string,
   avatarUrl: string,
   secret: string
 ): Promise<string> {
-  const timestamp = Date.now().toString();
-  const payload = `${userId}:${encodeURIComponent(username)}:${encodeURIComponent(avatarUrl)}:${timestamp}`;
+  const payload = bytesToBase64Url(
+    new TextEncoder().encode(JSON.stringify({ userId, username, avatarUrl, issuedAt: Date.now() }))
+  );
   const key = await getCryptoKey(secret);
   const encoder = new TextEncoder();
   const sigBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
-  const sigHex = Array.from(new Uint8Array(sigBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return `session=${payload}.${sigHex}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=86400`;
+  const signature = bytesToBase64Url(new Uint8Array(sigBuffer));
+  return `${SESSION_COOKIE}=${payload}.${signature}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=86400`;
 }
 
 export async function verifySessionCookie(
   cookieHeader: string | null,
-  secret: string
+  secret: string,
+  primaryAdministratorId = ""
 ): Promise<SessionUser | null> {
-  if (!cookieHeader) return null;
-  const match = cookieHeader.match(/session=([^;]+)/);
-  if (!match) return null;
+  if (!secret) return null;
+  const value = readCookie(cookieHeader, SESSION_COOKIE);
+  if (!value) return null;
 
-  const [payload, sigHex] = match[1].split(".");
-  if (!payload || !sigHex) return null;
+  try {
+    const separator = value.lastIndexOf(".");
+    if (separator < 1) return null;
+    const payload = value.slice(0, separator);
+    const signature = base64UrlToBytes(value.slice(separator + 1));
+    const key = await getCryptoKey(secret);
+    const isValid = await crypto.subtle.verify("HMAC", key, signature, new TextEncoder().encode(payload));
+    if (!isValid) return null;
 
-  const parts = payload.split(":");
-  if (parts.length < 4) return null;
+    const parsed = JSON.parse(new TextDecoder().decode(base64UrlToBytes(payload)));
+    if (
+      typeof parsed.userId !== "string" ||
+      typeof parsed.username !== "string" ||
+      typeof parsed.avatarUrl !== "string" ||
+      typeof parsed.issuedAt !== "number" ||
+      Date.now() - parsed.issuedAt > 86400 * 1000 ||
+      parsed.issuedAt > Date.now() + 60_000
+    ) return null;
 
-  const [userId, encUsername, encAvatar, timestampStr] = parts;
-  const timestamp = parseInt(timestampStr, 10);
-  if (Date.now() - timestamp > 86400 * 1000) return null;
-
-  const key = await getCryptoKey(secret);
-  const expectedBuffer = new Uint8Array(sigHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
-  const isValid = await crypto.subtle.verify("HMAC", key, expectedBuffer, new TextEncoder().encode(payload));
-
-  if (!isValid) return null;
-
-  return {
-    id: userId,
-    username: decodeURIComponent(encUsername),
-    avatarUrl: decodeURIComponent(encAvatar),
-    isAdmin: userId === ADMIN_DISCORD_ID,
-  };
+    return {
+      id: parsed.userId,
+      username: parsed.username,
+      avatarUrl: parsed.avatarUrl,
+      isAdmin: Boolean(primaryAdministratorId) && parsed.userId === primaryAdministratorId,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function getCreatorProfile(env: any): Promise<{ username: string; avatarUrl: string }> {
@@ -93,13 +130,15 @@ export async function getCreatorProfile(env: any): Promise<{ username: string; a
   if (!token) return defaultProfile;
 
   try {
-    const res = await fetch("https://discord.com/api/v10/users/151037568484507648", {
+    const primaryAdministratorId = env.DISCORD_PRIMARY_ADMINISTRATOR;
+    if (!primaryAdministratorId) return defaultProfile;
+    const res = await fetch(`https://discord.com/api/v10/users/${primaryAdministratorId}`, {
       headers: { Authorization: `Bot ${token}` },
     });
     if (res.ok) {
       const data: any = await res.json();
       const avatarUrl = data.avatar
-        ? `https://cdn.discordapp.com/avatars/151037568484507648/${data.avatar}.png?size=64`
+        ? `https://cdn.discordapp.com/avatars/${primaryAdministratorId}/${data.avatar}.png?size=64`
         : defaultAvatar;
       const profile = { username: data.username || "xchasex", avatarUrl };
       if (kv) {
@@ -116,8 +155,10 @@ export async function getCreatorProfile(env: any): Promise<{ username: string; a
 
 export async function handleLoginRedirect(request: Request, env: any): Promise<Response> {
   // If the user already has a valid session, bypass the OAuth flow
-  const sessionSecret = env.DISCORD_PUBLIC_KEY || "everfall-fallback-session-key";
-  const existingUser = await verifySessionCookie(request.headers.get("Cookie"), sessionSecret);
+  const sessionSecret = getSessionSecret(env);
+  const existingUser = await verifySessionCookie(
+    request.headers.get("Cookie"), sessionSecret, env.DISCORD_PRIMARY_ADMINISTRATOR
+  );
   const url = new URL(request.url);
   if (existingUser) {
     // Redirect to dashboard (or home) where the user can see their servers
@@ -136,9 +177,16 @@ export async function handleLoginRedirect(request: Request, env: any): Promise<R
      );
    }
 
-   const discordAuthUrl = `https://discord.com/oauth2/authorize?client_id=${appId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=identify%20guilds`;
+   const state = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+   const discordAuthUrl = `https://discord.com/oauth2/authorize?client_id=${appId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=identify%20guilds&state=${encodeURIComponent(state)}`;
 
-   return Response.redirect(discordAuthUrl, 302);
+   return new Response(null, {
+     status: 302,
+     headers: {
+       Location: discordAuthUrl,
+       "Set-Cookie": `${OAUTH_STATE_COOKIE}=${state}; Path=${REDIRECT_PATH}; HttpOnly; Secure; SameSite=Lax; Max-Age=600`,
+     },
+   });
  }
 export async function handleOAuthCallback(request: Request, env: any): Promise<Response> {
   const url = new URL(request.url);
@@ -146,10 +194,15 @@ export async function handleOAuthCallback(request: Request, env: any): Promise<R
   const redirectUri = `${url.origin}${REDIRECT_PATH}`;
   const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
   const clientSecret = env.DISCORD_CLIENT_SECRET;
-  const sessionSecret = env.DISCORD_PUBLIC_KEY || "everfall-fallback-session-key";
+  const sessionSecret = getSessionSecret(env);
+  const returnedState = url.searchParams.get("state");
+  const expectedState = readCookie(request.headers.get("Cookie"), OAUTH_STATE_COOKIE);
 
-  if (!code || !clientSecret) {
-    return new Response("Missing authorization code or client secret", { status: 400 });
+  if (!code || !clientSecret || !sessionSecret) {
+    return new Response("Missing authorization code or server-side OAuth configuration", { status: 400 });
+  }
+  if (!returnedState || !expectedState || returnedState !== expectedState) {
+    return new Response("Invalid or expired OAuth state. Please return home and try logging in again.", { status: 400 });
   }
 
   // Exchange code for access token
@@ -189,7 +242,7 @@ export async function handleOAuthCallback(request: Request, env: any): Promise<R
     : `https://cdn.discordapp.com/embed/avatars/${(BigInt(userData.id) >> 22n) % 6n}.png`;
 
   // If this is Chase, cache the profile image
-  if (userData.id === ADMIN_DISCORD_ID && env.DISCORD_BOT) {
+  if (userData.id === env.DISCORD_PRIMARY_ADMINISTRATOR && env.DISCORD_BOT) {
     await env.DISCORD_BOT.put(
       "creator:profile",
       JSON.stringify({ username: userData.username || "xchasex", avatarUrl }),
@@ -219,13 +272,16 @@ export async function handleOAuthCallback(request: Request, env: any): Promise<R
     headers: {
       Location: "/dashboard",
       "Set-Cookie": cookie,
+      "Cache-Control": "no-store",
     },
   });
 }
 
 export async function renderDashboard(request: Request, env: any): Promise<Response> {
-  const sessionSecret = env.DISCORD_PUBLIC_KEY || "everfall-fallback-session-key";
-  const user = await verifySessionCookie(request.headers.get("Cookie"), sessionSecret);
+  const sessionSecret = getSessionSecret(env);
+  const user = await verifySessionCookie(
+    request.headers.get("Cookie"), sessionSecret, env.DISCORD_PRIMARY_ADMINISTRATOR
+  );
 
   if (!user) {
     return handleLoginRedirect(request, env);
@@ -566,8 +622,10 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
 }
 
 export async function handleSaveConfig(request: Request, env: any): Promise<Response> {
-  const sessionSecret = env.DISCORD_PUBLIC_KEY || "everfall-fallback-session-key";
-  const user = await verifySessionCookie(request.headers.get("Cookie"), sessionSecret);
+  const sessionSecret = getSessionSecret(env);
+  const user = await verifySessionCookie(
+    request.headers.get("Cookie"), sessionSecret, env.DISCORD_PRIMARY_ADMINISTRATOR
+  );
 
   if (!user || !user.isAdmin) {
     return new Response("Unauthorized", { status: 401 });
@@ -584,8 +642,10 @@ export async function handleSaveConfig(request: Request, env: any): Promise<Resp
 }
 
 export async function handleTestAlert(request: Request, env: any): Promise<Response> {
-  const sessionSecret = env.DISCORD_PUBLIC_KEY || "everfall-fallback-session-key";
-  const user = await verifySessionCookie(request.headers.get("Cookie"), sessionSecret);
+  const sessionSecret = getSessionSecret(env);
+  const user = await verifySessionCookie(
+    request.headers.get("Cookie"), sessionSecret, env.DISCORD_PRIMARY_ADMINISTRATOR
+  );
 
   if (!user || !user.isAdmin) {
     return new Response("Unauthorized", { status: 401 });
