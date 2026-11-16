@@ -268,8 +268,8 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
   <meta charset="UTF-8">
   <title>Everfall Watcher – Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/webp" href="${EF_LOGO_BASE64}">
-  <link rel="shortcut icon" type="image/webp" href="${EF_LOGO_BASE64}">
+  <link rel="icon" type="image/jpeg" href="${EF_LOGO_BASE64}?v=1">
+  <link rel="shortcut icon" type="image/jpeg" href="${EF_LOGO_BASE64}?v=1">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
