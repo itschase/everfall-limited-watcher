@@ -5,10 +5,12 @@ declare module 'discord-interactions' {
   };
   export const InteractionType: {
     PING: number;
+    APPLICATION_COMMAND: number;
   };
-  export type APIInteraction = {
-    type: number;
-    data?: { name: string; options?: { name: string; value: string }[] };
-    guild_id?: string;
-  };
+  export function verifyKey(
+    rawBody: string | Uint8Array | ArrayBuffer,
+    signature: string,
+    timestamp: string,
+    clientPublicKey: string
+  ): Promise<boolean>;
 }
