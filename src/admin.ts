@@ -123,45 +123,24 @@ export async function handleLoginRedirect(request: Request, env: any): Promise<R
     return Response.redirect("/dashboard", 302);
   }
 
-  const url = new URL(request.url);
-  const redirectUri = `${url.origin}${REDIRECT_PATH}`;
-  const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
 
-  if (!env.DISCORD_CLIENT_SECRET) {
-    return new Response(
-      renderOAuthSetupNotice(
-        "DISCORD_CLIENT_SECRET is missing. Please add it in your environment settings (Variables & Secrets) to activate Discord login."
-      ),
-      { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
-    );
-  }
+   const url = new URL(request.url);
+   const redirectUri = `${url.origin}${REDIRECT_PATH}`;
+   const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
 
-  const discordAuthUrl = `https://discord.com/oauth2/authorize?client_id=${appId}&response_type=code&redirect_uri=${encodeURIComponent(
-    redirectUri
-  )}&scope=identify%20guilds`;
+   if (!env.DISCORD_CLIENT_SECRET) {
+     return new Response(
+       renderOAuthSetupNotice(
+         "DISCORD_CLIENT_SECRET is missing. Please add it in your environment settings (Variables & Secrets) to activate Discord login."
+       ),
+       { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
+     );
+   }
 
-  return Response.redirect(discordAuthUrl, 302);
-}
-  const url = new URL(request.url);
-  const redirectUri = `${url.origin}${REDIRECT_PATH}`;
-  const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
+   const discordAuthUrl = `https://discord.com/oauth2/authorize?client_id=${appId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=identify%20guilds`;
 
-  if (!env.DISCORD_CLIENT_SECRET) {
-    return new Response(
-      renderOAuthSetupNotice(
-        "DISCORD_CLIENT_SECRET is missing. Please add it in your environment settings (Variables & Secrets) to activate Discord login."
-      ),
-      { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
-    );
-  }
-
-  const discordAuthUrl = `https://discord.com/oauth2/authorize?client_id=${appId}&response_type=code&redirect_uri=${encodeURIComponent(
-    redirectUri
-  )}&scope=identify%20guilds`;
-
-  return Response.redirect(discordAuthUrl, 302);
-}
-
+   return Response.redirect(discordAuthUrl, 302);
+ }
 export async function handleOAuthCallback(request: Request, env: any): Promise<Response> {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
