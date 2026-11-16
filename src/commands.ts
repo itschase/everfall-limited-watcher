@@ -2,7 +2,7 @@
 
 import { InteractionResponseType, InteractionType, verifyKey } from "discord-interactions";
 import { getGuildConfig, setGuildConfig, addGuildRole, removeGuildRole, getEmbedConfig, GuildConfig } from "./kv";
-import { fetchStoreListings, getCarPackage, CarListing } from "./scraper";
+import { fetchStoreListings, getCarPackage, postAllListingsToGuild, CarListing } from "./scraper";
 
 const EPHEMERAL_FLAG = 64;
 
@@ -351,9 +351,23 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
         );
       }
 
-      const { listings } = await fetchStoreListings();
-      const embedConfig = await getEmbedConfig(env);
-      return jsonResponse(buildMultiCarCheckResponse(cfg, listings, embedConfig), 7);
+      const result = await postAllListingsToGuild(env, guild_id);
+      return jsonResponse(
+        {
+          flags: EPHEMERAL_FLAG,
+          embeds: [
+            {
+              title: "✅ Store Check Dispatched",
+              description: `Scanned the Everfall store and automatically posted **${result.count}** active vehicle drop(s) to <#${cfg.channelId}> with full gallery view and role mentions!`,
+              color: 0x10b981,
+              footer: { text: "Everfall Limited Watcher" },
+              timestamp: new Date().toISOString(),
+            },
+          ],
+          components: buildActionComponents(),
+        },
+        7 // UPDATE_MESSAGE
+      );
     }
 
     // C. Handle View Config Button
@@ -535,9 +549,19 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
         });
       }
 
-      const { listings } = await fetchStoreListings();
-      const embedConfig = await getEmbedConfig(env);
-      return jsonResponse(buildMultiCarCheckResponse(cfg, listings, embedConfig));
+      const result = await postAllListingsToGuild(env, guild_id);
+      if (result.count === 0) {
+        return jsonResponse({
+          content: "🔎 **Everfall Limited Store Check**: No limited vehicles are currently listed on the store.",
+        });
+      }
+
+      const isAlertChannel = body.channel_id === cfg.channelId;
+      return jsonResponse({
+        content: isAlertChannel
+          ? `🔎 **Everfall Limited Store Check**: Scanned store and automatically posted all **${result.count}** active limited drops below!`
+          : `✅ **Everfall Limited Store Check**: Scanned store and automatically posted all **${result.count}** active limited drops to <#${cfg.channelId}>!`,
+      });
     }
 
     default:

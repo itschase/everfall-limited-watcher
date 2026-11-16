@@ -1,7 +1,7 @@
 // admin.ts – Web Admin Dashboard & Discord OAuth2 Authentication
 
 import { getAllGuildIds, getGuildConfig, getEmbedConfig, setEmbedConfig, EmbedConfig } from "./kv";
-import { getKnownCars, broadcastListing } from "./scraper";
+import { getKnownCars, broadcastAllListings } from "./scraper";
 
 const ADMIN_DISCORD_ID = "151037568484507648";
 const REDIRECT_PATH = "/auth/callback";
@@ -149,6 +149,9 @@ export async function renderAdminDashboard(request: Request, env: any): Promise<
     return handleLoginRedirect(request, env);
   }
 
+  const url = new URL(request.url);
+  const alertSent = url.searchParams.get("alert") === "sent";
+
   const config = await getEmbedConfig(env);
   const guildIds = await getAllGuildIds(env);
   const guilds = [];
@@ -294,10 +297,10 @@ export async function renderAdminDashboard(request: Request, env: any): Promise<
         <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border);">
           <h2>🚀 Test Live Drop Alert</h2>
           <p style="color:var(--muted); font-size:0.85rem; margin-bottom: 14px;">
-            Broadcasts a live sample drop of the <b>73C</b> or <b>Seraph GTS</b> (with pagination buttons & role pings) to all configured channels.
+            Broadcasts <b>every active store listing</b> (both <b>73C</b> and <b>Seraph GTS</b>) with the new multi-image gallery view and role pings to all configured channels.
           </p>
           <form action="/admin/test-alert" method="POST">
-            <button type="submit" class="btn btn-secondary">⚡ Broadcast Test Drop</button>
+            <button type="submit" class="btn btn-secondary">⚡ Broadcast All Active Listings (Test)</button>
           </form>
         </div>
       </div>
@@ -364,11 +367,8 @@ export async function handleTestAlert(request: Request, env: any): Promise<Respo
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const knownCars = getKnownCars();
-  const sample = knownCars[0]; // 73C
-  if (sample) {
-    await broadcastListing(env, sample);
-  }
+  // Broadcast EVERY active listing (73C, Seraph GTS, and all current store drops)
+  await broadcastAllListings(env);
 
   return Response.redirect(new URL("/admin?alert=sent", request.url).toString(), 303);
 }

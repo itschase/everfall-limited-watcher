@@ -69,13 +69,12 @@ export async function saveCarPackage(env: any, car: CarListing): Promise<void> {
 
 export function buildCarDropMessage(
   car: CarListing,
-  imageIndex = 0,
   embedConfig?: any,
   roleIds?: string[]
 ) {
-  const totalImages = car.images && car.images.length > 0 ? car.images.length : 1;
-  const safeIndex = Math.max(0, Math.min(imageIndex, totalImages - 1));
-  const currentImage = car.images[safeIndex] || car.images[0] || "";
+  const totalImages = car.images?.length || 0;
+  const mainImage = totalImages > 0 ? car.images[0] : "";
+  const galleryImages = totalImages > 1 ? car.images.slice(1) : [];
 
   // Color parsing
   const hexStr = embedConfig?.color ? embedConfig.color.replace("#", "") : "F59E0B";
@@ -90,15 +89,18 @@ export function buildCarDropMessage(
   const pings =
     roleIds && roleIds.length > 0 ? roleIds.map((r) => `<@&${r}>`).join(" ") : "";
 
-  const embed: any = {
+  const embeds: any[] = [];
+
+  // 1. Primary Main Embed with big hero image & details
+  embeds.push({
     title: `${titlePrefix} ${car.name}`,
     url: car.url,
     color,
     description: car.description,
     fields: [
       {
-        name: "📸 Gallery Preview",
-        value: `Image **${safeIndex + 1}** of **${totalImages}** *(use buttons below to flip through)*`,
+        name: "📸 Gallery",
+        value: `**${totalImages}** Photos *(Full gallery below)*`,
         inline: true,
       },
       {
@@ -107,64 +109,53 @@ export function buildCarDropMessage(
         inline: true,
       },
     ],
-    image: currentImage ? { url: currentImage } : undefined,
+    image: mainImage ? { url: mainImage } : undefined,
     footer: { text: footerText },
     timestamp: new Date().toISOString(),
-  };
+  });
 
-  const components: any[] = [];
-  if (totalImages > 1) {
-    components.push({
+  // 2. Multi-image gallery embeds directly below the main image
+  // Discord groups embeds sharing the exact same URL into a 4-image grid.
+  // Group 1: Up to 4 images
+  if (galleryImages.length > 0) {
+    const group1 = galleryImages.slice(0, 4);
+    for (const imgUrl of group1) {
+      embeds.push({
+        url: `${car.url}#gallery1`,
+        image: { url: imgUrl },
+        color,
+      });
+    }
+
+    // Group 2: Next up to 4 images
+    const group2 = galleryImages.slice(4, 8);
+    for (const imgUrl of group2) {
+      embeds.push({
+        url: `${car.url}#gallery2`,
+        image: { url: imgUrl },
+        color,
+      });
+    }
+  }
+
+  const components = [
+    {
       type: 1, // Action Row
       components: [
         {
-          type: 2, // Button
-          style: 2, // Secondary
-          custom_id: `img_prev:${car.id}:${safeIndex}`,
-          label: "◀ Previous",
-          disabled: safeIndex === 0,
-        },
-        {
-          type: 2, // Button
-          style: 2, // Secondary
-          custom_id: `img_counter:${car.id}:${safeIndex}`,
-          label: `${safeIndex + 1} / ${totalImages}`,
-          disabled: true,
-        },
-        {
-          type: 2, // Button
-          style: 2, // Secondary
-          custom_id: `img_next:${car.id}:${safeIndex}`,
-          label: "Next ▶",
-          disabled: safeIndex === totalImages - 1,
-        },
-        {
-          type: 2, // Button
-          style: 5, // Link
-          label: "View in Store",
-          url: car.url,
-          emoji: { id: "1571981507973746868", name: "everfall" },
-        },
-      ],
-    });
-  } else {
-    components.push({
-      type: 1,
-      components: [
-        {
           type: 2,
-          style: 5,
-          label: "View in Store",
+          style: 5, // Link button
+          label: "View Package on Everfall Store",
           url: car.url,
           emoji: { id: "1571981507973746868", name: "everfall" },
         },
       ],
-    });
-  }
+    },
+  ];
 
   return {
     content: pings || undefined,
-    embeds: [embed],
+    embeds,
     components,
   };
 }
@@ -176,14 +167,13 @@ export async function broadcastListing(env: any, car: CarListing): Promise<void>
   const embedConfig = await getEmbedConfig(env);
   const guildIds = await getAllGuildIds(env);
 
-  // Save car in KV for instant pagination button lookups
   await saveCarPackage(env, car);
 
   for (const guildId of guildIds) {
     const config = await getGuildConfig(env, guildId);
     if (!config || !config.channelId) continue;
 
-    const messagePayload = buildCarDropMessage(car, 0, embedConfig, config.roleIds);
+    const messagePayload = buildCarDropMessage(car, embedConfig, config.roleIds);
 
     try {
       await fetch(`https://discord.com/api/v10/channels/${config.channelId}/messages`, {
@@ -198,6 +188,54 @@ export async function broadcastListing(env: any, car: CarListing): Promise<void>
       console.error(`Failed to post drop alert to channel ${config.channelId}:`, err);
     }
   }
+}
+
+export async function broadcastAllListings(env: any): Promise<number> {
+  const { listings } = await fetchStoreListings();
+  let count = 0;
+  for (const car of listings) {
+    await broadcastListing(env, car);
+    count++;
+  }
+  return count;
+}
+
+export async function postAllListingsToGuild(
+  env: any,
+  guildId: string
+): Promise<{ count: number; channelId?: string }> {
+  const cfg = await getGuildConfig(env, guildId);
+  if (!cfg || !cfg.channelId) {
+    return { count: 0 };
+  }
+
+  const { listings } = await fetchStoreListings();
+  const embedConfig = await getEmbedConfig(env);
+  const token = env.DISCORD_BOT_TOKEN;
+
+  let count = 0;
+  for (const car of listings) {
+    await saveCarPackage(env, car);
+    const payload = buildCarDropMessage(car, embedConfig, cfg.roleIds);
+
+    if (token) {
+      try {
+        await fetch(`https://discord.com/api/v10/channels/${cfg.channelId}/messages`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bot ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        count++;
+      } catch (err) {
+        console.error(`Failed to post to channel ${cfg.channelId}:`, err);
+      }
+    }
+  }
+
+  return { count, channelId: cfg.channelId };
 }
 
 export async function fetchStoreListings(): Promise<{ listings: CarListing[]; notice?: string }> {
