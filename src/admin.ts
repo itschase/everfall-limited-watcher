@@ -9,7 +9,12 @@ import {
   setGuildConfig,
   EmbedConfig,
 } from "./kv";
-import { getKnownCars, broadcastAllListings, manualPullCurrentListings } from "./scraper";
+import {
+  getKnownCars,
+  broadcastAllListings,
+  manualPullCurrentListings,
+  publishActiveListingsToGuildOnSetup,
+} from "./scraper";
 import { EF_LOGO_BASE64 } from "./assets";
 
 const REDIRECT_PATH = "/auth/callback";
@@ -28,6 +33,54 @@ interface BotGuild {
   name: string;
   icon?: string | null;
   approximate_member_count?: number;
+}
+
+interface GuildChannelOption { id: string; name: string; type: number; }
+interface GuildRoleOption { id: string; name: string; managed?: boolean; }
+
+async function getManagedGuildsForUser(env: any, userId: string): Promise<any[]> {
+  if (!env.DISCORD_BOT) return [];
+  const raw = await env.DISCORD_BOT.get(`user_guilds:${userId}`);
+  if (!raw) return [];
+  try {
+    const guilds: any[] = JSON.parse(raw);
+    return guilds.filter((guild) => {
+      if (guild.owner) return true;
+      const permissions = BigInt(guild.permissions || "0");
+      return (permissions & 0x20n) === 0x20n || (permissions & 0x8n) === 0x8n;
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function getGuildControlOptions(
+  env: any,
+  guildId: string
+): Promise<{ channels: GuildChannelOption[]; roles: GuildRoleOption[] }> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return { channels: [], roles: [] };
+  const headers = { Authorization: `Bot ${token}` };
+  try {
+    const [channelsResponse, rolesResponse] = await Promise.all([
+      fetch(`https://discord.com/api/v10/guilds/${guildId}/channels`, { headers }),
+      fetch(`https://discord.com/api/v10/guilds/${guildId}/roles`, { headers }),
+    ]);
+    const channels = channelsResponse.ok
+      ? ((await channelsResponse.json()) as GuildChannelOption[])
+          .filter((channel) => channel.type === 0 || channel.type === 5)
+          .sort((a, b) => a.name.localeCompare(b.name))
+      : [];
+    const roles = rolesResponse.ok
+      ? ((await rolesResponse.json()) as GuildRoleOption[])
+          .filter((role) => role.id !== guildId && !role.managed)
+          .sort((a, b) => a.name.localeCompare(b.name))
+      : [];
+    return { channels, roles };
+  } catch (error) {
+    console.error(`Failed to load dashboard controls for guild ${guildId}:`, error);
+    return { channels: [], roles: [] };
+  }
 }
 
 function escapeHtml(value: unknown): string {
@@ -386,13 +439,12 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
   }
 
   const url = new URL(request.url);
-  if (user.isAdmin && url.pathname === "/dashboard") {
-    return Response.redirect(`${url.origin}/admin`, 302);
-  }
-  if (!user.isAdmin && url.pathname === "/admin") {
+  const isAdminPage = url.pathname === "/admin";
+  if (isAdminPage && !user.isAdmin) {
     return Response.redirect(`${url.origin}/dashboard`, 302);
   }
-  const alertSent = url.searchParams.get("alert") === "sent";
+  const alertSent = isAdminPage && url.searchParams.get("alert") === "sent";
+  const saved = url.searchParams.get("saved");
   const pulledListings = Number(url.searchParams.get("pulled") || "0");
   const pullDeliveries = Number(url.searchParams.get("deliveries") || "0");
   const config = await getEmbedConfig(env);
@@ -421,28 +473,19 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
     }
   }
 
-  // If regular user, read their cached guilds
-  let userManagedGuilds: any[] = [];
-  if (!user.isAdmin && env.DISCORD_BOT) {
-    const raw = await env.DISCORD_BOT.get(`user_guilds:${user.id}`);
-    if (raw) {
-      try {
-        const allUserGuilds: any[] = JSON.parse(raw);
-        // Filter guilds where user has MANAGE_GUILD (0x20) or ADMINISTRATOR (0x8) or is owner
-        userManagedGuilds = allUserGuilds.filter((g) => {
-          if (g.owner) return true;
-          const perms = BigInt(g.permissions || "0");
-          return (perms & 0x20n) === 0x20n || (perms & 0x8n) === 0x8n;
-        });
-      } catch {}
-    }
+  const userManagedGuilds = await getManagedGuildsForUser(env, user.id);
+  const guildControlOptions = new Map<string, { channels: GuildChannelOption[]; roles: GuildRoleOption[] }>();
+  if (!isAdminPage) {
+    await Promise.all(userManagedGuilds.filter((guild) => botGuildIds.has(guild.id)).map(async (guild) => {
+      guildControlOptions.set(guild.id, await getGuildControlOptions(env, guild.id));
+    }));
   }
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Everfall Watcher – ${user.isAdmin ? "Administrator Dashboard" : "Server Dashboard"}</title>
+  <title>Everfall Watcher – ${isAdminPage ? "Administrator Dashboard" : "Server Dashboard"}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/webp" href="${EF_LOGO_BASE64}">
   <link rel="shortcut icon" type="image/webp" href="${EF_LOGO_BASE64}">
@@ -532,6 +575,14 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
       font-size: 0.95rem;
       margin-bottom: 16px;
     }
+    select {
+      width:100%; background:rgba(0,0,0,.25); border:1px solid var(--border); border-radius:8px;
+      padding:10px 14px; color:var(--text); font-family:inherit; font-size:.95rem; margin-bottom:16px;
+    }
+    .guild-settings-form { width:100%; margin-top:14px; padding-top:18px; border-top:1px solid var(--border); }
+    .role-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; margin:8px 0 18px; }
+    .role-option { display:flex; align-items:center; gap:8px; color:var(--text); background:rgba(0,0,0,.2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; cursor:pointer; }
+    .control-warning { color:#F59E0B; font-size:.82rem; }
     .color-control { display:grid; grid-template-columns:52px 1fr; gap:10px; align-items:start; }
     input[type="color"] { width:52px; height:42px; padding:3px; border-radius:8px; border:1px solid var(--border); background:rgba(0,0,0,.25); cursor:pointer; }
     .checkbox-label { display:flex; align-items:center; gap:9px; margin-bottom:18px; cursor:pointer; }
@@ -591,18 +642,25 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
         <div>
           <h1 style="font-size: 1.35rem; font-weight: 800;">${user.username}</h1>
           <p style="color:var(--muted); font-size:0.85rem;">
-            ${user.isAdmin ? "Administrator Dashboard" : "Server Manager Dashboard"} &bull; Discord ID: ${user.id}
+            ${isAdminPage ? "Administrator Dashboard" : "Server Manager Dashboard"} &bull; Discord ID: ${user.id}
           </p>
         </div>
       </div>
       <div style="display:flex; align-items:center; gap:14px;">
-        <span class="${user.isAdmin ? "badge-admin" : "badge-user"}">
-          ${user.isAdmin ? "🛡️ Master Administrator" : "🎮 Server Manager"}
+        <span class="${isAdminPage ? "badge-admin" : "badge-user"}">
+          ${isAdminPage ? "🛡️ Master Administrator" : "🎮 Server Manager"}
         </span>
+        ${user.isAdmin ? `<a href="${isAdminPage ? "/dashboard" : "/admin"}" style="color:#93C5FD; text-decoration:none; font-size:.9rem; font-weight:600;">${isAdminPage ? "Server Dashboard" : "Admin Dashboard"}</a>` : ""}
         <a href="/" style="color:var(--muted); text-decoration:none; font-size:0.9rem;">Home</a>
         <a href="/logout" style="color:#EF4444; text-decoration:none; font-size:0.9rem; font-weight:600;">Log Out</a>
       </div>
     </header>
+
+    ${
+      saved
+        ? `<div style="background:rgba(16,185,129,.15); border:1px solid rgba(16,185,129,.4); color:#34D399; padding:14px 18px; border-radius:10px; margin-bottom:24px; font-weight:600;">✅ Settings saved successfully.</div>`
+        : ""
+    }
 
     ${
       alertSent
@@ -620,7 +678,7 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
     }
 
     ${
-      user.isAdmin
+      isAdminPage
         ? `
       <!-- Master Administrator View -->
       <div class="grid">
@@ -699,6 +757,7 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
                 .map((g) => {
                   const botConfig = connectedGuilds.find((guild) => guild.id === g.id)?.config;
                   const isInstalled = botGuildIds.has(g.id);
+                  const controls = guildControlOptions.get(g.id) || { channels: [], roles: [] };
                   const iconUrl = g.icon
                     ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64`
                     : null;
@@ -743,9 +802,26 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
                 </div>
                 ${
                   isInstalled
-                    ? `<div style="width:100%;"><h3 style="font-size:1rem; margin-top:8px;">Customize this server's listing alerts</h3>
-                        <p style="color:var(--muted); font-size:.82rem;">Preview uses the most recently discovered listing. These settings apply only to this server.</p>
-                        ${renderAppearanceControls({ ...config, ...(botConfig?.embedConfig || {}) }, "/dashboard/save-config", latestListing, g.id)}
+                    ? `<div style="width:100%;">
+                        <h3 style="font-size:1rem; margin-top:8px;">Bot settings for ${escapeHtml(g.name)}</h3>
+                        <p style="color:var(--muted); font-size:.82rem; margin-bottom:14px;">Choose the alert channel and every role that should be notified for this server.</p>
+                        <form action="/dashboard/save-guild" method="POST" class="guild-settings-form">
+                          <input type="hidden" name="guildId" value="${escapeHtml(g.id)}">
+                          <label for="channel-${escapeHtml(g.id)}">Alert channel</label>
+                          <select id="channel-${escapeHtml(g.id)}" name="channelId" required>
+                            <option value="">Select a text channel…</option>
+                            ${controls.channels.map((channel) => `<option value="${escapeHtml(channel.id)}" ${botConfig?.channelId === channel.id ? "selected" : ""}># ${escapeHtml(channel.name)}</option>`).join("")}
+                          </select>
+                          ${controls.channels.length === 0 ? `<p class="control-warning">Channel list unavailable. Confirm the bot is installed and can view this server.</p>` : ""}
+
+                          <label>Notification roles</label>
+                          <div class="role-grid">
+                            ${controls.roles.length
+                              ? controls.roles.map((role) => `<label class="role-option"><input type="checkbox" name="roleIds" value="${escapeHtml(role.id)}" ${botConfig?.roleIds?.includes(role.id) ? "checked" : ""}> @${escapeHtml(role.name)}</label>`).join("")
+                              : `<span class="control-warning">No assignable roles were returned.</span>`}
+                          </div>
+                          <button type="submit" class="btn">💾 Save Server Settings</button>
+                        </form>
                        </div>`
                     : ""
                 }
@@ -787,6 +863,15 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
         if (input && target) input.addEventListener('input', () => { target.textContent = transform ? transform(input.value) : input.value; });
       });
     });
+    document.querySelectorAll('form').forEach((form) => {
+      form.addEventListener('submit', () => {
+        const button = form.querySelector('button[type="submit"]');
+        if (button) {
+          button.disabled = true;
+          button.textContent = 'Saving…';
+        }
+      });
+    });
   </script>
 </body>
 </html>`;
@@ -813,7 +898,7 @@ export async function handleSaveConfig(request: Request, env: any): Promise<Resp
   const formData = await request.formData();
   await setEmbedConfig(env, parseEmbedConfig(formData));
 
-  return Response.redirect(new URL("/admin", request.url).toString(), 303);
+  return Response.redirect(new URL("/admin?saved=appearance", request.url).toString(), 303);
 }
 
 function parseEmbedConfig(formData: FormData): EmbedConfig {
@@ -829,7 +914,7 @@ function parseEmbedConfig(formData: FormData): EmbedConfig {
   };
 }
 
-export async function handleSaveGuildConfig(request: Request, env: any): Promise<Response> {
+export async function handleSaveGuildSettings(request: Request, env: any): Promise<Response> {
   const sessionSecret = getSessionSecret(env);
   const user = await verifySessionCookie(
     request.headers.get("Cookie"), sessionSecret, env.DISCORD_PRIMARY_ADMINISTRATOR
@@ -840,22 +925,22 @@ export async function handleSaveGuildConfig(request: Request, env: any): Promise
   const guildId = String(formData.get("guildId") || "");
   if (!/^\d{17,20}$/.test(guildId)) return new Response("Invalid server", { status: 400 });
 
-  let authorized = user.isAdmin;
-  if (!authorized && env.DISCORD_BOT) {
-    const raw = await env.DISCORD_BOT.get(`user_guilds:${user.id}`);
-    const guilds: any[] = raw ? JSON.parse(raw) : [];
-    authorized = guilds.some((guild) => {
-      if (guild.id !== guildId) return false;
-      if (guild.owner) return true;
-      const permissions = BigInt(guild.permissions || "0");
-      return (permissions & 0x20n) === 0x20n || (permissions & 0x8n) === 0x8n;
-    });
-  }
+  const managedGuilds = await getManagedGuildsForUser(env, user.id);
+  const authorized = managedGuilds.some((guild) => guild.id === guildId);
   if (!authorized) return new Response("Forbidden", { status: 403 });
 
+  const channelId = String(formData.get("channelId") || "");
+  const requestedRoleIds = formData.getAll("roleIds").map(String);
+  const controls = await getGuildControlOptions(env, guildId);
+  if (!controls.channels.some((channel) => channel.id === channelId)) {
+    return new Response("Invalid or inaccessible alert channel", { status: 400 });
+  }
+  const allowedRoleIds = new Set(controls.roles.map((role) => role.id));
+  const roleIds = [...new Set(requestedRoleIds.filter((roleId) => allowedRoleIds.has(roleId)))];
   const existing = (await getGuildConfig(env, guildId)) || { channelId: "", roleIds: [] };
-  await setGuildConfig(env, guildId, { ...existing, embedConfig: parseEmbedConfig(formData) });
-  return Response.redirect(new URL("/dashboard", request.url).toString(), 303);
+  await setGuildConfig(env, guildId, { ...existing, channelId, roleIds, embedConfig: undefined });
+  await publishActiveListingsToGuildOnSetup(env, guildId);
+  return Response.redirect(new URL("/dashboard?saved=server", request.url).toString(), 303);
 }
 
 export async function handleTestAlert(request: Request, env: any): Promise<Response> {

@@ -7,7 +7,7 @@ import {
   handleOAuthCallback,
   renderDashboard,
   handleSaveConfig,
-  handleSaveGuildConfig,
+  handleSaveGuildSettings,
   handleTestAlert,
   handleManualPull,
   verifySessionCookie,
@@ -84,8 +84,8 @@ export default {
       return handleSaveConfig(request, env);
     }
 
-    if (request.method === "POST" && url.pathname === "/dashboard/save-config") {
-      return handleSaveGuildConfig(request, env);
+    if (request.method === "POST" && url.pathname === "/dashboard/save-guild") {
+      return handleSaveGuildSettings(request, env);
     }
 
     if (request.method === "POST" && url.pathname === "/admin/test-alert") {

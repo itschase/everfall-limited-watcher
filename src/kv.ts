@@ -211,8 +211,5 @@ export async function setEmbedConfig(env: any, cfg: EmbedConfig): Promise<void> 
 }
 
 export async function getEffectiveEmbedConfig(env: any, guildId?: string): Promise<EmbedConfig> {
-  const globalConfig = await getEmbedConfig(env);
-  if (!guildId) return globalConfig;
-  const guildConfig = await getGuildConfig(env, guildId);
-  return { ...globalConfig, ...(guildConfig?.embedConfig || {}) };
+  return getEmbedConfig(env);
 }
