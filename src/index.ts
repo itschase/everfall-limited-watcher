@@ -14,4 +14,7 @@ export default {
     // Simple health check
     return new Response("Everfall Limited Watcher is alive", { status: 200 });
   },
+  async scheduled(controller: any, env: any, ctx: any): Promise<void> {
+    await runCron(env);
+  },
 };
