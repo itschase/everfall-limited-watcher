@@ -1,5 +1,5 @@
 import { handleInteraction } from "./commands";
-import { runCron } from "./scraper";
+import { runCron, fetchStoreListings, getKnownCars } from "./scraper";
 import { renderLandingPage } from "./landing";
 import { registerCommands } from "./register";
 import {
@@ -66,8 +66,10 @@ export default {
     }
 
     // 5. Default Public Landing Page
-    const appId = env.DISCORD_APPLICATION_ID || "1571958001928245378";
-    return renderLandingPage(appId);
+    const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
+    const { listings } = await fetchStoreListings();
+    const displayListings = listings && listings.length > 0 ? listings : getKnownCars();
+    return renderLandingPage(appId, displayListings);
   },
 
   async scheduled(controller: any, env: any, ctx: any): Promise<void> {

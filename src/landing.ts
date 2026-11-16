@@ -1,4 +1,6 @@
-export function renderLandingPage(appId: string): Response {
+import { CarListing } from "./scraper";
+
+export function renderLandingPage(appId: string, cars: CarListing[] = []): Response {
   const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${appId}&permissions=8462865837583424&integration_type=0&scope=bot+applications.commands`;
 
   const html = `<!DOCTYPE html>
@@ -64,7 +66,7 @@ export function renderLandingPage(appId: string): Response {
     }
 
     .container {
-      max-width: 1080px;
+      max-width: 1120px;
       margin: 0 auto;
       padding: 0 24px;
       width: 100%;
@@ -104,22 +106,24 @@ export function renderLandingPage(appId: string): Response {
       gap: 16px;
     }
     .status-pill {
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: 8px;
       padding: 6px 14px;
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
       border-radius: 999px;
-      font-size: 0.85rem;
-      color: var(--text-muted);
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: var(--success);
+      font-size: 0.82rem;
+      font-weight: 600;
     }
     .status-dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background-color: var(--success);
-      box-shadow: 0 0 8px var(--success);
+      background: var(--success);
+      box-shadow: 0 0 10px var(--success);
+      animation: pulse 2s infinite ease-in-out;
     }
     .nav-admin-link {
       color: var(--text-muted);
@@ -127,21 +131,24 @@ export function renderLandingPage(appId: string): Response {
       font-size: 0.9rem;
       font-weight: 600;
       padding: 6px 14px;
-      border: 1px solid var(--border);
       border-radius: 8px;
-      transition: all 0.2s;
+      border: 1px solid var(--border);
+      transition: all 0.2s ease;
     }
     .nav-admin-link:hover {
-      color: #fff;
-      background: var(--bg-surface-elevated);
+      background: var(--bg-surface);
+      color: var(--text-main);
       border-color: var(--border-focus);
     }
 
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
     .hero {
-      padding: 88px 0 64px;
+      padding: 80px 0 48px;
       text-align: center;
-      max-width: 800px;
-      margin: 0 auto;
     }
     .hero-eyebrow {
       display: inline-flex;
@@ -215,6 +222,208 @@ export function renderLandingPage(appId: string): Response {
       background: var(--bg-surface-elevated);
       border-color: var(--border-focus);
       transform: translateY(-2px);
+    }
+
+    /* Live Drops Showcase Section */
+    .showcase {
+      padding: 40px 0 60px;
+    }
+    .showcase-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .showcase-header h2 {
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .showcase-header p {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    .drops-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+      gap: 28px;
+    }
+    @media (max-width: 580px) {
+      .drops-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .car-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: all 0.25s ease;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+    }
+    .car-card:hover {
+      border-color: var(--border-focus);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 38px rgba(0,0,0,0.45);
+    }
+    .car-hero-img-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #000;
+      overflow: hidden;
+    }
+    .car-hero-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: opacity 0.2s ease;
+    }
+    .car-badge {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      background: rgba(11, 14, 20, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: var(--accent);
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .car-body {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+    .car-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 12px;
+    }
+    .car-title {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: #fff;
+    }
+    .car-meta-tag {
+      font-size: 0.8rem;
+      color: #34D399;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+    .car-desc {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      line-height: 1.5;
+      margin-bottom: 18px;
+      flex: 1;
+    }
+    
+    /* Interactive Gallery Strip */
+    .gallery-strip-wrap {
+      margin-bottom: 20px;
+    }
+    .gallery-label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .gallery-strip {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .gallery-strip::-webkit-scrollbar {
+      height: 4px;
+    }
+    .gallery-strip::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.15);
+      border-radius: 4px;
+    }
+    .gallery-thumb {
+      width: 72px;
+      height: 46px;
+      border-radius: 6px;
+      object-fit: cover;
+      cursor: pointer;
+      border: 2px solid transparent;
+      opacity: 0.65;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+    .gallery-thumb:hover, .gallery-thumb.active {
+      opacity: 1;
+      border-color: var(--primary);
+      transform: scale(1.05);
+    }
+
+    .car-actions {
+      display: flex;
+      gap: 12px;
+    }
+    .btn-store {
+      width: 100%;
+      background: linear-gradient(135deg, rgba(88, 101, 242, 0.2), rgba(139, 92, 246, 0.2));
+      border: 1px solid rgba(88, 101, 242, 0.4);
+      color: #93C5FD;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.92rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+    .btn-store:hover {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    /* Pagination controls if more than 3 */
+    .pagination-bar {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      margin-top: 32px;
+    }
+    .page-btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+    .page-btn:hover:not(:disabled) {
+      background: var(--bg-surface-elevated);
+      border-color: var(--border-focus);
+    }
+    .page-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
     }
 
     .features {
@@ -354,7 +563,7 @@ export function renderLandingPage(appId: string): Response {
           ⚡ 24/7 Store Monitoring
         </div>
         <h1>Never Miss an Everfall Limited Drop</h1>
-        <p>Continuous vehicle stock monitoring, gallery image pagination, and targeted role pings for your Discord community.</p>
+        <p>Continuous vehicle stock monitoring, multi-angle gallery views, and targeted role pings for your Discord community.</p>
         <div class="hero-cta">
           <a href="${inviteUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -362,24 +571,98 @@ export function renderLandingPage(appId: string): Response {
             </svg>
             Add to Discord
           </a>
-          <a href="#commands" class="btn btn-secondary">Command Menu</a>
+          <a href="#showcase" class="btn btn-secondary">Preview Drops</a>
         </div>
+      </section>
+
+      <!-- Active & Recent Drops Showcase (Live Preview) -->
+      <section class="showcase" id="showcase">
+        <div class="showcase-header">
+          <div class="hero-eyebrow" style="margin-bottom:12px;">🔥 Live Bot Alerts Preview</div>
+          <h2>Featured Limited Vehicle Drops</h2>
+          <p>Real-time stock alerts captured by the bot. Browse active & recent releases below:</p>
+        </div>
+
+        <div class="drops-grid" id="dropsGrid">
+          ${cars
+            .map(
+              (car) => `
+          <div class="car-card" data-car-id="${car.id}">
+            <div class="car-hero-img-wrap">
+              <span class="car-badge">⚡ Limited Drop</span>
+              <img id="hero-${car.id}" class="car-hero-img" src="${car.images[0] || ""}" alt="${car.name}">
+            </div>
+            <div class="car-body">
+              <div class="car-title-row">
+                <div class="car-title">${car.name}</div>
+                <span class="car-meta-tag">🟢 Monitored</span>
+              </div>
+              <div class="car-desc">${car.description.split("\n\n")[0] || car.description}</div>
+              
+              ${
+                car.images && car.images.length > 1
+                  ? `
+              <div class="gallery-strip-wrap">
+                <div class="gallery-label">
+                  <span>📸 Vehicle Angles (${car.images.length} photos)</span>
+                  <span style="font-size:0.72rem; color:var(--text-muted);">Click to inspect</span>
+                </div>
+                <div class="gallery-strip">
+                  ${car.images
+                    .map(
+                      (img, iIdx) => `
+                    <img class="gallery-thumb ${iIdx === 0 ? "active" : ""}" 
+                         src="${img}" 
+                         alt="${car.name} photo ${iIdx + 1}"
+                         onclick="selectCarThumb('${car.id}', '${img}', this)">
+                  `
+                    )
+                    .join("")}
+                </div>
+              </div>`
+                  : ""
+              }
+
+              <div class="car-actions">
+                <a href="${car.url}" target="_blank" rel="noopener noreferrer" class="btn-store">
+                  🛒 View Package on Tebex Store &rarr;
+                </a>
+              </div>
+            </div>
+          </div>
+          `
+            )
+            .join("")}
+        </div>
+
+        ${
+          cars.length > 3
+            ? `
+        <div class="pagination-bar">
+          <button class="page-btn" id="prevPage" onclick="changePage(-1)">◀ Previous</button>
+          <span id="pageIndicator" style="font-size:0.9rem; font-weight:600; color:var(--text-muted);">1 / ${Math.ceil(
+            cars.length / 3
+          )}</span>
+          <button class="page-btn" id="nextPage" onclick="changePage(1)">Next ▶</button>
+        </div>`
+            : ""
+        }
       </section>
 
       <section class="features">
         <div class="card">
           <div class="card-icon">🏎️</div>
           <h3>One-Time Accurate Broadcasts</h3>
-          <p>Every newly detected vehicle drop is posted once to all configured servers, preventing duplicate spam.</p>
+          <p>Every newly detected vehicle drop is posted once to each configured server, preventing duplicate spam.</p>
         </div>
         <div class="card">
           <div class="card-icon">🖼️</div>
-          <h3>Paginated Image Gallery</h3>
-          <p>Interactive Next/Previous buttons allow users to browse through all available vehicle screenshots directly inside Discord.</p>
+          <h3>Multi-Image Discord Gallery</h3>
+          <p>Seamlessly presents all store vehicle angles together in one rich embed grid right inside Discord chat.</p>
         </div>
         <div class="card">
           <div class="card-icon">👥</div>
-          <h3>Role Mentions in Chat</h3>
+          <h3>Active Role Mentions</h3>
           <p>Configured role pings are sent in message chat rather than inside the embed, ensuring Discord triggers notifications.</p>
         </div>
       </section>
@@ -404,7 +687,7 @@ export function renderLandingPage(appId: string): Response {
           </div>
           <div class="command-row">
             <span class="cmd-name">/check</span>
-            <span class="cmd-desc">Runs an on-demand audit and displays all currently available vehicle listings.</span>
+            <span class="cmd-desc">Runs an on-demand audit and automatically posts all active store listings to your alert channel.</span>
           </div>
           <div class="command-row">
             <span class="cmd-name">/help</span>
@@ -419,6 +702,56 @@ export function renderLandingPage(appId: string): Response {
       <a href="/admin" style="color:var(--text-muted); text-decoration:none;">Owner Dashboard &rarr;</a>
     </footer>
   </div>
+
+  <script>
+    function selectCarThumb(carId, imgUrl, el) {
+      const hero = document.getElementById('hero-' + carId);
+      if (hero) {
+        hero.style.opacity = '0.3';
+        setTimeout(() => {
+          hero.src = imgUrl;
+          hero.style.opacity = '1';
+        }, 150);
+      }
+      const parent = el.parentElement;
+      if (parent) {
+        const thumbs = parent.getElementsByClassName('gallery-thumb');
+        for (let t of thumbs) {
+          t.classList.remove('active');
+        }
+        el.classList.add('active');
+      }
+    }
+
+    let currentPage = 1;
+    const pageSize = 3;
+    const cards = Array.from(document.querySelectorAll('.car-card'));
+    const totalPages = Math.ceil(cards.length / pageSize);
+
+    function updatePagination() {
+      if (cards.length <= pageSize) return;
+      cards.forEach((card, idx) => {
+        const start = (currentPage - 1) * pageSize;
+        const end = start + pageSize;
+        card.style.display = (idx >= start && idx < end) ? 'flex' : 'none';
+      });
+      const pageIndicator = document.getElementById('pageIndicator');
+      if (pageIndicator) pageIndicator.innerText = currentPage + ' / ' + totalPages;
+      const prevBtn = document.getElementById('prevPage');
+      const nextBtn = document.getElementById('nextPage');
+      if (prevBtn) prevBtn.disabled = currentPage === 1;
+      if (nextBtn) nextBtn.disabled = currentPage === totalPages;
+    }
+
+    function changePage(delta) {
+      currentPage = Math.max(1, Math.min(currentPage + delta, totalPages));
+      updatePagination();
+    }
+
+    if (cards.length > pageSize) {
+      updatePagination();
+    }
+  </script>
 </body>
 </html>`;
 
