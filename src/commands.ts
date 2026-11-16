@@ -27,7 +27,7 @@ interface APIInteraction {
 export async function handleInteraction(req: Request): Promise<Response>{
   const body = await req.json();
   const { type, data, guild_id } = body as any;
-  if(type===InteractionType.Ping){
+  if(type===InteractionType.PING){
     return new Response(JSON.stringify({type: InteractionResponseType.PONG,}));
   }
   if(!guild_id) return respond("Use this command in a server.");
