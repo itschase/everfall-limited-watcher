@@ -1,0 +1,17 @@
+{
+  "name": "everfall-limited-watcher",
+  "version": "0.1.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "wrangler dev",
+    "publish": "wrangler publish"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240614.0",
+    "typescript": "^5.4.2",
+    "wrangler": "^3.33.0",
+    "cheerio": "^1.0.0-rc.12"
+  },
+  "dependencies": {}
+}
