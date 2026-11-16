@@ -2,11 +2,13 @@
   "name": "everfall-limited-watcher",
   "version": "0.1.0",
   "main": "src/index.ts",
+  "main": "dist/index.js",
+  "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && wrangler publish",
     "dev": "wrangler dev",
     "publish": "wrangler publish"
-  },
+  },,,
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240614.0",
     "typescript": "^5.4.2",
