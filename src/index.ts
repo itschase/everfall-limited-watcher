@@ -1,6 +1,17 @@
-import { serve } from 'std/server';
+import { handleInteraction } from "./commands";
+import { runCron } from "./scraper";
 
-serve(async (req) => {
-  // Placeholder response – will be replaced with real bot logic.
-  return new Response('Everfall Limited Watcher is alive', { status: 200 });
-});
+export default {
+  async fetch(request: Request, env: any, ctx: any): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/interactions") {
+      return handleInteraction(request);
+    }
+    if (request.method === "POST" && url.pathname === "/cron") {
+      await runCron(env);
+      return new Response("Cron executed", { status: 200 });
+    }
+    // Simple health check
+    return new Response("Everfall Limited Watcher is alive", { status: 200 });
+  },
+};
