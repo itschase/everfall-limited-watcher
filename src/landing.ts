@@ -829,11 +829,11 @@ export function renderLandingPage(
           <span>Everfall Limited Watcher</span>
         </div>
         <div class="creator-badge-container">
-          <span style="font-size:0.85rem; color:var(--text-muted);">Built by</span>
+          <span style="font-size:0.85rem; color:var(--text-muted);">Managed by</span>
           <a href="https://discord.com/users/151037568484507648" target="_blank" rel="noopener noreferrer" class="creator-link">
             <img src="${creatorProfile.avatarUrl}" alt="${creatorProfile.username}" class="creator-avatar">
             <span class="creator-name">${creatorProfile.username}</span>
-            <span class="creator-tag">Developer</span>
+            
           </a>
         </div>
       </div>

@@ -14,6 +14,7 @@ export interface CarListing {
   description: string;
   url: string;
   images: string[]; // All available package images for pagination
+  isAvailable?: boolean; // true if currently on the store, false if delisted
 }
 
 export const KNOWN_LIMITED_CARS: CarListing[] = [

@@ -114,7 +114,34 @@ export async function getCreatorProfile(env: any): Promise<{ username: string; a
   return defaultProfile;
 }
 
-export function handleLoginRedirect(request: Request, env: any): Response {
+export async function handleLoginRedirect(request: Request, env: any): Promise<Response> {
+  // If the user already has a valid session, bypass the OAuth flow
+  const sessionSecret = env.DISCORD_PUBLIC_KEY || "everfall-fallback-session-key";
+  const existingUser = await verifySessionCookie(request.headers.get("Cookie"), sessionSecret);
+  if (existingUser) {
+    // Redirect to dashboard (or home) where the user can see their servers
+    return Response.redirect("/dashboard", 302);
+  }
+
+  const url = new URL(request.url);
+  const redirectUri = `${url.origin}${REDIRECT_PATH}`;
+  const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
+
+  if (!env.DISCORD_CLIENT_SECRET) {
+    return new Response(
+      renderOAuthSetupNotice(
+        "DISCORD_CLIENT_SECRET is missing. Please add it in your environment settings (Variables & Secrets) to activate Discord login."
+      ),
+      { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
+    );
+  }
+
+  const discordAuthUrl = `https://discord.com/oauth2/authorize?client_id=${appId}&response_type=code&redirect_uri=${encodeURIComponent(
+    redirectUri
+  )}&scope=identify%20guilds`;
+
+  return Response.redirect(discordAuthUrl, 302);
+}
   const url = new URL(request.url);
   const redirectUri = `${url.origin}${REDIRECT_PATH}`;
   const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";

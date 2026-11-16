@@ -61,7 +61,7 @@ export default {
 
     // 4. User & Admin OAuth2 / Dashboard Routes
     if (url.pathname === "/login") {
-      return handleLoginRedirect(request, env);
+      return await handleLoginRedirect(request, env);
     }
 
     if (url.pathname === "/auth/callback") {
