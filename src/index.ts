@@ -14,7 +14,7 @@ import {
 import { EF_LOGO_BASE64 } from "./assets";
 
 function getLogoBinaryResponse(): Response {
-  const b64Data = EF_LOGO_BASE64.replace(/^data:image\/webp;base64,/, "");
+  const b64Data = EF_LOGO_BASE64.replace(/^data:image\/jpeg;base64,/, "");
   const binaryString = atob(b64Data);
   const len = binaryString.length;
   const bytes = new Uint8Array(len);
@@ -24,7 +24,7 @@ function getLogoBinaryResponse(): Response {
   return new Response(bytes, {
     status: 200,
     headers: {
-      "Content-Type": "image/webp",
+      "Content-Type": "image/jpeg",
       "Cache-Control": "public, max-age=86400",
     },
   });
