@@ -1,8 +1,8 @@
 // commands.ts – Discord interaction handler with Rich Embeds and Interactive Components
 
 import { InteractionResponseType, InteractionType, verifyKey } from "discord-interactions";
-import { getGuildConfig, setGuildConfig, addGuildRole, removeGuildRole } from "./kv";
-import { runCron, fetchStoreListings } from "./scraper";
+import { getGuildConfig, setGuildConfig, addGuildRole, removeGuildRole, GuildConfig } from "./kv";
+import { runCron } from "./scraper";
 
 const EPHEMERAL_FLAG = 64;
 
@@ -12,7 +12,76 @@ function jsonResponse(data: any, type = InteractionResponseType.CHANNEL_MESSAGE_
   });
 }
 
-function buildHelpEmbed(guildConfig: any) {
+function buildNotConfiguredEmbed() {
+  return {
+    title: "⚠️ Setup Required Before Running Check",
+    description:
+      "Everfall Limited Watcher has not been configured in this server yet.\n\n" +
+      "Before running store checks, you must designate the alert channel where limited car drop embeds will be posted.",
+    color: 0xf59e0b, // Amber
+    fields: [
+      {
+        name: "📌 Quick Setup (Choose One)",
+        value:
+          "1. **Fastest:** Pick an alert channel using the dropdown menu below.\n" +
+          "2. **Slash Command:** Run `/setup <#channel>` in any channel.\n" +
+          "3. **Role Pings:** (Optional) Run `/add-role <@role>` to mention specific roles.",
+        inline: false,
+      },
+    ],
+    footer: { text: "Everfall Limited Watcher • Setup Required • Only visible to you" },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function buildCheckEmbed(cfg: GuildConfig, result: { checked: number; newDrops: number; notice?: string }) {
+  const channelDisplay = `<#${cfg.channelId}>`;
+  const rolesDisplay =
+    cfg.roleIds && cfg.roleIds.length > 0
+      ? cfg.roleIds.map((r: string) => `<@&${r}>`).join(" ")
+      : "*None configured (use `/add-role`)*";
+
+  let statusDescription = "";
+  if (result.newDrops > 0) {
+    statusDescription = `🎉 **${result.newDrops} new limited vehicle drop(s) detected!**\nAlert embeds have been broadcasted directly to ${channelDisplay}.`;
+  } else if (result.checked > 0) {
+    statusDescription = `✅ Store scanned successfully. **${result.checked}** listing(s) currently active.\nNo new unannounced drops since the last scan.`;
+  } else if (result.notice) {
+    statusDescription = `🛡️ **Store Status:** ${result.notice}\nAutomated 15-minute background sweeps remain active on the Cloudflare edge.`;
+  } else {
+    statusDescription = `✅ Store scanned. All listings are up-to-date; no new limited drops detected.`;
+  }
+
+  return {
+    title: "🏎️ Everfall Store Live Audit",
+    color: result.newDrops > 0 ? 0xf59e0b : 0x10b981,
+    description: statusDescription,
+    fields: [
+      {
+        name: "🎯 Destination Channel",
+        value: channelDisplay,
+        inline: true,
+      },
+      {
+        name: "👥 Mention Roles",
+        value: rolesDisplay,
+        inline: true,
+      },
+      {
+        name: "📊 Scan Summary",
+        value:
+          `• **Items Inspected:** ${result.checked}\n` +
+          `• **New Broadcasts:** ${result.newDrops}\n` +
+          `• **Next Auto-Sweep:** <t:${Math.floor(Date.now() / 1000) + 900}:R>`,
+        inline: false,
+      },
+    ],
+    footer: { text: "Everfall Limited Watcher • Live Audit • Only visible to you" },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function buildHelpEmbed(guildConfig: GuildConfig | null) {
   const channelText = guildConfig?.channelId
     ? `<#${guildConfig.channelId}>`
     : "*Not set yet (select from dropdown below)*";
@@ -71,6 +140,13 @@ function buildActionComponents() {
         {
           type: 2, // BUTTON
           style: 5, // LINK
+          url: "https://store.everfallcommunity.com/category/limited-cars",
+          label: "Everfall Store",
+          emoji: { name: "🛒" },
+        },
+        {
+          type: 2, // BUTTON
+          style: 5, // LINK
           url: "https://everfall-limited-watcher.itschase.workers.dev",
           label: "Web Portal",
           emoji: { name: "🌐" },
@@ -122,24 +198,23 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
     const customId = data?.custom_id;
 
     if (customId === "action_check") {
+      const cfg = guild_id ? await getGuildConfig(env, guild_id) : null;
+      if (!cfg || !cfg.channelId) {
+        return jsonResponse(
+          {
+            flags: EPHEMERAL_FLAG,
+            embeds: [buildNotConfiguredEmbed()],
+            components: buildActionComponents(),
+          },
+          7 // UPDATE_MESSAGE
+        );
+      }
+
       const result = await runCron(env);
-      const embed = {
-        title: "🔎 Manual Store Sweep Completed",
-        color: 0x10b981, // Emerald green
-        description: result.notice
-          ? `**Store Status:** ${result.notice}\n\nAutomated background cron will re-check every 15 minutes.`
-          : `Scan completed successfully. Found **${result.checked}** listings on the store.`,
-        fields: [
-          { name: "Listings Scanned", value: `${result.checked}`, inline: true },
-          { name: "New Drops Detected", value: `${result.newDrops}`, inline: true },
-        ],
-        footer: { text: "Everfall Limited Watcher • Manual Check" },
-        timestamp: new Date().toISOString(),
-      };
       return jsonResponse(
         {
           flags: EPHEMERAL_FLAG,
-          embeds: [embed],
+          embeds: [buildCheckEmbed(cfg, result)],
           components: buildActionComponents(),
         },
         7 // UPDATE_MESSAGE
@@ -314,24 +389,19 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
     }
 
     case "check": {
+      const cfg = await getGuildConfig(env, guild_id);
+      if (!cfg || !cfg.channelId) {
+        return jsonResponse({
+          flags: EPHEMERAL_FLAG,
+          embeds: [buildNotConfiguredEmbed()],
+          components: buildActionComponents(),
+        });
+      }
+
       const result = await runCron(env);
       return jsonResponse({
         flags: EPHEMERAL_FLAG,
-        embeds: [
-          {
-            title: "🔎 Store Check Executed",
-            color: 0x5865f2,
-            description: result.notice
-              ? `**Notice:** ${result.notice}\n\nAutomated cron sweeps will continue checking in the background.`
-              : `Scraped Everfall store successfully. Found **${result.checked}** active listing(s).`,
-            fields: [
-              { name: "Items Checked", value: `${result.checked}`, inline: true },
-              { name: "New Drops Broadcasted", value: `${result.newDrops}`, inline: true },
-            ],
-            footer: { text: "Everfall Limited Watcher" },
-            timestamp: new Date().toISOString(),
-          },
-        ],
+        embeds: [buildCheckEmbed(cfg, result)],
         components: buildActionComponents(),
       });
     }
