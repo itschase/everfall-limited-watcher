@@ -27,11 +27,7 @@ export function renderLandingPage(appId: string): Response {
       --success: #10B981;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -44,7 +40,6 @@ export function renderLandingPage(appId: string): Response {
       overflow-x: hidden;
     }
 
-    /* Ambient glow background */
     .ambient-glow {
       position: absolute;
       width: 600px;
@@ -77,7 +72,6 @@ export function renderLandingPage(appId: string): Response {
       z-index: 1;
     }
 
-    /* Header */
     header {
       padding: 32px 0;
       display: flex;
@@ -104,6 +98,11 @@ export function renderLandingPage(appId: string): Response {
       justify-content: center;
       box-shadow: 0 4px 14px rgba(88, 101, 242, 0.35);
     }
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
     .status-pill {
       display: flex;
       align-items: center;
@@ -122,8 +121,22 @@ export function renderLandingPage(appId: string): Response {
       background-color: var(--success);
       box-shadow: 0 0 8px var(--success);
     }
+    .nav-admin-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+    .nav-admin-link:hover {
+      color: #fff;
+      background: var(--bg-surface-elevated);
+      border-color: var(--border-focus);
+    }
 
-    /* Hero */
     .hero {
       padding: 88px 0 64px;
       text-align: center;
@@ -164,7 +177,6 @@ export function renderLandingPage(appId: string): Response {
       margin-right: auto;
     }
 
-    /* Actions */
     .hero-cta {
       display: flex;
       justify-content: center;
@@ -205,7 +217,6 @@ export function renderLandingPage(appId: string): Response {
       transform: translateY(-2px);
     }
 
-    /* Features Grid */
     .features {
       padding: 48px 0;
       display: grid;
@@ -246,7 +257,6 @@ export function renderLandingPage(appId: string): Response {
       color: var(--text-muted);
     }
 
-    /* Commands Section */
     .commands {
       padding: 48px 0 80px;
     }
@@ -298,18 +308,17 @@ export function renderLandingPage(appId: string): Response {
       min-width: 240px;
     }
 
-    /* Footer */
     footer {
       margin-top: auto;
       padding: 40px 0;
       border-top: 1px solid var(--border);
       color: var(--text-muted);
       font-size: 0.88rem;
-      text-align: center;
-    }
-
-    svg {
-      flex-shrink: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
     }
   </style>
 </head>
@@ -330,19 +339,22 @@ export function renderLandingPage(appId: string): Response {
         </div>
         <span>Everfall Watcher</span>
       </a>
-      <div class="status-pill">
-        <span class="status-dot"></span>
-        <span>Operational on Cloudflare Edge</span>
+      <div class="header-nav">
+        <div class="status-pill">
+          <span class="status-dot"></span>
+          <span>Edge Live</span>
+        </div>
+        <a href="/admin" class="nav-admin-link">⚙️ Admin Portal</a>
       </div>
     </header>
 
     <main>
       <section class="hero">
         <div class="hero-eyebrow">
-          ⚡ 24/7 Deal Radar
+          ⚡ 24/7 Store Monitoring
         </div>
         <h1>Never Miss an Everfall Limited Drop</h1>
-        <p>Real-time vehicle stock tracking, instant Discord notification embeds, and configurable role mentions for your server.</p>
+        <p>Continuous vehicle stock monitoring, gallery image pagination, and targeted role pings for your Discord community.</p>
         <div class="hero-cta">
           <a href="${inviteUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -350,32 +362,32 @@ export function renderLandingPage(appId: string): Response {
             </svg>
             Add to Discord
           </a>
-          <a href="#commands" class="btn btn-secondary">View Slash Commands</a>
+          <a href="#commands" class="btn btn-secondary">Command Menu</a>
         </div>
       </section>
 
       <section class="features">
         <div class="card">
           <div class="card-icon">🏎️</div>
-          <h3>Continuous Monitoring</h3>
-          <p>Scheduled background sweeps check the Everfall store every 15 minutes without any manual intervention.</p>
+          <h3>One-Time Accurate Broadcasts</h3>
+          <p>Every newly detected vehicle drop is posted once to all configured servers, preventing duplicate spam.</p>
         </div>
         <div class="card">
-          <div class="card-icon">🔔</div>
-          <h3>Rich Embed Alerts</h3>
-          <p>Automated Discord embeds with vehicle pictures, pricing, stock levels, and quick store links.</p>
+          <div class="card-icon">🖼️</div>
+          <h3>Paginated Image Gallery</h3>
+          <p>Interactive Next/Previous buttons allow users to browse through all available vehicle screenshots directly inside Discord.</p>
         </div>
         <div class="card">
           <div class="card-icon">👥</div>
-          <h3>Targeted Role Mentions</h3>
-          <p>Configure custom role mentions so collectors and interested players are alerted immediately when a drop hits.</p>
+          <h3>Role Mentions in Chat</h3>
+          <p>Configured role pings are sent in message chat rather than inside the embed, ensuring Discord triggers notifications.</p>
         </div>
       </section>
 
       <section class="commands" id="commands">
         <div class="section-title">
           <h2>Slash Commands</h2>
-          <p>Easily manage your server's alerts directly from Discord</p>
+          <p>Easily manage drop alerts directly from Discord</p>
         </div>
         <div class="command-list">
           <div class="command-row">
@@ -392,11 +404,11 @@ export function renderLandingPage(appId: string): Response {
           </div>
           <div class="command-row">
             <span class="cmd-name">/check</span>
-            <span class="cmd-desc">Runs an on-demand store scrape to verify current stock immediately.</span>
+            <span class="cmd-desc">Runs an on-demand audit and displays all currently available vehicle listings.</span>
           </div>
           <div class="command-row">
             <span class="cmd-name">/help</span>
-            <span class="cmd-desc">Displays the command menu, setup instructions, and bot status.</span>
+            <span class="cmd-desc">Opens the private interactive Control Center with quick action controls.</span>
           </div>
         </div>
       </section>
@@ -404,6 +416,7 @@ export function renderLandingPage(appId: string): Response {
 
     <footer>
       <p>Everfall Limited Watcher • Powered by Cloudflare Workers & Discord API</p>
+      <a href="/admin" style="color:var(--text-muted); text-decoration:none;">Owner Dashboard &rarr;</a>
     </footer>
   </div>
 </body>

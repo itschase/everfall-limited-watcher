@@ -1,8 +1,8 @@
 // commands.ts – Discord interaction handler with Rich Embeds and Interactive Components
 
 import { InteractionResponseType, InteractionType, verifyKey } from "discord-interactions";
-import { getGuildConfig, setGuildConfig, addGuildRole, removeGuildRole, GuildConfig } from "./kv";
-import { runCron } from "./scraper";
+import { getGuildConfig, setGuildConfig, addGuildRole, removeGuildRole, getEmbedConfig, GuildConfig } from "./kv";
+import { fetchStoreListings, getCarPackage, CarListing } from "./scraper";
 
 const EPHEMERAL_FLAG = 64;
 
@@ -25,7 +25,7 @@ function buildNotConfiguredEmbed() {
         value:
           "1. **Fastest:** Pick an alert channel using the dropdown menu below.\n" +
           "2. **Slash Command:** Run `/setup <#channel>` in any channel.\n" +
-          "3. **Role Pings:** (Optional) Run `/add-role <@role>` to mention specific roles.",
+          "3. **Role Pings:** (Optional) Run `/add-role <@role>` to configure role mentions.",
         inline: false,
       },
     ],
@@ -34,50 +34,140 @@ function buildNotConfiguredEmbed() {
   };
 }
 
-function buildCheckEmbed(cfg: GuildConfig, result: { checked: number; newDrops: number; notice?: string }) {
-  const channelDisplay = `<#${cfg.channelId}>`;
-  const rolesDisplay =
-    cfg.roleIds && cfg.roleIds.length > 0
-      ? cfg.roleIds.map((r: string) => `<@&${r}>`).join(" ")
-      : "*None configured (use `/add-role`)*";
-
-  let statusDescription = "";
-  if (result.newDrops > 0) {
-    statusDescription = `🎉 **${result.newDrops} new limited vehicle drop(s) detected!**\nAlert embeds have been broadcasted directly to ${channelDisplay}.`;
-  } else if (result.checked > 0) {
-    statusDescription = `✅ Store scanned successfully. **${result.checked}** listing(s) currently active.\nNo new unannounced drops since the last scan.`;
-  } else if (result.notice) {
-    statusDescription = `🛡️ **Store Status:** ${result.notice}\nAutomated 15-minute background sweeps remain active on the Cloudflare edge.`;
-  } else {
-    statusDescription = `✅ Store scanned. All listings are up-to-date; no new limited drops detected.`;
+function buildMultiCarCheckResponse(cfg: GuildConfig, listings: CarListing[], embedConfig: any) {
+  if (listings.length === 0) {
+    return {
+      flags: EPHEMERAL_FLAG,
+      embeds: [
+        {
+          title: "🏎️ Everfall Store Live Audit",
+          color: 0x10b981,
+          description:
+            "✅ Store scanned. **No limited vehicles are currently listed** on the Everfall store.\n\n" +
+            "Automated background sweeps will continue checking every 15 minutes on the Cloudflare edge.",
+          fields: [
+            { name: "🎯 Target Channel", value: `<#${cfg.channelId}>`, inline: true },
+            {
+              name: "👥 Mention Roles",
+              value: cfg.roleIds.length ? cfg.roleIds.map((r) => `<@&${r}>`).join(" ") : "*None*",
+              inline: true,
+            },
+          ],
+          footer: { text: "Everfall Limited Watcher • Manual Check • Only visible to you" },
+          timestamp: new Date().toISOString(),
+        },
+      ],
+      components: buildActionComponents(),
+    };
   }
 
-  return {
-    title: "🏎️ Everfall Store Live Audit",
-    color: result.newDrops > 0 ? 0xf59e0b : 0x10b981,
-    description: statusDescription,
-    fields: [
+  const embeds: any[] = [];
+  const components: any[] = [];
+
+  for (const car of listings.slice(0, 3)) {
+    const totalImages = car.images && car.images.length > 0 ? car.images.length : 1;
+    const currentImage = car.images[0] || "";
+    const hexStr = embedConfig?.color ? embedConfig.color.replace("#", "") : "F59E0B";
+    const color = parseInt(hexStr, 16) || 0xf59e0b;
+    const titlePrefix = embedConfig?.titlePrefix || "<:everfall:1571981507973746868> Limited Edition Drop:";
+
+    embeds.push({
+      title: `${titlePrefix} ${car.name}`,
+      url: car.url,
+      color,
+      description: car.description,
+      fields: [
+        {
+          name: "📸 Gallery",
+          value: `Image **1** of **${totalImages}** *(use buttons below to view)*`,
+          inline: true,
+        },
+        {
+          name: "🎯 Destination Channel",
+          value: `<#${cfg.channelId}>`,
+          inline: true,
+        },
+      ],
+      image: currentImage ? { url: currentImage } : undefined,
+      footer: { text: embedConfig?.footerText || "Everfall Limited Watcher • Live Store Check" },
+      timestamp: new Date().toISOString(),
+    });
+
+    if (totalImages > 1) {
+      components.push({
+        type: 1, // Action Row
+        components: [
+          {
+            type: 2,
+            style: 2,
+            custom_id: `img_prev:${car.id}:0`,
+            label: `◀ Prev (${car.name})`,
+            disabled: true,
+          },
+          {
+            type: 2,
+            style: 2,
+            custom_id: `img_counter:${car.id}:0`,
+            label: `1 / ${totalImages}`,
+            disabled: true,
+          },
+          {
+            type: 2,
+            style: 2,
+            custom_id: `img_next:${car.id}:0`,
+            label: `Next ▶ (${car.name})`,
+            disabled: false,
+          },
+          {
+            type: 2,
+            style: 5,
+            label: `View in Store`,
+            url: car.url,
+            emoji: { id: "1571981507973746868", name: "everfall" },
+          },
+        ],
+      });
+    } else {
+      components.push({
+        type: 1,
+        components: [
+          {
+            type: 2,
+            style: 5,
+            label: `View in Store`,
+            url: car.url,
+            emoji: { id: "1571981507973746868", name: "everfall" },
+          },
+        ],
+      });
+    }
+  }
+
+  // Utility row: Re-scan & Admin Portal buttons
+  components.push({
+    type: 1,
+    components: [
       {
-        name: "🎯 Destination Channel",
-        value: channelDisplay,
-        inline: true,
+        type: 2,
+        style: 1,
+        custom_id: "action_check",
+        label: "Re-scan Store",
+        emoji: { name: "🔄" },
       },
       {
-        name: "👥 Mention Roles",
-        value: rolesDisplay,
-        inline: true,
-      },
-      {
-        name: "📊 Scan Summary",
-        value:
-          `• **Items Inspected:** ${result.checked}\n` +
-          `• **New Broadcasts:** ${result.newDrops}\n` +
-          `• **Next Auto-Sweep:** <t:${Math.floor(Date.now() / 1000) + 900}:R>`,
-        inline: false,
+        type: 2,
+        style: 5,
+        url: "https://everfall-limited-watcher.itschase.workers.dev/admin",
+        label: "Admin Portal",
+        emoji: { name: "⚙️" },
       },
     ],
-    footer: { text: "Everfall Limited Watcher • Live Audit • Only visible to you" },
-    timestamp: new Date().toISOString(),
+  });
+
+  return {
+    flags: EPHEMERAL_FLAG,
+    embeds,
+    components,
   };
 }
 
@@ -108,7 +198,7 @@ function buildHelpEmbed(guildConfig: GuildConfig | null) {
           "`/setup <#channel>` — Sets the channel where car drop embeds appear\n" +
           "`/add-role <@role>` — Adds a role to ping when a limited drop hits\n" +
           "`/remove-role <@role>` — Removes a role from drop alerts\n" +
-          "`/check` — Runs an on-demand store scrape immediately\n" +
+          "`/check` — Runs an on-demand store scrape immediately and shows active drops\n" +
           "`/help` — Opens this private interactive dashboard",
         inline: false,
       },
@@ -195,8 +285,59 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
   // 2. Handle Interactive Component Clicks (Buttons & Select Menus)
   if (type === 3) {
     // MESSAGE_COMPONENT
-    const customId = data?.custom_id;
+    const customId = data?.custom_id as string;
 
+    // A. Handle Image Gallery Pagination (◀ Previous / Next ▶)
+    if (customId?.startsWith("img_prev:") || customId?.startsWith("img_next:")) {
+      const parts = customId.split(":");
+      const action = parts[0];
+      const carId = parts[1];
+      const currentIdx = parseInt(parts[2], 10);
+      const newIdx = action === "img_next" ? currentIdx + 1 : currentIdx - 1;
+
+      const car = await getCarPackage(env, carId);
+      if (car) {
+        const messageEmbeds = body.message?.embeds || [];
+        const messageComponents = body.message?.components || [];
+        const safeIdx = Math.max(0, Math.min(newIdx, car.images.length - 1));
+
+        for (const emb of messageEmbeds) {
+          if (emb.title?.includes(car.name)) {
+            emb.image = { url: car.images[safeIdx] };
+            if (emb.fields?.[0]) {
+              emb.fields[0].value = `Image **${safeIdx + 1}** of **${car.images.length}** *(use buttons below to view)*`;
+            }
+          }
+        }
+
+        for (const row of messageComponents) {
+          const hasThisCar = row.components?.some((c: any) => c.custom_id?.includes(carId));
+          if (hasThisCar) {
+            for (const btn of row.components) {
+              if (btn.custom_id?.startsWith("img_prev:")) {
+                btn.custom_id = `img_prev:${carId}:${safeIdx}`;
+                btn.disabled = safeIdx === 0;
+              } else if (btn.custom_id?.startsWith("img_counter:")) {
+                btn.label = `${safeIdx + 1} / ${car.images.length}`;
+              } else if (btn.custom_id?.startsWith("img_next:")) {
+                btn.custom_id = `img_next:${carId}:${safeIdx}`;
+                btn.disabled = safeIdx === car.images.length - 1;
+              }
+            }
+          }
+        }
+
+        return jsonResponse(
+          {
+            embeds: messageEmbeds,
+            components: messageComponents,
+          },
+          7 // UPDATE_MESSAGE: smoothly changes image and button state
+        );
+      }
+    }
+
+    // B. Handle Scan Store Button
     if (customId === "action_check") {
       const cfg = guild_id ? await getGuildConfig(env, guild_id) : null;
       if (!cfg || !cfg.channelId) {
@@ -210,17 +351,12 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
         );
       }
 
-      const result = await runCron(env);
-      return jsonResponse(
-        {
-          flags: EPHEMERAL_FLAG,
-          embeds: [buildCheckEmbed(cfg, result)],
-          components: buildActionComponents(),
-        },
-        7 // UPDATE_MESSAGE
-      );
+      const { listings } = await fetchStoreListings();
+      const embedConfig = await getEmbedConfig(env);
+      return jsonResponse(buildMultiCarCheckResponse(cfg, listings, embedConfig), 7);
     }
 
+    // C. Handle View Config Button
     if (customId === "action_config") {
       const cfg = guild_id ? await getGuildConfig(env, guild_id) : null;
       return jsonResponse(
@@ -233,6 +369,7 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
       );
     }
 
+    // D. Handle Interactive Channel Select Menu
     if (customId === "select_channel") {
       const selectedChannel = data?.values?.[0];
       if (guild_id && selectedChannel) {
@@ -398,12 +535,9 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
         });
       }
 
-      const result = await runCron(env);
-      return jsonResponse({
-        flags: EPHEMERAL_FLAG,
-        embeds: [buildCheckEmbed(cfg, result)],
-        components: buildActionComponents(),
-      });
+      const { listings } = await fetchStoreListings();
+      const embedConfig = await getEmbedConfig(env);
+      return jsonResponse(buildMultiCarCheckResponse(cfg, listings, embedConfig));
     }
 
     default:

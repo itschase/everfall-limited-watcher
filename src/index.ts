@@ -2,29 +2,70 @@ import { handleInteraction } from "./commands";
 import { runCron } from "./scraper";
 import { renderLandingPage } from "./landing";
 import { registerCommands } from "./register";
+import {
+  handleLoginRedirect,
+  handleOAuthCallback,
+  renderAdminDashboard,
+  handleSaveConfig,
+  handleTestAlert,
+} from "./admin";
 
 export default {
   async fetch(request: Request, env: any, ctx: any): Promise<Response> {
     const url = new URL(request.url);
 
+    // 1. Discord Interactions Webhook Endpoint
     if (request.method === "POST" && url.pathname === "/interactions") {
       return handleInteraction(request, env);
     }
 
+    // 2. Cron & Health Endpoints
     if (request.method === "POST" && url.pathname === "/cron") {
       await runCron(env);
       return new Response("Cron executed", { status: 200 });
-    }
-
-    if (url.pathname === "/register-commands") {
-      return registerCommands(env);
     }
 
     if (url.pathname === "/health") {
       return new Response("Everfall Limited Watcher is alive", { status: 200 });
     }
 
-    // Default: Serve responsive landing page with Discord invite CTA
+    // 3. Command Registration Endpoint
+    if (url.pathname === "/register-commands") {
+      return registerCommands(env);
+    }
+
+    // 4. Admin OAuth2 & Portal Routes
+    if (url.pathname === "/login") {
+      return handleLoginRedirect(request, env);
+    }
+
+    if (url.pathname === "/auth/callback") {
+      return handleOAuthCallback(request, env);
+    }
+
+    if (url.pathname === "/admin") {
+      return renderAdminDashboard(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/admin/save-config") {
+      return handleSaveConfig(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/admin/test-alert") {
+      return handleTestAlert(request, env);
+    }
+
+    if (url.pathname === "/logout") {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: "/",
+          "Set-Cookie": "admin_session=; Path=/; HttpOnly; Max-Age=0",
+        },
+      });
+    }
+
+    // 5. Default Public Landing Page
     const appId = env.DISCORD_APPLICATION_ID || "1571958001928245378";
     return renderLandingPage(appId);
   },

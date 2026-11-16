@@ -6,6 +6,12 @@ export type GuildConfig = {
   roleIds: string[]; // Discord role IDs to mention
 };
 
+export type EmbedConfig = {
+  color?: string;
+  titlePrefix?: string;
+  footerText?: string;
+};
+
 export async function getGuildConfig(env: any, guildId: string): Promise<GuildConfig | null> {
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return null;
@@ -63,4 +69,30 @@ export async function markListingSeen(env: any, listingId: string, payload: any 
   if (!kv) return;
   const data = { ts: Date.now(), payload };
   await kv.put(`listing:${listingId}`, JSON.stringify(data));
+}
+
+export async function getEmbedConfig(env: any): Promise<EmbedConfig> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) {
+    return {
+      color: "#F59E0B",
+      titlePrefix: "<:everfall:1571981507973746868> Limited Edition Drop:",
+      footerText: "Everfall Limited Watcher • Verified Drop Alert",
+    };
+  }
+  const raw = await kv.get("admin:embed_config");
+  if (!raw) {
+    return {
+      color: "#F59E0B",
+      titlePrefix: "<:everfall:1571981507973746868> Limited Edition Drop:",
+      footerText: "Everfall Limited Watcher • Verified Drop Alert",
+    };
+  }
+  return JSON.parse(raw);
+}
+
+export async function setEmbedConfig(env: any, cfg: EmbedConfig): Promise<void> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return;
+  await kv.put("admin:embed_config", JSON.stringify(cfg));
 }
