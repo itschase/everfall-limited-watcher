@@ -1,6 +1,7 @@
 import { CarListing } from "./scraper";
 import { SessionUser } from "./admin";
 import { EF_LOGO_BASE64 } from "./assets";
+import { MonitorStatus } from "./kv";
 
 export function renderLandingPage(
   appId: string,
@@ -9,7 +10,8 @@ export function renderLandingPage(
   creatorProfile: { username: string; avatarUrl: string } = {
     username: "xchasex",
     avatarUrl: "https://cdn.discordapp.com/embed/avatars/0.png",
-  }
+  },
+  monitorStatus: MonitorStatus | null = null
 ): Response {
   const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${appId}&permissions=8462865837583424&integration_type=0&scope=bot+applications.commands`;
 
@@ -52,6 +54,13 @@ export function renderLandingPage(
       flex-direction: column;
       line-height: 1.6;
       overflow-x: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    input, textarea, select, option, .commands, .commands * {
+      user-select: text;
+      -webkit-user-select: text;
     }
 
     .ambient-glow {
@@ -369,6 +378,16 @@ export function renderLandingPage(
       padding: 3px 10px;
       border-radius: 12px;
       font-weight: 600;
+    }
+    .car-meta-tag.out-of-stock {
+      color: #F87171;
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.35);
+    }
+    .car-detected {
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      margin: -4px 0 14px;
     }
     .car-desc {
       color: var(--text-muted);
@@ -705,11 +724,18 @@ export function renderLandingPage(
         <div class="showcase-header">
           <div class="hero-eyebrow" style="margin-bottom:12px;">🔥 Live Bot Alerts Preview</div>
           <h2>Featured Limited Vehicle Drops</h2>
-          <p>Real-time stock alerts captured by the bot. Browse active & recent releases below:</p>
+          <p>Most recently discovered releases, with availability tracked over time.${
+            monitorStatus ? ` Last checked ${new Date(monitorStatus.checkedAt).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" })} ET.` : ""
+          }</p>
         </div>
 
         <div class="drops-grid" id="dropsGrid">
-          ${cars
+          ${cars.length === 0
+            ? `<div class="card" style="grid-column:1/-1; text-align:center;">
+                <h3>Waiting for the first verified discovery</h3>
+                <p style="color:var(--text-muted); margin-top:8px;">Listings will appear here after a successful authoritative store check.</p>
+               </div>`
+            : cars
             .map(
               (car) => `
           <div class="car-card" data-car-id="${car.id}">
@@ -720,8 +746,21 @@ export function renderLandingPage(
             <div class="car-body">
               <div class="car-title-row">
                 <div class="car-title">${car.name}</div>
-                <span class="car-meta-tag">🟢 Monitored</span>
+                <span class="car-meta-tag ${car.isAvailable === false ? "out-of-stock" : ""}">
+                  ${
+                    car.isAvailable === false
+                      ? "🔴 Out of Stock"
+                      : car.detectedAt && Date.now() - car.detectedAt <= 24 * 60 * 60 * 1000
+                        ? "🆕 Newly Discovered"
+                        : "🟢 Available"
+                  }
+                </span>
               </div>
+              <div class="car-detected">Discovered by Everfall Watcher: ${
+                car.detectedAt
+                  ? new Date(car.detectedAt).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET"
+                  : "Awaiting first recorded check"
+              }</div>
               <div class="car-desc">${car.description.split("\n\n")[0] || car.description}</div>
               
               ${

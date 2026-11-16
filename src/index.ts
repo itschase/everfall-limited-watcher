@@ -1,5 +1,5 @@
 import { handleInteraction } from "./commands";
-import { runCron, fetchStoreListings, getKnownCars } from "./scraper";
+import { runCron, getArchivedListingImage } from "./scraper";
 import { renderLandingPage } from "./landing";
 import { registerCommands } from "./register";
 import {
@@ -7,11 +7,13 @@ import {
   handleOAuthCallback,
   renderDashboard,
   handleSaveConfig,
+  handleSaveGuildConfig,
   handleTestAlert,
   verifySessionCookie,
   getCreatorProfile,
 } from "./admin";
 import { EF_LOGO_BASE64 } from "./assets";
+import { getListingHistory, getMonitorStatus } from "./kv";
 
 function getLogoBinaryResponse(): Response {
   const b64Data = EF_LOGO_BASE64.replace(/^data:image\/webp;base64,/, "");
@@ -37,6 +39,11 @@ export default {
     // Favicon & Icon Routes
     if (url.pathname === "/favicon.ico" || url.pathname === "/icon.webp" || url.pathname === "/icon.png") {
       return getLogoBinaryResponse();
+    }
+
+    const mediaMatch = url.pathname.match(/^\/media\/listings\/(\d+)\/(\d+)$/);
+    if (mediaMatch) {
+      return getArchivedListingImage(env, mediaMatch[1], Number(mediaMatch[2]));
     }
 
     // 1. Discord Interactions Webhook Endpoint
@@ -76,6 +83,10 @@ export default {
       return handleSaveConfig(request, env);
     }
 
+    if (request.method === "POST" && url.pathname === "/dashboard/save-config") {
+      return handleSaveGuildConfig(request, env);
+    }
+
     if (request.method === "POST" && url.pathname === "/admin/test-alert") {
       return handleTestAlert(request, env);
     }
@@ -98,10 +109,16 @@ export default {
     );
     const creatorProfile = await getCreatorProfile(env);
 
-    const { listings } = await fetchStoreListings();
-    const displayListings = listings && listings.length > 0 ? listings : getKnownCars();
+    const history = await getListingHistory(env);
+    const displayListings = history.map((record) => ({
+      ...record.payload,
+      id: record.id,
+      detectedAt: record.firstSeenAt,
+      isAvailable: record.isAvailable,
+    }));
+    const monitorStatus = await getMonitorStatus(env);
 
-    return renderLandingPage(appId, displayListings, currentUser, creatorProfile);
+    return renderLandingPage(appId, displayListings, currentUser, creatorProfile, monitorStatus);
   },
 
   async scheduled(controller: any, env: any, ctx: any): Promise<void> {

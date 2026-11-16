@@ -1,9 +1,11 @@
 import {
   getAllGuildIds,
   getGuildConfig,
-  getEmbedConfig,
-  isListingSeen,
-  markListingSeen,
+  getEffectiveEmbedConfig,
+  getListingHistory,
+  setListingAvailability,
+  setMonitorStatus,
+  upsertListingRecord,
   isListingSentToGuild,
   markListingSentToGuild,
 } from "./kv";
@@ -15,6 +17,86 @@ export interface CarListing {
   url: string;
   images: string[]; // All available package images for pagination
   isAvailable?: boolean; // true if currently on the store, false if delisted
+  detectedAt?: number; // immutable first discovery time recorded by this service
+}
+
+const PUBLIC_ORIGIN = "https://everfall-limited-watcher.itschase.workers.dev";
+
+async function archiveListingImages(env: any, car: CarListing): Promise<CarListing> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv || !car.images?.length) return car;
+  const archivedImages = await Promise.all(car.images.slice(0, 10).map(async (sourceUrl, index) => {
+    const key = `media:${car.id}:${index}`;
+    try {
+      const exists = await kv.get(key, "arrayBuffer");
+      if (!exists) {
+        const response = await fetch(sourceUrl);
+        if (!response.ok) return sourceUrl;
+        const contentType = response.headers.get("content-type") || "image/webp";
+        await kv.put(key, await response.arrayBuffer(), { metadata: { contentType } });
+      }
+      return `${PUBLIC_ORIGIN}/media/listings/${car.id}/${index}`;
+    } catch (error) {
+      console.error(`Failed to archive image ${index} for listing ${car.id}:`, error);
+      return sourceUrl;
+    }
+  }));
+  return { ...car, images: archivedImages };
+}
+
+export async function getArchivedListingImage(env: any, listingId: string, index: number): Promise<Response> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return new Response("Not found", { status: 404 });
+  const result = await kv.getWithMetadata<{ contentType?: string }>(`media:${listingId}:${index}`, "arrayBuffer");
+  if (!result.value) return new Response("Not found", { status: 404 });
+  return new Response(result.value, {
+    headers: {
+      "Content-Type": result.metadata?.contentType || "image/webp",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    },
+  });
+}
+
+async function syncListingHistory(
+  env: any,
+  result: { listings: CarListing[]; notice?: string; authoritative: boolean }
+): Promise<CarListing[]> {
+  if (!result.authoritative) {
+    await setMonitorStatus(env, {
+      checkedAt: Date.now(),
+      listingCount: result.listings.length,
+      authoritative: false,
+      notice: result.notice,
+    });
+    const history = await getListingHistory(env);
+    return history
+      .filter((record) => record.isAvailable)
+      .map((record) => ({
+        ...record.payload,
+        id: record.id,
+        isAvailable: record.isAvailable,
+        detectedAt: record.firstSeenAt,
+      } as CarListing));
+  }
+
+  const currentIds = new Set(result.listings.map((listing) => listing.id));
+  const enriched: CarListing[] = [];
+  for (const listing of result.listings) {
+    const archived = await archiveListingImages(env, listing);
+    const record = await upsertListingRecord(env, listing.id, archived, true);
+    enriched.push({ ...archived, isAvailable: true, detectedAt: record.firstSeenAt });
+  }
+  const history = await getListingHistory(env);
+  await Promise.all(history
+    .filter((record) => record.isAvailable && !currentIds.has(record.id))
+    .map((record) => setListingAvailability(env, record.id, false)));
+  await setMonitorStatus(env, {
+    checkedAt: Date.now(),
+    listingCount: enriched.length,
+    authoritative: result.authoritative,
+    notice: result.notice,
+  });
+  return enriched;
 }
 
 export const KNOWN_LIMITED_CARS: CarListing[] = [
@@ -98,7 +180,7 @@ export function buildCarDropMessage(
   const pings =
     roleIds && roleIds.length > 0 ? roleIds.map((r) => `<@&${r}>`).join(" ") : "";
 
-  const detected = Math.floor(Date.now() / 1000);
+  const detected = Math.floor((car.detectedAt || Date.now()) / 1000);
   const details = [
     `# ${titlePrefix} ${car.name}`,
     car.description,
@@ -156,7 +238,6 @@ export async function broadcastListing(
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return 0;
 
-  const embedConfig = await getEmbedConfig(env);
   const guildIds = await getAllGuildIds(env);
 
   await saveCarPackage(env, car);
@@ -171,6 +252,7 @@ export async function broadcastListing(
       if (alreadySent) continue;
     }
 
+    const embedConfig = await getEffectiveEmbedConfig(env, guildId);
     const messagePayload = buildCarDropMessage(car, embedConfig, config.roleIds);
 
     try {
@@ -195,7 +277,21 @@ export async function broadcastListing(
 }
 
 export async function broadcastAllListings(env: any, force: boolean = true): Promise<number> {
-  const { listings } = await fetchStoreListings();
+  let history = await getListingHistory(env);
+  if (history.length === 0) {
+    await syncListingHistory(env, await fetchStoreListings());
+    history = await getListingHistory(env);
+  }
+  const availableHistory = history.filter((record) => record.isAvailable);
+  if (availableHistory.length === 0) return 0;
+  const newestDiscovery = availableHistory[0].firstSeenAt;
+  const listings = availableHistory
+    .filter((record) => newestDiscovery - record.firstSeenAt < 60_000)
+    .map((record) => ({
+      ...record.payload,
+      detectedAt: record.firstSeenAt,
+      isAvailable: record.isAvailable,
+    } as CarListing));
   let count = 0;
   for (const car of listings) {
     await broadcastListing(env, car, force);
@@ -211,8 +307,9 @@ export async function publishActiveListingsToGuildOnSetup(
   const cfg = await getGuildConfig(env, guildId);
   if (!cfg || !cfg.channelId) return 0;
 
-  const { listings } = await fetchStoreListings();
-  const embedConfig = await getEmbedConfig(env);
+  const result = await fetchStoreListings();
+  const listings = await syncListingHistory(env, result);
+  const embedConfig = await getEffectiveEmbedConfig(env, guildId);
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return 0;
 
@@ -253,8 +350,9 @@ export async function postAllListingsToGuild(
     return { count: 0 };
   }
 
-  const { listings } = await fetchStoreListings();
-  const embedConfig = await getEmbedConfig(env);
+  const result = await fetchStoreListings();
+  const listings = await syncListingHistory(env, result);
+  const embedConfig = await getEffectiveEmbedConfig(env, guildId);
   const token = env.DISCORD_BOT_TOKEN;
 
   let count = 0;
@@ -285,7 +383,7 @@ export async function postAllListingsToGuild(
   return { count, channelId: cfg.channelId };
 }
 
-export async function fetchStoreListings(): Promise<{ listings: CarListing[]; notice?: string }> {
+export async function fetchStoreListings(): Promise<{ listings: CarListing[]; notice?: string; authoritative: boolean }> {
   const storeUrl = "https://store.everfallcommunity.com/category/limited-cars";
 
   try {
@@ -306,6 +404,7 @@ export async function fetchStoreListings(): Promise<{ listings: CarListing[]; no
       return {
         listings: KNOWN_LIMITED_CARS,
         notice: "Everfall store active catalog synced.",
+        authoritative: false,
       };
     }
 
@@ -321,7 +420,7 @@ export async function fetchStoreListings(): Promise<{ listings: CarListing[]; no
 
     if (foundIds.size === 0) {
       // Empty category: no limited vehicles currently available
-      return { listings: [] };
+      return { listings: [], authoritative: true };
     }
 
     for (const id of foundIds) {
@@ -339,22 +438,24 @@ export async function fetchStoreListings(): Promise<{ listings: CarListing[]; no
       }
     }
 
-    return { listings };
+    return { listings, authoritative: true };
   } catch (err: any) {
     console.error("Store scrape fetch error:", err);
     return {
       listings: KNOWN_LIMITED_CARS,
       notice: `Fallback catalog used (${err.message})`,
+      authoritative: false,
     };
   }
 }
 
 export async function runCron(env: any): Promise<{ checked: number; newDrops: number; notice?: string }> {
-  const { listings, notice } = await fetchStoreListings();
+  const result = await fetchStoreListings();
+  const { notice } = result;
+  const listings = await syncListingHistory(env, result);
   let newDrops = 0;
 
   for (const car of listings) {
-    await markListingSeen(env, car.id, car);
     // Broadcast only to servers that haven't received this drop yet
     const sent = await broadcastListing(env, car, false);
     if (sent > 0) {

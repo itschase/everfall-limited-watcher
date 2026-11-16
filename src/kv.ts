@@ -4,6 +4,22 @@
 export type GuildConfig = {
   channelId: string;
   roleIds: string[]; // Discord role IDs to mention
+  embedConfig?: EmbedConfig;
+};
+
+export type ListingRecord = {
+  id: string;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  isAvailable: boolean;
+  payload: any;
+};
+
+export type MonitorStatus = {
+  checkedAt: number;
+  listingCount: number;
+  authoritative: boolean;
+  notice?: string;
 };
 
 export type EmbedConfig = {
@@ -68,10 +84,76 @@ export async function isListingSeen(env: any, listingId: string): Promise<boolea
 }
 
 export async function markListingSeen(env: any, listingId: string, payload: any = {}): Promise<void> {
+  await upsertListingRecord(env, listingId, payload, true);
+}
+
+export async function upsertListingRecord(
+  env: any,
+  listingId: string,
+  payload: any,
+  isAvailable: boolean
+): Promise<ListingRecord> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  const now = Date.now();
+  if (!kv) return { id: listingId, firstSeenAt: now, lastSeenAt: now, isAvailable, payload };
+  const existingRaw = await kv.get(`listing:${listingId}`);
+  let existing: any = existingRaw ? JSON.parse(existingRaw) : null;
+  // Migrate the original { ts, payload } record without resetting its historical timestamp.
+  const firstSeenAt = existing?.firstSeenAt || existing?.ts || now;
+  const record: ListingRecord = { id: listingId, firstSeenAt, lastSeenAt: now, isAvailable, payload };
+  await kv.put(`listing:${listingId}`, JSON.stringify(record));
+
+  const registryRaw = await kv.get("listings:all");
+  const registry: string[] = registryRaw ? JSON.parse(registryRaw) : [];
+  if (!registry.includes(listingId)) {
+    registry.push(listingId);
+    await kv.put("listings:all", JSON.stringify(registry));
+  }
+  return record;
+}
+
+export async function setListingAvailability(env: any, listingId: string, isAvailable: boolean): Promise<void> {
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return;
-  const data = { ts: Date.now(), payload };
-  await kv.put(`listing:${listingId}`, JSON.stringify(data));
+  const raw = await kv.get(`listing:${listingId}`);
+  if (!raw) return;
+  const record = JSON.parse(raw) as ListingRecord;
+  record.isAvailable = isAvailable;
+  record.lastSeenAt = Date.now();
+  await kv.put(`listing:${listingId}`, JSON.stringify(record));
+}
+
+export async function getListingHistory(env: any): Promise<ListingRecord[]> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return [];
+  const registryRaw = await kv.get("listings:all");
+  const registry: string[] = registryRaw ? JSON.parse(registryRaw) : [];
+  const records = await Promise.all(registry.map(async (id) => {
+    const raw = await kv.get(`listing:${id}`);
+    if (!raw) return null;
+    const value: any = JSON.parse(raw);
+    return {
+      id,
+      firstSeenAt: value.firstSeenAt || value.ts || Date.now(),
+      lastSeenAt: value.lastSeenAt || value.ts || Date.now(),
+      isAvailable: value.isAvailable !== false,
+      payload: value.payload || {},
+    } as ListingRecord;
+  }));
+  return records.filter((record): record is ListingRecord => Boolean(record))
+    .sort((a, b) => b.firstSeenAt - a.firstSeenAt);
+}
+
+export async function setMonitorStatus(env: any, status: MonitorStatus): Promise<void> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (kv) await kv.put("monitor:last_check", JSON.stringify(status));
+}
+
+export async function getMonitorStatus(env: any): Promise<MonitorStatus | null> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return null;
+  const raw = await kv.get("monitor:last_check");
+  return raw ? JSON.parse(raw) : null;
 }
 
 // Per-Server (Guild) Delivery Tracking
@@ -126,4 +208,11 @@ export async function setEmbedConfig(env: any, cfg: EmbedConfig): Promise<void> 
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return;
   await kv.put("admin:embed_config", JSON.stringify(cfg));
+}
+
+export async function getEffectiveEmbedConfig(env: any, guildId?: string): Promise<EmbedConfig> {
+  const globalConfig = await getEmbedConfig(env);
+  if (!guildId) return globalConfig;
+  const guildConfig = await getGuildConfig(env, guildId);
+  return { ...globalConfig, ...(guildConfig?.embedConfig || {}) };
 }

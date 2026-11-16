@@ -1,6 +1,14 @@
 // admin.ts – User & Admin Dashboard with Discord OAuth2 Authentication
 
-import { getAllGuildIds, getGuildConfig, getEmbedConfig, setEmbedConfig, EmbedConfig } from "./kv";
+import {
+  getAllGuildIds,
+  getGuildConfig,
+  getEmbedConfig,
+  getListingHistory,
+  setEmbedConfig,
+  setGuildConfig,
+  EmbedConfig,
+} from "./kv";
 import { getKnownCars, broadcastAllListings } from "./scraper";
 import { EF_LOGO_BASE64 } from "./assets";
 
@@ -20,6 +28,59 @@ interface BotGuild {
   name: string;
   icon?: string | null;
   approximate_member_count?: number;
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderAppearanceControls(
+  config: EmbedConfig,
+  action: string,
+  previewListing: any,
+  guildId?: string
+): string {
+  const color = /^#[0-9a-f]{6}$/i.test(config.color || "") ? config.color! : "#F59E0B";
+  const titlePrefix = config.titlePrefix || "<:everfall:1571981507973746868> Limited Edition Drop:";
+  const footerText = config.footerText || "Everfall Limited Watcher • Verified Drop Alert";
+  const galleryHeading = config.galleryHeading || "Vehicle Gallery";
+  const storeButtonLabel = config.storeButtonLabel || "View Package on Everfall Store";
+  const image = previewListing?.images?.[0] || "";
+  return `
+    <form action="${action}" method="POST" class="appearance-form">
+      ${guildId ? `<input type="hidden" name="guildId" value="${escapeHtml(guildId)}">` : ""}
+      <label>Accent Color</label>
+      <div class="color-control">
+        <input type="color" class="color-picker" value="${color}">
+        <input type="text" class="color-text" name="color" value="${color}" maxlength="7" pattern="#[0-9A-Fa-f]{6}">
+      </div>
+      <label>Title Prefix / Tag</label>
+      <input type="text" name="titlePrefix" value="${escapeHtml(titlePrefix)}" maxlength="120">
+      <label>Footer Notice</label>
+      <input type="text" name="footerText" value="${escapeHtml(footerText)}" maxlength="200">
+      <label>Gallery Heading</label>
+      <input type="text" name="galleryHeading" value="${escapeHtml(galleryHeading)}" maxlength="80">
+      <label>Store Button Label</label>
+      <input type="text" name="storeButtonLabel" maxlength="80" value="${escapeHtml(storeButtonLabel)}">
+      <label class="checkbox-label">
+        <input type="checkbox" name="showDetectionTime" ${config.showDetectionTime !== false ? "checked" : ""}>
+        Show original discovery time
+      </label>
+      <div class="discord-preview" style="border-left-color:${color}">
+        <div class="embed-title">${escapeHtml(titlePrefix)} ${escapeHtml(previewListing?.name || "Latest discovered listing")}</div>
+        <div class="embed-desc">${escapeHtml(previewListing?.description?.split("\n\n")[0] || "The most recently discovered listing will appear here.")}</div>
+        <div class="preview-gallery-heading">📸 ${escapeHtml(galleryHeading)}</div>
+        ${image ? `<img class="embed-img" src="${escapeHtml(image)}" alt="Latest listing preview">` : ""}
+        <div class="preview-button">${escapeHtml(storeButtonLabel)}</div>
+        <div class="embed-footer">${escapeHtml(footerText)}</div>
+      </div>
+      <button type="submit" class="btn">💾 Save Appearance</button>
+    </form>`;
 }
 
 // Helper: HMAC sign & verify for secure session cookies
@@ -333,6 +394,9 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
   }
   const alertSent = url.searchParams.get("alert") === "sent";
   const config = await getEmbedConfig(env);
+  const listingHistory = await getListingHistory(env);
+  const latestListing = listingHistory[0]?.payload || getKnownCars()[0];
+  const adminAppearanceControls = renderAppearanceControls(config, "/admin/save-config", latestListing);
   const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
 
   // Discord is authoritative for bot membership; KV only stores per-server configuration.
@@ -401,7 +465,10 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
       color: var(--text);
       padding: 32px 20px;
       line-height: 1.6;
+      user-select: none;
+      -webkit-user-select: none;
     }
+    input, textarea, select, option { user-select: text; -webkit-user-select: text; }
     .wrapper { max-width: 1100px; margin: 0 auto; }
     header {
       display: flex;
@@ -463,6 +530,9 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
       font-size: 0.95rem;
       margin-bottom: 16px;
     }
+    .color-control { display:grid; grid-template-columns:52px 1fr; gap:10px; align-items:start; }
+    input[type="color"] { width:52px; height:42px; padding:3px; border-radius:8px; border:1px solid var(--border); background:rgba(0,0,0,.25); cursor:pointer; }
+    .checkbox-label { display:flex; align-items:center; gap:9px; margin-bottom:18px; cursor:pointer; }
     .btn {
       display: inline-flex;
       align-items: center;
@@ -493,6 +563,8 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
     .embed-desc { font-size: 0.85rem; color: #DBDEE1; margin-bottom: 12px; line-height: 1.4; }
     .embed-img { width: 100%; border-radius: 6px; margin-bottom: 8px; aspect-ratio: 16/9; object-fit: cover; }
     .embed-footer { font-size: 0.75rem; color: #949BA4; }
+    .preview-gallery-heading { color:#DBDEE1; font-size:.82rem; font-weight:700; margin:10px 0 7px; }
+    .preview-button { display:inline-block; color:#fff; background:#5865F2; border-radius:5px; padding:6px 10px; font-size:.75rem; font-weight:700; margin:4px 0 10px; }
     .server-item {
       padding: 14px;
       background: rgba(0,0,0,0.25);
@@ -506,6 +578,7 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
       gap: 12px;
     }
     .server-name { font-weight: 700; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+    .appearance-form { width:100%; margin-top:14px; padding-top:18px; border-top:1px solid var(--border); }
   </style>
 </head>
 <body>
@@ -532,7 +605,7 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
     ${
       alertSent
         ? `<div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #34D399; padding: 14px 18px; border-radius: 10px; margin-bottom: 24px; font-weight: 600;">
-            🎉 Test Broadcast Dispatched! Every active store listing has been sent to all connected channels.
+            🎉 Test Broadcast Dispatched! The latest available discovery batch was sent to configured channels.
           </div>`
         : ""
     }
@@ -544,45 +617,15 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
       <div class="grid">
         <div class="card">
           <h2>🎨 Listing Presentation Controls</h2>
-          <form action="/admin/save-config" method="POST">
-            <label for="color">Embed Accent Color</label>
-            <input type="text" id="color" name="color" value="${config.color || "#F59E0B"}" placeholder="#F59E0B">
-
-            <label for="titlePrefix">Title Prefix / Tag</label>
-            <input type="text" id="titlePrefix" name="titlePrefix" value="${
-              config.titlePrefix || "<:everfall:1571981507973746868> Limited Edition Drop:"
-            }">
-
-            <label for="footerText">Footer Notice</label>
-            <input type="text" id="footerText" name="footerText" value="${
-              config.footerText || "Everfall Limited Watcher • Verified Drop Alert"
-            }">
-
-            <label for="galleryHeading">Gallery Heading</label>
-            <input type="text" id="galleryHeading" name="galleryHeading" value="${
-              config.galleryHeading || "Vehicle Gallery"
-            }">
-
-            <label for="storeButtonLabel">Store Button Label</label>
-            <input type="text" id="storeButtonLabel" name="storeButtonLabel" maxlength="80" value="${
-              config.storeButtonLabel || "View Package on Everfall Store"
-            }">
-
-            <label style="display:flex; align-items:center; gap:9px; margin-bottom:18px; cursor:pointer;">
-              <input type="checkbox" name="showDetectionTime" ${config.showDetectionTime !== false ? "checked" : ""}>
-              Show detection time in listing alerts
-            </label>
-
-            <button type="submit" class="btn">💾 Save Listing Appearance</button>
-          </form>
+          ${adminAppearanceControls}
 
           <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border);">
             <h2>🚀 Test Live Drop Broadcast</h2>
             <p style="color:var(--muted); font-size:0.85rem; margin-bottom: 14px;">
-              Broadcasts all active store listings (both <b>73C</b> and <b>Seraph GTS</b>) with the new multi-image gallery view and role mentions to all configured servers.
+              Broadcasts only the most recently discovered listing batch with its preserved discovery time, gallery, and role mentions to configured servers.
             </p>
             <form action="/admin/test-alert" method="POST">
-              <button type="submit" class="btn btn-secondary">⚡ Broadcast All Active Listings (Test)</button>
+              <button type="submit" class="btn btn-secondary">⚡ Broadcast Latest Discovery (Test)</button>
             </form>
           </div>
         </div>
@@ -679,6 +722,14 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
                         </a>`
                   }
                 </div>
+                ${
+                  isInstalled
+                    ? `<div style="width:100%;"><h3 style="font-size:1rem; margin-top:8px;">Customize this server's listing alerts</h3>
+                        <p style="color:var(--muted); font-size:.82rem;">Preview uses the most recently discovered listing. These settings apply only to this server.</p>
+                        ${renderAppearanceControls({ ...config, ...(botConfig?.embedConfig || {}) }, "/dashboard/save-config", latestListing, g.id)}
+                       </div>`
+                    : ""
+                }
               </div>`;
                 })
                 .join("")
@@ -691,6 +742,33 @@ export async function renderDashboard(request: Request, env: any): Promise<Respo
       `
     }
   </div>
+  <script>
+    document.querySelectorAll('.appearance-form').forEach((form) => {
+      const picker = form.querySelector('.color-picker');
+      const colorText = form.querySelector('.color-text');
+      const preview = form.querySelector('.discord-preview');
+      const syncColor = (value) => {
+        if (/^#[0-9a-f]{6}$/i.test(value)) {
+          picker.value = value;
+          colorText.value = value.toUpperCase();
+          preview.style.borderLeftColor = value;
+        }
+      };
+      picker.addEventListener('input', () => syncColor(picker.value));
+      colorText.addEventListener('input', () => syncColor(colorText.value));
+      const bindings = [
+        ['titlePrefix', '.embed-title', (value) => value + ' ${escapeHtml(latestListing?.name || "Latest listing")}'],
+        ['footerText', '.embed-footer'],
+        ['galleryHeading', '.preview-gallery-heading', (value) => '📸 ' + value],
+        ['storeButtonLabel', '.preview-button'],
+      ];
+      bindings.forEach(([name, selector, transform]) => {
+        const input = form.querySelector('[name="' + name + '"]');
+        const target = form.querySelector(selector);
+        if (input && target) input.addEventListener('input', () => { target.textContent = transform ? transform(input.value) : input.value; });
+      });
+    });
+  </script>
 </body>
 </html>`;
 
@@ -714,23 +792,51 @@ export async function handleSaveConfig(request: Request, env: any): Promise<Resp
   }
 
   const formData = await request.formData();
-  const color = formData.get("color") as string;
-  const titlePrefix = formData.get("titlePrefix") as string;
-  const footerText = formData.get("footerText") as string;
-  const galleryHeading = formData.get("galleryHeading") as string;
-  const storeButtonLabel = formData.get("storeButtonLabel") as string;
-  const showDetectionTime = formData.get("showDetectionTime") === "on";
-
-  await setEmbedConfig(env, {
-    color,
-    titlePrefix,
-    footerText,
-    galleryHeading,
-    storeButtonLabel,
-    showDetectionTime,
-  });
+  await setEmbedConfig(env, parseEmbedConfig(formData));
 
   return Response.redirect(new URL("/admin", request.url).toString(), 303);
+}
+
+function parseEmbedConfig(formData: FormData): EmbedConfig {
+  const submittedColor = String(formData.get("color") || "").toUpperCase();
+  const color = /^#[0-9A-F]{6}$/.test(submittedColor) ? submittedColor : "#F59E0B";
+  return {
+    color,
+    titlePrefix: String(formData.get("titlePrefix") || "").slice(0, 120),
+    footerText: String(formData.get("footerText") || "").slice(0, 180),
+    galleryHeading: String(formData.get("galleryHeading") || "").slice(0, 80),
+    storeButtonLabel: String(formData.get("storeButtonLabel") || "").slice(0, 80),
+    showDetectionTime: formData.get("showDetectionTime") === "on",
+  };
+}
+
+export async function handleSaveGuildConfig(request: Request, env: any): Promise<Response> {
+  const sessionSecret = getSessionSecret(env);
+  const user = await verifySessionCookie(
+    request.headers.get("Cookie"), sessionSecret, env.DISCORD_PRIMARY_ADMINISTRATOR
+  );
+  if (!user) return new Response("Unauthorized", { status: 401 });
+
+  const formData = await request.formData();
+  const guildId = String(formData.get("guildId") || "");
+  if (!/^\d{17,20}$/.test(guildId)) return new Response("Invalid server", { status: 400 });
+
+  let authorized = user.isAdmin;
+  if (!authorized && env.DISCORD_BOT) {
+    const raw = await env.DISCORD_BOT.get(`user_guilds:${user.id}`);
+    const guilds: any[] = raw ? JSON.parse(raw) : [];
+    authorized = guilds.some((guild) => {
+      if (guild.id !== guildId) return false;
+      if (guild.owner) return true;
+      const permissions = BigInt(guild.permissions || "0");
+      return (permissions & 0x20n) === 0x20n || (permissions & 0x8n) === 0x8n;
+    });
+  }
+  if (!authorized) return new Response("Forbidden", { status: 403 });
+
+  const existing = (await getGuildConfig(env, guildId)) || { channelId: "", roleIds: [] };
+  await setGuildConfig(env, guildId, { ...existing, embedConfig: parseEmbedConfig(formData) });
+  return Response.redirect(new URL("/dashboard", request.url).toString(), 303);
 }
 
 export async function handleTestAlert(request: Request, env: any): Promise<Response> {
