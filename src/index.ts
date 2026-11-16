@@ -1,6 +1,7 @@
 import { handleInteraction } from "./commands";
 import { runCron } from "./scraper";
 import { renderLandingPage } from "./landing";
+import { registerCommands } from "./register";
 
 export default {
   async fetch(request: Request, env: any, ctx: any): Promise<Response> {
@@ -13,6 +14,10 @@ export default {
     if (request.method === "POST" && url.pathname === "/cron") {
       await runCron(env);
       return new Response("Cron executed", { status: 200 });
+    }
+
+    if (url.pathname === "/register-commands") {
+      return registerCommands(env);
     }
 
     if (url.pathname === "/health") {
