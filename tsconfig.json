@@ -2,14 +2,19 @@
   "compilerOptions": {
     "target": "esnext",
     "module": "esnext",
-    "moduleResolution": "node",
-    "outDir": "dist",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "noEmit": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
-    "lib": ["esnext", "webworker"],
-    "types": ["@cloudflare/workers-types"],
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/web/*"]
+    },
     "skipLibCheck": true,
     "strict": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
 }

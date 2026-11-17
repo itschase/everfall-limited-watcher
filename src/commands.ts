@@ -1,14 +1,19 @@
-// commands.ts – Discord interaction handler with Rich Embeds and Interactive Components
+// commands.ts – Discord interaction handler with Deferred Responses, Permission Checks, and Rich Embeds
 
 import { InteractionResponseType, InteractionType, verifyKey } from "discord-interactions";
-import { getGuildConfig, setGuildConfig, addGuildRole, removeGuildRole, getEmbedConfig, GuildConfig } from "./kv";
 import {
-  fetchStoreListings,
+  getGuildConfig,
+  setGuildConfig,
+  addGuildRole,
+  removeGuildRole,
+  GuildConfig,
+} from "./kv";
+import {
   getCarPackage,
   postAllListingsToGuild,
-  publishActiveListingsToGuildOnSetup,
-  CarListing,
+  resolvePublicOrigin,
 } from "./scraper";
+import { fetchDiscordWithRetry } from "./discord";
 
 const EPHEMERAL_FLAG = 64;
 
@@ -18,13 +23,56 @@ function jsonResponse(data: any, type = InteractionResponseType.CHANNEL_MESSAGE_
   });
 }
 
+function deferredResponse(ephemeral = true, isComponentUpdate = false) {
+  const type = isComponentUpdate
+    ? InteractionResponseType.DEFERRED_UPDATE_MESSAGE || 6
+    : InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE || 5;
+  const payload: any = { type };
+  if (!isComponentUpdate && ephemeral) {
+    payload.data = { flags: EPHEMERAL_FLAG };
+  }
+  return new Response(JSON.stringify(payload), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+async function editOriginalInteractionResponse(
+  appId: string,
+  interactionToken: string,
+  data: any
+): Promise<void> {
+  const url = `https://discord.com/api/v10/webhooks/${appId}/${interactionToken}/messages/@original`;
+  try {
+    const res = await fetchDiscordWithRetry(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      console.error("Failed to patch deferred Discord interaction:", res.status, await res.text());
+    }
+  } catch (err) {
+    console.error("Network error patching deferred Discord interaction:", err);
+  }
+}
+
+function hasManageServerPermission(member: any): boolean {
+  if (!member?.permissions) return false;
+  try {
+    const perms = BigInt(member.permissions);
+    return (perms & 0x8n) === 0x8n || (perms & 0x20n) === 0x20n;
+  } catch {
+    return false;
+  }
+}
+
 function buildNotConfiguredEmbed() {
   return {
     title: "⚠️ Setup Required Before Running Check",
     description:
       "Everfall Limited Watcher has not been configured in this server yet.\n\n" +
       "Before running store checks, you must designate the alert channel where limited car drop embeds will be posted.",
-    color: 0xf59e0b, // Amber
+    color: 0xf59e0b,
     fields: [
       {
         name: "📌 Quick Setup (Choose One)",
@@ -37,143 +85,6 @@ function buildNotConfiguredEmbed() {
     ],
     footer: { text: "Everfall Limited Watcher • Setup Required • Only visible to you" },
     timestamp: new Date().toISOString(),
-  };
-}
-
-function buildMultiCarCheckResponse(cfg: GuildConfig, listings: CarListing[], embedConfig: any) {
-  if (listings.length === 0) {
-    return {
-      flags: EPHEMERAL_FLAG,
-      embeds: [
-        {
-          title: "🏎️ Everfall Store Live Audit",
-          color: 0x10b981,
-          description:
-            "✅ Store scanned. **No limited vehicles are currently listed** on the Everfall store.\n\n" +
-            "Automated background sweeps will continue checking every 15 minutes around the clock.",
-          fields: [
-            { name: "🎯 Target Channel", value: `<#${cfg.channelId}>`, inline: true },
-            {
-              name: "👥 Mention Roles",
-              value: cfg.roleIds.length ? cfg.roleIds.map((r) => `<@&${r}>`).join(" ") : "*None*",
-              inline: true,
-            },
-          ],
-          footer: { text: "Everfall Limited Watcher • Manual Check • Only visible to you" },
-          timestamp: new Date().toISOString(),
-        },
-      ],
-      components: buildActionComponents(),
-    };
-  }
-
-  const embeds: any[] = [];
-  const components: any[] = [];
-
-  for (const car of listings.slice(0, 3)) {
-    const totalImages = car.images && car.images.length > 0 ? car.images.length : 1;
-    const currentImage = car.images[0] || "";
-    const hexStr = embedConfig?.color ? embedConfig.color.replace("#", "") : "F59E0B";
-    const color = parseInt(hexStr, 16) || 0xf59e0b;
-    const titlePrefix = embedConfig?.titlePrefix || "<:everfall:1571981507973746868> Limited Edition Drop:";
-
-    embeds.push({
-      title: `${titlePrefix} ${car.name}`,
-      url: car.url,
-      color,
-      description: car.description,
-      fields: [
-        {
-          name: "📸 Gallery",
-          value: `Image **1** of **${totalImages}** *(use buttons below to view)*`,
-          inline: true,
-        },
-        {
-          name: "🎯 Destination Channel",
-          value: `<#${cfg.channelId}>`,
-          inline: true,
-        },
-      ],
-      image: currentImage ? { url: currentImage } : undefined,
-      footer: { text: embedConfig?.footerText || "Everfall Limited Watcher • Live Store Check" },
-      timestamp: new Date().toISOString(),
-    });
-
-    if (totalImages > 1) {
-      components.push({
-        type: 1, // Action Row
-        components: [
-          {
-            type: 2,
-            style: 2,
-            custom_id: `img_prev:${car.id}:0`,
-            label: `◀ Prev (${car.name})`,
-            disabled: true,
-          },
-          {
-            type: 2,
-            style: 2,
-            custom_id: `img_counter:${car.id}:0`,
-            label: `1 / ${totalImages}`,
-            disabled: true,
-          },
-          {
-            type: 2,
-            style: 2,
-            custom_id: `img_next:${car.id}:0`,
-            label: `Next ▶ (${car.name})`,
-            disabled: false,
-          },
-          {
-            type: 2,
-            style: 5,
-            label: `View in Store`,
-            url: car.url,
-            emoji: { id: "1571981507973746868", name: "everfall" },
-          },
-        ],
-      });
-    } else {
-      components.push({
-        type: 1,
-        components: [
-          {
-            type: 2,
-            style: 5,
-            label: `View in Store`,
-            url: car.url,
-            emoji: { id: "1571981507973746868", name: "everfall" },
-          },
-        ],
-      });
-    }
-  }
-
-  // Utility row: Re-scan & Admin Portal buttons
-  components.push({
-    type: 1,
-    components: [
-      {
-        type: 2,
-        style: 1,
-        custom_id: "action_check",
-        label: "Re-scan Store",
-        emoji: { name: "🔄" },
-      },
-      {
-        type: 2,
-        style: 5,
-        url: "https://everfall-limited-watcher.itschase.workers.dev/admin",
-        label: "Admin Portal",
-        emoji: { name: "⚙️" },
-      },
-    ],
-  });
-
-  return {
-    flags: EPHEMERAL_FLAG,
-    embeds,
-    components,
   };
 }
 
@@ -191,7 +102,7 @@ function buildHelpEmbed(guildConfig: GuildConfig | null) {
     title: "🏎️ Everfall Limited Watcher — Control Center",
     description:
       "Welcome! This bot monitors the Everfall vehicle store for limited car drops and automatically broadcasts rich alert embeds with direct store links and role mentions.",
-    color: 0x5865f2, // Discord Blurple
+    color: 0x5865f2,
     fields: [
       {
         name: "⚙️ Current Server Settings",
@@ -204,7 +115,7 @@ function buildHelpEmbed(guildConfig: GuildConfig | null) {
           "`/setup <#channel>` — Sets the channel where car drop embeds appear\n" +
           "`/add-role <@role>` — Adds a role to ping when a limited drop hits\n" +
           "`/remove-role <@role>` — Removes a role from drop alerts\n" +
-          "`/check` — Runs an on-demand store scrape immediately and shows active drops\n" +
+          "`/check` — Runs an on-demand store scrape immediately and posts active drops\n" +
           "`/help` — Opens this private interactive dashboard",
         inline: false,
       },
@@ -214,56 +125,63 @@ function buildHelpEmbed(guildConfig: GuildConfig | null) {
   };
 }
 
-function buildActionComponents() {
-  return [
+function buildActionComponents(portalOrigin: string) {
+  const row1: any[] = [
     {
-      type: 1, // ACTION_ROW
-      components: [
-        {
-          type: 2, // BUTTON
-          style: 1, // PRIMARY
-          custom_id: "action_check",
-          label: "Scan Store Now",
-          emoji: { name: "🔎" },
-        },
-        {
-          type: 2, // BUTTON
-          style: 2, // SECONDARY
-          custom_id: "action_config",
-          label: "View Server Config",
-          emoji: { name: "⚙️" },
-        },
-        {
-          type: 2, // BUTTON
-          style: 5, // LINK
-          url: "https://store.everfallcommunity.com/category/limited-cars",
-          label: "Everfall Store",
-          emoji: { name: "🛒" },
-        },
-        {
-          type: 2, // BUTTON
-          style: 5, // LINK
-          url: "https://everfall-limited-watcher.itschase.workers.dev",
-          label: "Web Portal",
-          emoji: { name: "🌐" },
-        },
-      ],
+      type: 2,
+      style: 1,
+      custom_id: "action_check",
+      label: "Scan Store Now",
+      emoji: { name: "🔎" },
     },
     {
-      type: 1, // ACTION_ROW
+      type: 2,
+      style: 2,
+      custom_id: "action_config",
+      label: "View Server Config",
+      emoji: { name: "⚙️" },
+    },
+    {
+      type: 2,
+      style: 5,
+      url: "https://store.everfallcommunity.com/category/limited-cars",
+      label: "Everfall Store",
+      emoji: { name: "🛒" },
+    },
+  ];
+
+  if (portalOrigin && /^https?:\/\//i.test(portalOrigin)) {
+    row1.push({
+      type: 2,
+      style: 5,
+      url: portalOrigin,
+      label: "Web Portal",
+      emoji: { name: "🌐" },
+    });
+  }
+
+  return [
+    { type: 1, components: row1 },
+    {
+      type: 1,
       components: [
         {
-          type: 8, // CHANNEL_SELECT
+          type: 8,
           custom_id: "select_channel",
           placeholder: "📢 Choose a channel for vehicle drop alerts...",
-          channel_types: [0], // GUILD_TEXT
+          channel_types: [0, 5],
         },
       ],
     },
   ];
 }
 
-export async function handleInteraction(req: Request, env: any): Promise<Response> {
+export async function handleInteraction(
+  req: Request,
+  env: any,
+  ctx?: ExecutionContext,
+  originHint?: string
+): Promise<Response> {
   const signature = req.headers.get("x-signature-ed25519");
   const timestamp = req.headers.get("x-signature-timestamp");
   const rawBody = await req.text();
@@ -279,7 +197,21 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
   }
 
   const body = JSON.parse(rawBody);
-  const { type, data, guild_id } = body as any;
+  const { type, data, guild_id, member, token: interactionToken } = body as any;
+  const appId =
+    body.application_id || env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "";
+  const portalOrigin =
+    resolvePublicOrigin(env, originHint) ||
+    "https://everfall-limited-watcher.itschase.workers.dev";
+  const actionComponents = buildActionComponents(portalOrigin);
+
+  const runAsync = (task: Promise<void>) => {
+    if (ctx && typeof ctx.waitUntil === "function") {
+      ctx.waitUntil(task);
+    } else {
+      task.catch((err) => console.error("Background interaction error:", err));
+    }
+  };
 
   // 1. Handle Ping
   if (type === InteractionType.PING) {
@@ -289,11 +221,10 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
   }
 
   // 2. Handle Interactive Component Clicks (Buttons & Select Menus)
-  if (type === 3) {
-    // MESSAGE_COMPONENT
+  if (type === (InteractionType.MESSAGE_COMPONENT || 3)) {
     const customId = data?.custom_id as string;
 
-    // A. Handle Image Gallery Pagination (◀ Previous / Next ▶)
+    // A. Handle Image Gallery Pagination
     if (customId?.startsWith("img_prev:") || customId?.startsWith("img_next:")) {
       const parts = customId.split(":");
       const action = parts[0];
@@ -302,7 +233,7 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
       const newIdx = action === "img_next" ? currentIdx + 1 : currentIdx - 1;
 
       const car = await getCarPackage(env, carId);
-      if (car) {
+      if (car && car.images.length > 0) {
         const messageEmbeds = body.message?.embeds || [];
         const messageComponents = body.message?.components || [];
         const safeIdx = Math.max(0, Math.min(newIdx, car.images.length - 1));
@@ -334,46 +265,71 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
         }
 
         return jsonResponse(
-          {
-            embeds: messageEmbeds,
-            components: messageComponents,
-          },
-          7 // UPDATE_MESSAGE: smoothly changes image and button state
+          { embeds: messageEmbeds, components: messageComponents },
+          InteractionResponseType.UPDATE_MESSAGE || 7
         );
       }
     }
 
-    // B. Handle Scan Store Button
+    // B. Handle Scan Store Button (requires Manage Server / Admin + deferred to avoid 3s timeout)
     if (customId === "action_check") {
-      const cfg = guild_id ? await getGuildConfig(env, guild_id) : null;
+      if (!guild_id) {
+        return jsonResponse({ flags: EPHEMERAL_FLAG, content: "This action only works in a server." });
+      }
+      if (!hasManageServerPermission(member)) {
+        return jsonResponse({
+          flags: EPHEMERAL_FLAG,
+          content: "You need Manage Server or Administrator permissions to run this command.",
+        });
+      }
+      const cfg = await getGuildConfig(env, guild_id);
       if (!cfg || !cfg.channelId) {
         return jsonResponse(
           {
             flags: EPHEMERAL_FLAG,
             embeds: [buildNotConfiguredEmbed()],
-            components: buildActionComponents(),
+            components: actionComponents,
           },
-          7 // UPDATE_MESSAGE
+          7
         );
       }
 
-      const result = await postAllListingsToGuild(env, guild_id);
-      return jsonResponse(
-        {
-          flags: EPHEMERAL_FLAG,
-          embeds: [
-            {
-              title: "✅ Store Check Dispatched",
-              description: `Scanned the Everfall store and automatically posted **${result.count}** active vehicle drop(s) to <#${cfg.channelId}> with full gallery view and role mentions!`,
-              color: 0x10b981,
-              footer: { text: "Everfall Limited Watcher" },
-              timestamp: new Date().toISOString(),
-            },
-          ],
-          components: buildActionComponents(),
-        },
-        7 // UPDATE_MESSAGE
+      runAsync(
+        (async () => {
+          try {
+            const result = await postAllListingsToGuild(env, guild_id, portalOrigin);
+            const description = result.error
+              ? `⚠️ Store check encountered an issue posting to <#${cfg.channelId}>: \`${result.error}\``
+              : result.count > 0
+                ? `Scanned the Everfall store and posted **${result.count}** active vehicle drop(s) to <#${cfg.channelId}>!`
+                : `Store scanned. No new or active vehicle drops were posted to <#${cfg.channelId}>.${result.notice ? ` (${result.notice})` : ""}`;
+            await editOriginalInteractionResponse(appId, interactionToken, {
+              embeds: [
+                {
+                  title: result.error ? "⚠️ Store Check Warning" : "✅ Store Check Dispatched",
+                  description,
+                  color: result.error ? 0xf59e0b : 0x10b981,
+                  footer: { text: "Everfall Limited Watcher" },
+                  timestamp: new Date().toISOString(),
+                },
+              ],
+              components: actionComponents,
+            });
+          } catch (err: any) {
+            await editOriginalInteractionResponse(appId, interactionToken, {
+              embeds: [
+                {
+                  title: "❌ Store Check Failed",
+                  description: err?.message || "Unexpected error during store check.",
+                  color: 0xef4444,
+                },
+              ],
+              components: actionComponents,
+            });
+          }
+        })()
       );
+      return deferredResponse(true, true);
     }
 
     // C. Handle View Config Button
@@ -383,30 +339,31 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
         {
           flags: EPHEMERAL_FLAG,
           embeds: [buildHelpEmbed(cfg)],
-          components: buildActionComponents(),
+          components: actionComponents,
         },
-        7 // UPDATE_MESSAGE
+        7
       );
     }
 
-    // D. Handle Interactive Channel Select Menu
+    // D. Handle Interactive Channel Select Menu (requires Manage Server / Admin)
     if (customId === "select_channel") {
+      if (!hasManageServerPermission(member)) {
+        return jsonResponse({
+          flags: EPHEMERAL_FLAG,
+          content: "You need Manage Server or Administrator permissions to change the alert channel.",
+        });
+      }
       const selectedChannel = data?.values?.[0];
       if (guild_id && selectedChannel) {
         const existing = (await getGuildConfig(env, guild_id)) ?? { channelId: "", roleIds: [] };
         await setGuildConfig(env, guild_id, { ...existing, channelId: selectedChannel });
 
-        // Auto-publish any currently active store listings that haven't been sent to this server yet
-        const publishedCount = await publishActiveListingsToGuildOnSetup(env, guild_id);
-
         const updatedEmbed = {
-          title: "✅ Alert Channel Updated",
+          title: "Alert Channel Updated",
           color: 0x10b981,
           description:
-            `Vehicle drop alerts will now be posted to <#${selectedChannel}>!\n\n` +
-            (publishedCount > 0
-              ? `🎉 **Auto-Published ${publishedCount} Active Listing(s)** directly to <#${selectedChannel}>!`
-              : `ℹ️ All currently active store listings have already been published in this server.`),
+            `Vehicle drop alerts will now be posted to <#${selectedChannel}> when new limited drops are detected.\n\n` +
+            `To run an immediate check for unsent active drops, use \`/check\`.`,
           fields: [
             {
               name: "Mention Roles",
@@ -424,9 +381,9 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
           {
             flags: EPHEMERAL_FLAG,
             embeds: [updatedEmbed],
-            components: buildActionComponents(),
+            components: actionComponents,
           },
-          7 // UPDATE_MESSAGE
+          7
         );
       }
     }
@@ -454,34 +411,35 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
       return jsonResponse({
         flags: EPHEMERAL_FLAG,
         embeds: [buildHelpEmbed(cfg)],
-        components: buildActionComponents(),
+        components: actionComponents,
       });
     }
 
     case "setup": {
+      if (!hasManageServerPermission(member)) {
+        return jsonResponse({
+          flags: EPHEMERAL_FLAG,
+          content: "You need Manage Server or Administrator permissions to run `/setup`.",
+        });
+      }
       const channel = data?.options?.find((o: any) => o.name === "channel")?.value as string;
       if (!channel) {
         return jsonResponse({
           flags: EPHEMERAL_FLAG,
-          content: "❌ Please specify a valid channel.",
+          content: "Please specify a valid channel.",
         });
       }
       const existing = (await getGuildConfig(env, guild_id)) ?? { channelId: "", roleIds: [] };
       await setGuildConfig(env, guild_id, { ...existing, channelId: channel });
 
-      // Auto-publish any currently active store listings that haven't been sent to this server yet
-      const publishedCount = await publishActiveListingsToGuildOnSetup(env, guild_id);
-
       return jsonResponse({
         flags: EPHEMERAL_FLAG,
         embeds: [
           {
-            title: "✅ Alert Channel Configured",
+            title: "Alert Channel Configured",
             description:
-              `Successfully set <#${channel}> as the vehicle alerts channel.\n\n` +
-              (publishedCount > 0
-                ? `🎉 **Auto-Published ${publishedCount} Active Listing(s)** directly to <#${channel}>!`
-                : `ℹ️ All currently active store listings have already been published in this server.`),
+              `Successfully set <#${channel}> as the vehicle alerts channel. New limited drops will be delivered there automatically.\n\n` +
+              `Use \`/add-role\` to select mention roles or \`/check\` to check for any unsent active drops.`,
             color: 0x10b981,
             fields: [
               {
@@ -496,11 +454,17 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
             timestamp: new Date().toISOString(),
           },
         ],
-        components: buildActionComponents(),
+        components: actionComponents,
       });
     }
 
     case "add-role": {
+      if (!hasManageServerPermission(member)) {
+        return jsonResponse({
+          flags: EPHEMERAL_FLAG,
+          content: "❌ You need **Manage Server** or **Administrator** permissions to run `/add-role`.",
+        });
+      }
       const roleId = data?.options?.find((o: any) => o.name === "role")?.value as string;
       if (!roleId) {
         return jsonResponse({ flags: EPHEMERAL_FLAG, content: "❌ Specify a role to add." });
@@ -529,6 +493,12 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
     }
 
     case "remove-role": {
+      if (!hasManageServerPermission(member)) {
+        return jsonResponse({
+          flags: EPHEMERAL_FLAG,
+          content: "❌ You need **Manage Server** or **Administrator** permissions to run `/remove-role`.",
+        });
+      }
       const roleId = data?.options?.find((o: any) => o.name === "role")?.value as string;
       if (!roleId) {
         return jsonResponse({ flags: EPHEMERAL_FLAG, content: "❌ Specify a role to remove." });
@@ -560,28 +530,51 @@ export async function handleInteraction(req: Request, env: any): Promise<Respons
     }
 
     case "check": {
+      if (!hasManageServerPermission(member)) {
+        return jsonResponse({
+          flags: EPHEMERAL_FLAG,
+          content: "You need Manage Server or Administrator permissions to use `/check`.",
+        });
+      }
       const cfg = await getGuildConfig(env, guild_id);
       if (!cfg || !cfg.channelId) {
         return jsonResponse({
           flags: EPHEMERAL_FLAG,
           embeds: [buildNotConfiguredEmbed()],
-          components: buildActionComponents(),
+          components: actionComponents,
         });
       }
 
-      const result = await postAllListingsToGuild(env, guild_id);
-      if (result.count === 0) {
-        return jsonResponse({
-          content: "🔎 **Everfall Limited Store Check**: No limited vehicles are currently listed on the store.",
-        });
-      }
-
-      const isAlertChannel = body.channel_id === cfg.channelId;
-      return jsonResponse({
-        content: isAlertChannel
-          ? `🔎 **Everfall Limited Store Check**: Scanned store and automatically posted all **${result.count}** active limited drops below!`
-          : `✅ **Everfall Limited Store Check**: Scanned store and automatically posted all **${result.count}** active limited drops to <#${cfg.channelId}>!`,
-      });
+      runAsync(
+        (async () => {
+          try {
+            const result = await postAllListingsToGuild(env, guild_id, portalOrigin);
+            if (result.error) {
+              await editOriginalInteractionResponse(appId, interactionToken, {
+                content: `⚠️ **Everfall Limited Store Check**: Failed to post to <#${cfg.channelId}> (${result.error}).`,
+              });
+              return;
+            }
+            if (result.count === 0) {
+              await editOriginalInteractionResponse(appId, interactionToken, {
+                content: `🔎 **Everfall Limited Store Check**: No active limited vehicles were posted.${result.notice ? ` (${result.notice})` : ""}`,
+              });
+              return;
+            }
+            const isAlertChannel = body.channel_id === cfg.channelId;
+            await editOriginalInteractionResponse(appId, interactionToken, {
+              content: isAlertChannel
+                ? `🔎 **Everfall Limited Store Check**: Scanned store and posted **${result.count}** active limited drop(s) below!`
+                : `✅ **Everfall Limited Store Check**: Scanned store and posted **${result.count}** active limited drop(s) to <#${cfg.channelId}>!`,
+            });
+          } catch (err: any) {
+            await editOriginalInteractionResponse(appId, interactionToken, {
+              content: `❌ **Everfall Limited Store Check Failed**: ${err?.message || "Unexpected error."}`,
+            });
+          }
+        })()
+      );
+      return deferredResponse(false, false);
     }
 
     default:

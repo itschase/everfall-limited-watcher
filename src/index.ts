@@ -1,18 +1,23 @@
 import { handleInteraction } from "./commands";
-import { runCron, getArchivedListingImage } from "./scraper";
+import { runCron, getArchivedListingImage, ensureHistoricalKnownListingsPreserved } from "./scraper";
 import { renderLandingPage } from "./landing";
 import { registerCommands } from "./register";
 import {
+  handleAuthUrl,
+  handleAuthHandoff,
   handleLoginRedirect,
   handleOAuthCallback,
-  renderDashboard,
   handleSaveConfig,
   handleSaveGuildSettings,
   handleTestAlert,
   handleManualPull,
   verifySessionCookie,
+  getSessionSecret,
   getCreatorProfile,
+  getRequestOrigin,
+  buildLogoutCookie,
 } from "./admin";
+import { handleApiRequest } from "./api";
 import { EF_LOGO_BASE64 } from "./assets";
 import { getListingHistory, getMonitorStatus } from "./kv";
 
@@ -33,9 +38,24 @@ function getLogoBinaryResponse(): Response {
   });
 }
 
+async function isAuthorizedMaintenanceRequest(request: Request, env: any): Promise<boolean> {
+  const authHeader = request.headers.get("Authorization") || "";
+  const cronSecret = env.CRON_SECRET || env.MAINTENANCE_SECRET || "";
+  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+    return true;
+  }
+  const user = await verifySessionCookie(
+    request.headers.get("Cookie"),
+    getSessionSecret(env),
+    env.DISCORD_PRIMARY_ADMINISTRATOR
+  );
+  return Boolean(user?.isAdmin);
+}
+
 export default {
-  async fetch(request: Request, env: any, ctx: any): Promise<Response> {
+  async fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const origin = getRequestOrigin(request, env);
 
     if (url.pathname === "/.well-known/discord") {
       return new Response("dh=d0600a94d4fa65192fc95f7b86f65fb91373ef4c", {
@@ -47,8 +67,11 @@ export default {
       });
     }
 
-    // Favicon & Icon Routes
-    if (url.pathname === "/favicon.ico" || url.pathname === "/icon.webp" || url.pathname === "/icon.png") {
+    if (
+      url.pathname === "/favicon.ico" ||
+      url.pathname === "/icon.webp" ||
+      url.pathname === "/icon.png"
+    ) {
       return getLogoBinaryResponse();
     }
 
@@ -59,35 +82,70 @@ export default {
 
     // 1. Discord Interactions Webhook Endpoint
     if (request.method === "POST" && url.pathname === "/interactions") {
-      return handleInteraction(request, env);
+      return handleInteraction(request, env, ctx, origin);
     }
 
-    // 2. Cron & Health Endpoints
+    // 2. Protected Cron & Diagnostics Health Endpoints
     if (request.method === "POST" && url.pathname === "/cron") {
-      await runCron(env);
-      return new Response("Cron executed", { status: 200 });
+      if (!(await isAuthorizedMaintenanceRequest(request, env))) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      const result = await runCron(env, origin);
+      return new Response(JSON.stringify({ ok: true, ...result }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
     }
 
     if (url.pathname === "/health") {
-      return new Response("Everfall Limited Watcher is alive", { status: 200 });
+      const kvAvailable = Boolean(env.DISCORD_BOT);
+      const monitorStatus = kvAvailable ? await getMonitorStatus(env) : null;
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          service: "Everfall Limited Watcher",
+          kvAvailable,
+          botConfigured: Boolean(env.DISCORD_BOT_TOKEN),
+          lastCheckedAt: monitorStatus?.checkedAt ?? null,
+          lastSuccessAt: monitorStatus?.lastSuccessAt ?? null,
+          authoritative: monitorStatus?.authoritative ?? null,
+        }),
+        {
+          status: kvAvailable ? 200 : 503,
+          headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+        }
+      );
     }
 
-    // 3. Command Registration Endpoint
+    // 3. Protected Command Registration Endpoint
     if (url.pathname === "/register-commands") {
+      if (!(await isAuthorizedMaintenanceRequest(request, env))) {
+        return new Response("Unauthorized", { status: 401 });
+      }
       return registerCommands(env);
     }
 
-    // 4. User & Admin OAuth2 / Dashboard Routes
+    // 4. OAuth2 Endpoints
+    if (request.method === "GET" && url.pathname === "/api/auth/url") {
+      return handleAuthUrl(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/auth/handoff") {
+      return handleAuthHandoff(request, env);
+    }
+
+    // 5. Typed JSON REST APIs (must run before static asset / SPA fallback)
+    if (url.pathname.startsWith("/api/")) {
+      const apiRes = await handleApiRequest(request, env, url);
+      if (apiRes) return apiRes;
+    }
+
     if (url.pathname === "/login") {
-      return await handleLoginRedirect(request, env);
+      return handleLoginRedirect(request, env);
     }
 
-    if (url.pathname === "/auth/callback") {
+    if (url.pathname === "/auth/callback" || url.pathname === "/auth/callback/") {
       return handleOAuthCallback(request, env);
-    }
-
-    if (url.pathname === "/admin" || url.pathname === "/dashboard") {
-      return renderDashboard(request, env);
     }
 
     if (request.method === "POST" && url.pathname === "/admin/save-config") {
@@ -111,21 +169,40 @@ export default {
         status: 302,
         headers: {
           Location: "/",
-          "Set-Cookie": "everfall_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0",
+          "Set-Cookie": buildLogoutCookie(request, env),
+          "Cache-Control": "no-store",
         },
       });
     }
 
-    // 5. Default Public Landing Page
+    // 6. Serve React SPA & Vite Static Assets
+    if (env.ASSETS && (request.method === "GET" || request.method === "HEAD")) {
+      const assetResponse = await env.ASSETS.fetch(request);
+      const contentType = assetResponse.headers.get("Content-Type") || "";
+      if (contentType.includes("text/html")) {
+        const headers = new Headers(assetResponse.headers);
+        headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+        headers.set("Vary", "Cookie");
+        return new Response(assetResponse.body, {
+          status: assetResponse.status,
+          statusText: assetResponse.statusText,
+          headers,
+        });
+      }
+      return assetResponse;
+    }
+
+    // Fallback when static asset binding is absent
+    await ensureHistoricalKnownListingsPreserved(env, origin);
     const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
-    const sessionSecret = env.DISCORD_CLIENT_SECRET || "";
     const currentUser = await verifySessionCookie(
-      request.headers.get("Cookie"), sessionSecret, env.DISCORD_PRIMARY_ADMINISTRATOR
+      request.headers.get("Cookie"),
+      getSessionSecret(env),
+      env.DISCORD_PRIMARY_ADMINISTRATOR
     );
     const creatorProfile = await getCreatorProfile(env);
-
     const history = await getListingHistory(env);
-    const displayListings = history.map((record) => ({
+    const displayListings = history.slice(0, 10).map((record) => ({
       ...record.payload,
       id: record.id,
       detectedAt: record.firstSeenAt,
@@ -136,7 +213,7 @@ export default {
     return renderLandingPage(appId, displayListings, currentUser, creatorProfile, monitorStatus);
   },
 
-  async scheduled(controller: any, env: any, ctx: any): Promise<void> {
+  async scheduled(_controller: any, env: any, _ctx: ExecutionContext): Promise<void> {
     await runCron(env);
   },
 };

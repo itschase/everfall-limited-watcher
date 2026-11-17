@@ -1,7 +1,10 @@
+import { fetchDiscordWithRetry } from "./discord";
+
 export const COMMANDS = [
   {
     name: "setup",
     description: "Configure the channel for Everfall limited drop alerts",
+    default_member_permissions: "32", // MANAGE_GUILD
     options: [
       {
         name: "channel",
@@ -14,6 +17,7 @@ export const COMMANDS = [
   {
     name: "add-role",
     description: "Add a role to ping when a limited drop occurs",
+    default_member_permissions: "32", // MANAGE_GUILD
     options: [
       {
         name: "role",
@@ -26,6 +30,7 @@ export const COMMANDS = [
   {
     name: "remove-role",
     description: "Remove a role from drop notifications",
+    default_member_permissions: "32", // MANAGE_GUILD
     options: [
       {
         name: "role",
@@ -47,7 +52,7 @@ export const COMMANDS = [
 
 export async function registerCommands(env: any): Promise<Response> {
   const token = env.DISCORD_BOT_TOKEN;
-  const appId = env.DISCORD_APPLICATION_ID || "1571958001928245378";
+  const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
 
   if (!token) {
     return new Response(
@@ -59,14 +64,17 @@ export async function registerCommands(env: any): Promise<Response> {
     );
   }
 
-  const res = await fetch(`https://discord.com/api/v10/applications/${appId}/commands`, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bot ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(COMMANDS),
-  });
+  const res = await fetchDiscordWithRetry(
+    `https://discord.com/api/v10/applications/${appId}/commands`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bot ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(COMMANDS),
+    }
+  );
 
   const data = await res.json();
   return new Response(JSON.stringify({ status: res.status, result: data }, null, 2), {

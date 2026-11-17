@@ -1,20 +1,46 @@
 name = "everfall-limited-watcher"
 main = "src/index.ts"
-compatibility_date = "2024-08-01"
+compatibility_date = "2024-11-01"
 keep_vars = true
 
-# NOTE: Do NOT add any secret values (DISCORD_CLIENT_SECRET, DISCORD_BOT_TOKEN) here. Secrets must be stored only in the Cloudflare Dashboard.
+# Single source of truth for Cloudflare Workers deployment + Vite SPA static assets
+[assets]
+directory = "./dist/client"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+# Production environment (deployed on push to master / main)
+# NOTE: Never place secret values (DISCORD_CLIENT_SECRET, DISCORD_BOT_TOKEN, CRON_SECRET) in this file.
 [vars]
 DISCORD_APPLICATION_ID = "1571958001928245378"
 DISCORD_CLIENT_ID = "1571958001928245378"
 DISCORD_PUBLIC_KEY = "b143dc5acc60aff5f7a95169189f10e36fcc3cddb288ee8b3849a22b5c2af1d9"
 DISCORD_PRIMARY_ADMINISTRATOR = "151037568484507648"
-
-
+PUBLIC_ORIGIN = "https://everfall-limited-watcher.itschase.workers.dev"
 
 [triggers]
 crons = ["*/15 * * * *"]
 
 [[kv_namespaces]]
+binding = "DISCORD_BOT"
+id = "41d8c9dce7f34af28156a5a0d3233bfb"
+
+# Staging environment (deployed on push to staging branch)
+# Configure staging secrets in Cloudflare Dashboard for everfall-limited-watcher-staging.
+[env.staging]
+name = "everfall-limited-watcher-staging"
+
+[env.staging.vars]
+DISCORD_APPLICATION_ID = "1571958001928245378"
+DISCORD_CLIENT_ID = "1571958001928245378"
+DISCORD_PUBLIC_KEY = "b143dc5acc60aff5f7a95169189f10e36fcc3cddb288ee8b3849a22b5c2af1d9"
+DISCORD_PRIMARY_ADMINISTRATOR = "151037568484507648"
+PUBLIC_ORIGIN = "https://everfall-limited-watcher-staging.itschase.workers.dev"
+
+[env.staging.triggers]
+crons = ["*/15 * * * *"]
+
+[[env.staging.kv_namespaces]]
 binding = "DISCORD_BOT"
 id = "41d8c9dce7f34af28156a5a0d3233bfb"
