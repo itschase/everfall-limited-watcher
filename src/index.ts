@@ -37,6 +37,16 @@ export default {
   async fetch(request: Request, env: any, ctx: any): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === "/.well-known/discord") {
+      return new Response("dh=d0600a94d4fa65192fc95f7b86f65fb91373ef4c", {
+        status: 200,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "public, max-age=300",
+        },
+      });
+    }
+
     // Favicon & Icon Routes
     if (url.pathname === "/favicon.ico" || url.pathname === "/icon.webp" || url.pathname === "/icon.png") {
       return getLogoBinaryResponse();
