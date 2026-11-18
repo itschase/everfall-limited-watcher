@@ -5,6 +5,8 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Copy,
   Loader2,
@@ -69,6 +71,8 @@ export function AdminMonitorPage() {
   const [inspectItem, setInspectItem] = useState<ListingItem | null>(null);
   const [inspectLog, setInspectLog] = useState<MonitorLogEntry | null>(null);
   const [logFilter, setLogFilter] = useState<"all" | "success" | "failures">("all");
+  const [logPage, setLogPage] = useState(1);
+  const logPageSize = 15;
   const [lastScanSummary, setLastScanSummary] = useState<{
     usedVerifiedStoreResponse: boolean;
     newDiscoveries: number;
@@ -308,7 +312,13 @@ export function AdminMonitorPage() {
                 Every store check attempt and outcome retained cleanly for 7 days.
               </p>
             </div>
-            <Tabs value={logFilter} onValueChange={(v) => setLogFilter(v as typeof logFilter)}>
+            <Tabs
+              value={logFilter}
+              onValueChange={(v) => {
+                setLogFilter(v as typeof logFilter);
+                setLogPage(1);
+              }}
+            >
               <TabsList>
                 <TabsTrigger value="all">All ({monitorLogs.length})</TabsTrigger>
                 <TabsTrigger value="success">Success ({successCount})</TabsTrigger>
@@ -336,52 +346,88 @@ export function AdminMonitorPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredLogs.slice(0, 60).map((entry) => (
-                    <TableRow key={entry.id}>
-                      <TableCell className="whitespace-nowrap text-xs text-zinc-200 tabular-nums">
-                        {formatLocalDateTime(entry.timestamp)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{formatSourceLabel(entry.source)}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        {entry.status === "success" ? (
-                          <Badge variant="success">Success</Badge>
-                        ) : entry.status === "blocked" ? (
-                          <Badge variant="warning">CF Challenge</Badge>
-                        ) : (
-                          <Badge variant="destructive">Failed</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap font-mono text-xs text-zinc-300 tabular-nums">
-                        {entry.httpStatus ? `HTTP ${entry.httpStatus}` : "Err"} &bull;{" "}
-                        {formatBytes(entry.responseLength)} &bull; {entry.durationMs}ms
-                      </TableCell>
-                      <TableCell className="max-w-[260px] truncate text-xs text-muted-foreground">
-                        {entry.message}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="inline-flex items-center gap-1">
-                          {entry.status !== "success" && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              aria-label="Copy error log"
-                              title="Copy error diagnostic JSON"
-                              onClick={() => void copyMonitorLog(entry)}
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </Button>
+                  {filteredLogs
+                    .slice((logPage - 1) * logPageSize, logPage * logPageSize)
+                    .map((entry) => (
+                      <TableRow key={entry.id}>
+                        <TableCell className="whitespace-nowrap text-xs text-zinc-200 tabular-nums">
+                          {formatLocalDateTime(entry.timestamp)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{formatSourceLabel(entry.source)}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {entry.status === "success" ? (
+                            <Badge variant="success">Success</Badge>
+                          ) : entry.status === "blocked" ? (
+                            <Badge variant="warning">CF Challenge</Badge>
+                          ) : (
+                            <Badge variant="destructive">Failed</Badge>
                           )}
-                          <Button variant="ghost" size="sm" onClick={() => setInspectLog(entry)}>
-                            Inspect
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap font-mono text-xs text-zinc-300 tabular-nums">
+                          {entry.httpStatus ? `HTTP ${entry.httpStatus}` : "Err"} &bull;{" "}
+                          {formatBytes(entry.responseLength)} &bull; {entry.durationMs}ms
+                        </TableCell>
+                        <TableCell className="max-w-[260px] truncate text-xs text-muted-foreground">
+                          {entry.message}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="inline-flex items-center gap-1">
+                            {entry.status !== "success" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label="Copy error log"
+                                title="Copy error diagnostic JSON"
+                                onClick={() => void copyMonitorLog(entry)}
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            <Button variant="ghost" size="sm" onClick={() => setInspectLog(entry)}>
+                              Inspect
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                 </TableBody>
               </Table>
+            )}
+
+            {/* Pagination Controls */}
+            {filteredLogs.length > logPageSize && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs text-muted-foreground">
+                <span className="tabular-nums">
+                  Showing {(logPage - 1) * logPageSize + 1}–{Math.min(logPage * logPageSize, filteredLogs.length)} of {filteredLogs.length} logs
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={logPage <= 1}
+                    onClick={() => setLogPage((p) => Math.max(1, p - 1))}
+                    className="h-8 gap-1 px-2.5"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                    Previous
+                  </Button>
+                  <span className="font-mono text-zinc-300">
+                    Page {logPage} of {Math.ceil(filteredLogs.length / logPageSize)}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={logPage >= Math.ceil(filteredLogs.length / logPageSize)}
+                    onClick={() => setLogPage((p) => Math.min(Math.ceil(filteredLogs.length / logPageSize), p + 1))}
+                    className="h-8 gap-1 px-2.5"
+                  >
+                    Next
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>

@@ -58,12 +58,6 @@ function BotHealthBadge({ status }: { status: BotStatus }) {
   );
 }
 
-const STATS = [
-  { label: "Check Frequency", value: "Every 7m", icon: Clock },
-  { label: "Notification Latency", value: "<15s Real-Time", icon: Zap },
-  { label: "Multi-Angle Gallery", value: "Archived Angles", icon: Images },
-  { label: "Verification", value: "100% Authoritative", icon: ShieldCheck },
-];
 
 const FEATURES = [
   {
@@ -162,17 +156,6 @@ export function HomePage() {
         </div>
 
         <div className="relative mx-auto max-w-4xl px-4 py-16 text-center sm:px-6 sm:py-24 lg:px-8">
-          {/* Live Monitor Radar Pill */}
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border/80 bg-zinc-900/80 px-3.5 py-1 text-xs font-medium text-zinc-300 backdrop-blur-md shadow-sm">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-80 duration-1000" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)]" />
-            </span>
-            <span className="tracking-wide">Autonomous Store Monitor Active</span>
-            <span className="h-3 w-px bg-zinc-700" />
-            <span className="font-mono text-[11px] text-zinc-400">Scans Every 7m</span>
-          </div>
-
           <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
             Never Miss an Everfall <br className="hidden sm:inline" />
             <span className="bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
@@ -196,20 +179,43 @@ export function HomePage() {
             </a>
           </div>
 
-          {/* Quick Metrics Bar */}
-          <div className="mt-12 grid grid-cols-2 gap-3 border-t border-border/60 pt-8 sm:grid-cols-4">
-            {STATS.map((stat) => {
-              const Icon = stat.icon;
-              return (
-                <div key={stat.label} className="rounded-lg border border-border/50 bg-card/60 p-3 text-center">
-                  <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                    <Icon className="h-3.5 w-3.5 text-zinc-400" />
-                    <span>{stat.label}</span>
-                  </div>
-                  <div className="mt-1 font-mono text-sm font-semibold text-white">{stat.value}</div>
-                </div>
-              );
-            })}
+          {/* Live Operational Metrics (Check Frequency & Latency with glowing state beacons) */}
+          <div className="mx-auto mt-12 grid max-w-lg grid-cols-1 gap-3.5 border-t border-border/60 pt-8 sm:grid-cols-2">
+            <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/75 p-3.5 text-center shadow-sm backdrop-blur-sm transition-all hover:border-zinc-700">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="relative flex h-2 w-2">
+                  <span
+                    className={cn(
+                      "absolute inline-flex h-full w-full animate-ping rounded-full opacity-80 duration-1000",
+                      botStatus === "online" ? "bg-emerald-400" : "bg-red-400"
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "relative inline-flex h-2 w-2 rounded-full",
+                      botStatus === "online"
+                        ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)]"
+                        : "bg-red-400 shadow-[0_0_8px_rgba(239,68,68,1)]"
+                    )}
+                  />
+                </span>
+                <Clock className="h-3.5 w-3.5 text-zinc-400" />
+                <span>Check Frequency</span>
+              </div>
+              <div className="mt-1 font-mono text-sm font-semibold text-white">Every 7m</div>
+            </div>
+
+            <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/75 p-3.5 text-center shadow-sm backdrop-blur-sm transition-all hover:border-zinc-700">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-80 duration-1000" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)]" />
+                </span>
+                <Zap className="h-3.5 w-3.5 text-zinc-400" />
+                <span>Notification Latency</span>
+              </div>
+              <div className="mt-1 font-mono text-sm font-semibold text-white">&lt;15s Real-Time</div>
+            </div>
           </div>
         </div>
       </section>

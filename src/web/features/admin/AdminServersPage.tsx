@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, RefreshCw, Search } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { AdminConnectedGuild, AdminOverviewResponse, apiFetch } from "@/lib/api";
 import { formatLocalDateTime } from "@/lib/utils";
@@ -30,6 +30,8 @@ export function AdminServersPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, isFetching } = useAdminOverview();
   const [search, setSearch] = useState("");
+  const [serverPage, setServerPage] = useState(1);
+  const serverPageSize = 10;
   const [selectedGuild, setSelectedGuild] = useState<AdminConnectedGuild | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -85,7 +87,10 @@ export function AdminServersPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setServerPage(1);
+            }}
             placeholder="Search server name or ID..."
             className="pl-9"
           />
@@ -114,81 +119,118 @@ export function AdminServersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {guilds.map((guild) => (
-                <TableRow key={guild.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      {guild.iconUrl ? (
-                        <img src={guild.iconUrl} alt="" className="h-8 w-8 rounded-lg" />
-                      ) : (
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-xs font-bold text-white">
-                          {guild.name.slice(0, 2).toUpperCase()}
+              {guilds
+                .slice((serverPage - 1) * serverPageSize, serverPage * serverPageSize)
+                .map((guild) => (
+                  <TableRow key={guild.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        {guild.iconUrl ? (
+                          <img src={guild.iconUrl} alt="" className="h-8 w-8 rounded-lg" />
+                        ) : (
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-xs font-bold text-white">
+                            {guild.name.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-semibold text-white">{guild.name}</p>
+                          <div className="mt-0.5 flex items-center gap-1.5">
+                            <span className="select-text font-mono text-[11px] text-muted-foreground">
+                              {guild.id}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void copyId(guild.id, "Server ID")}
+                              aria-label={`Copy server ID ${guild.id}`}
+                              title="Copy Server ID"
+                              className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
+                            >
+                              {copiedId === guild.id ? (
+                                <Check className="h-3 w-3 text-emerald-400" />
+                              ) : (
+                                <Copy className="h-3 w-3" />
+                              )}
+                            </button>
+                          </div>
                         </div>
-                      )}
-                      <div>
-                        <p className="font-semibold text-white">{guild.name}</p>
-                        <div className="mt-0.5 flex items-center gap-1.5">
-                          <span className="select-text font-mono text-[11px] text-muted-foreground">
-                            {guild.id}
-                          </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={guild.environment === "test" ? "warning" : "secondary"}>
+                        {guild.environment === "test" ? "Test Server" : "Production"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {guild.configured ? (
+                        <div className="inline-flex items-center gap-1.5">
+                          <Badge variant="success" className="font-mono">
+                            #<span className="select-text cursor-text">{guild.channelId}</span>
+                          </Badge>
                           <button
                             type="button"
-                            onClick={() => void copyId(guild.id, "Server ID")}
-                            aria-label={`Copy server ID ${guild.id}`}
-                            title="Copy Server ID"
+                            onClick={() => void copyId(guild.channelId, "Channel ID")}
+                            aria-label={`Copy channel ID ${guild.channelId}`}
+                            title="Copy Channel ID"
                             className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
                           >
-                            {copiedId === guild.id ? (
+                            {copiedId === guild.channelId ? (
                               <Check className="h-3 w-3 text-emerald-400" />
                             ) : (
                               <Copy className="h-3 w-3" />
                             )}
                           </button>
                         </div>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={guild.environment === "test" ? "warning" : "secondary"}>
-                      {guild.environment === "test" ? "Test Server" : "Production"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {guild.configured ? (
-                      <div className="inline-flex items-center gap-1.5">
-                        <Badge variant="success" className="font-mono">
-                          #<span className="select-text cursor-text">{guild.channelId}</span>
-                        </Badge>
-                        <button
-                          type="button"
-                          onClick={() => void copyId(guild.channelId, "Channel ID")}
-                          aria-label={`Copy channel ID ${guild.channelId}`}
-                          title="Copy Channel ID"
-                          className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
-                        >
-                          {copiedId === guild.channelId ? (
-                            <Check className="h-3 w-3 text-emerald-400" />
-                          ) : (
-                            <Copy className="h-3 w-3" />
-                          )}
-                        </button>
-                      </div>
-                    ) : (
-                      <Badge variant="secondary">Channel Not Set</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs text-zinc-300 tabular-nums">
-                    {guild.roleIds.length > 0 ? `${guild.roleIds.length} role(s)` : "None"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="outline" size="sm" onClick={() => setSelectedGuild(guild)}>
-                      Inspect Logs
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+                      ) : (
+                        <Badge variant="secondary">Channel Not Set</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-zinc-300 tabular-nums">
+                      {guild.roleIds.length > 0 ? `${guild.roleIds.length} role(s)` : "None"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="sm" onClick={() => setSelectedGuild(guild)}>
+                        Inspect Logs
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
+        )}
+
+        {/* Server List Pagination */}
+        {guilds.length > serverPageSize && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4 text-xs text-muted-foreground">
+            <span className="tabular-nums">
+              Showing {(serverPage - 1) * serverPageSize + 1}–
+              {Math.min(serverPage * serverPageSize, guilds.length)} of {guilds.length} servers
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={serverPage <= 1}
+                onClick={() => setServerPage((p) => Math.max(1, p - 1))}
+                className="h-8 gap-1 px-2.5"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Previous
+              </Button>
+              <span className="font-mono text-zinc-300">
+                Page {serverPage} of {Math.ceil(guilds.length / serverPageSize)}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={serverPage >= Math.ceil(guilds.length / serverPageSize)}
+                onClick={() => setServerPage((p) => Math.min(Math.ceil(guilds.length / serverPageSize), p + 1))}
+                className="h-8 gap-1 px-2.5"
+              >
+                Next
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
         )}
       </Card>
 

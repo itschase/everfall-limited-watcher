@@ -66,7 +66,7 @@ export function StockStatusPill({
 }
 
 function extractListingPerks(description: string) {
-  const perks: { label: string; icon: "sound" | "custom" | "trade" | "delivery" | "sparkles" }[] = [];
+  const perks: { label: string; icon: "sound" | "custom" | "quantity" | "time" }[] = [];
   const lower = description.toLowerCase();
 
   if (lower.includes("custom sound") || lower.includes("sound profile") || lower.includes("engine sound")) {
@@ -78,14 +78,17 @@ function extractListingPerks(description: string) {
   } else if (lower.includes("customization")) {
     perks.push({ label: "Custom Options", icon: "custom" });
   }
-  if (lower.includes("trade") || lower.includes("traded")) {
-    perks.push({ label: "Limited Trade Only", icon: "trade" });
+  if (lower.includes("quantity-limited") || lower.includes("quantity limited") || lower.includes("limited quantity")) {
+    perks.push({ label: "Quantity-Limited", icon: "quantity" });
   }
-  if (lower.includes("garage") || lower.includes("delivered")) {
-    perks.push({ label: "Auto-Delivered", icon: "delivery" });
-  }
-  if (lower.includes("quantity-limited") || lower.includes("limited")) {
-    perks.push({ label: "Quantity-Limited", icon: "sparkles" });
+  if (
+    lower.includes("time-limited") ||
+    lower.includes("time limited") ||
+    lower.includes("limited time") ||
+    lower.includes("available until") ||
+    lower.includes("expires")
+  ) {
+    perks.push({ label: "Time-Limited", icon: "time" });
   }
   return perks;
 }
@@ -121,8 +124,23 @@ export function VehicleCard({ listing, isRefreshing, onInspect, className }: Veh
         className
       )}
     >
-      {/* Image Viewport */}
-      <div className="relative aspect-[16/10] w-full overflow-hidden border-b border-border bg-zinc-950">
+      {/* Image Viewport - Click/tap opens full inspection card */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onInspect?.(listing)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onInspect?.(listing);
+          }
+        }}
+        title={onInspect ? "Click to view full vehicle details & high-res angles" : undefined}
+        className={cn(
+          "group/img relative aspect-[16/10] w-full overflow-hidden border-b border-border bg-zinc-950",
+          onInspect && "cursor-pointer"
+        )}
+      >
         {!imgBroken ? (
           <img
             src={currentImg}
@@ -136,6 +154,16 @@ export function VehicleCard({ listing, isRefreshing, onInspect, className }: Veh
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-zinc-900/70 text-muted-foreground">
             <CarFront className="h-9 w-9 text-white/30" />
             <span className="text-xs font-medium text-muted-foreground">Preview Unavailable</span>
+          </div>
+        )}
+
+        {/* Hover View in Full indicator overlay */}
+        {onInspect && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-150 group-hover/img:opacity-100">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/75 px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur-md">
+              <Maximize2 className="h-3.5 w-3.5" />
+              View in Full
+            </span>
           </div>
         )}
 
@@ -163,20 +191,26 @@ export function VehicleCard({ listing, isRefreshing, onInspect, className }: Veh
             <button
               type="button"
               aria-label="Previous image"
-              onClick={() => setActiveIdx((prev) => (prev - 1 + images.length) % images.length)}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 rounded-lg border border-white/10 bg-black/60 p-1.5 text-white/80 transition hover:bg-black/80 hover:text-white cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveIdx((prev) => (prev - 1 + images.length) % images.length);
+              }}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 rounded-lg border border-white/10 bg-black/60 p-1.5 text-white/80 transition hover:bg-black/80 hover:text-white cursor-pointer z-10"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
             <button
               type="button"
               aria-label="Next image"
-              onClick={() => setActiveIdx((prev) => (prev + 1) % images.length)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg border border-white/10 bg-black/60 p-1.5 text-white/80 transition hover:bg-black/80 hover:text-white cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveIdx((prev) => (prev + 1) % images.length);
+              }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg border border-white/10 bg-black/60 p-1.5 text-white/80 transition hover:bg-black/80 hover:text-white cursor-pointer z-10"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
-            <div className="absolute bottom-2.5 right-3 rounded-md border border-white/10 bg-black/65 px-2 py-0.5 text-[11px] font-medium text-zinc-200 tabular-nums backdrop-blur-sm">
+            <div className="absolute bottom-2.5 right-3 rounded-md border border-white/10 bg-black/65 px-2 py-0.5 text-[11px] font-medium text-zinc-200 tabular-nums backdrop-blur-sm z-10">
               {safeIdx + 1} / {images.length}
             </div>
           </>
@@ -249,11 +283,19 @@ export function VehicleCard({ listing, isRefreshing, onInspect, className }: Veh
               {perks.map((perk) => (
                 <span
                   key={perk.label}
-                  className="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-0.5 text-[11px] font-medium text-zinc-300"
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium",
+                    perk.icon === "quantity"
+                      ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                      : perk.icon === "time"
+                      ? "border-sky-500/40 bg-sky-500/10 text-sky-300"
+                      : "border-zinc-800 bg-zinc-900/60 text-zinc-300"
+                  )}
                 >
                   {perk.icon === "sound" && <Volume2 className="h-3 w-3 text-zinc-400" />}
                   {perk.icon === "custom" && <Wrench className="h-3 w-3 text-zinc-400" />}
-                  {perk.icon === "sparkles" && <Sparkles className="h-3 w-3 text-amber-400" />}
+                  {perk.icon === "quantity" && <Sparkles className="h-3 w-3 text-amber-400" />}
+                  {perk.icon === "time" && <Clock className="h-3 w-3 text-sky-400" />}
                   {perk.label}
                 </span>
               ))}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Loader2, Send } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch, DeliveryLogEntry } from "@/lib/api";
 import { formatLocalDateTime } from "@/lib/utils";
@@ -30,6 +30,8 @@ import {
 export function AdminDispatchPage() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useAdminOverview();
+  const [logPage, setLogPage] = useState(1);
+  const logPageSize = 10;
   const [selectedListingId, setSelectedListingId] = useState<string>("");
   // Explicitly unchecked by default per Issue #6
   const [selectedGuildIds, setSelectedGuildIds] = useState<string[]>([]);
@@ -265,37 +267,79 @@ export function AdminDispatchPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(data?.deliveryLogs || []).slice(0, 20).map((log) => (
-                      <TableRow key={log.id}>
-                        <TableCell className="font-medium text-white">{log.listingName}</TableCell>
-                        <TableCell className="select-text font-mono text-xs text-muted-foreground">
-                          {log.guildId}
-                        </TableCell>
-                        <TableCell className="capitalize text-xs text-zinc-300">{log.method}</TableCell>
-                        <TableCell>
-                          <Badge variant={log.environment === "test" ? "warning" : "secondary"}>
-                            {log.environment}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {log.status === "delivered" ? (
-                            <span className="inline-flex items-center gap-1 text-xs text-emerald-300">
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              Delivered
-                            </span>
-                          ) : (
-                            <span className="text-xs text-red-400">
-                              {log.error || "Failed"}
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground tabular-nums">
-                          {formatLocalDateTime(log.timestamp)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {(data?.deliveryLogs || [])
+                      .slice((logPage - 1) * logPageSize, logPage * logPageSize)
+                      .map((log) => (
+                        <TableRow key={log.id}>
+                          <TableCell className="font-medium text-white">{log.listingName}</TableCell>
+                          <TableCell className="select-text font-mono text-xs text-muted-foreground">
+                            {log.guildId}
+                          </TableCell>
+                          <TableCell className="capitalize text-xs text-zinc-300">{log.method}</TableCell>
+                          <TableCell>
+                            <Badge variant={log.environment === "test" ? "warning" : "secondary"}>
+                              {log.environment}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {log.status === "delivered" ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-emerald-300">
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                Delivered
+                              </span>
+                            ) : (
+                              <span className="text-xs text-red-400">
+                                {log.error || "Failed"}
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground tabular-nums">
+                            {formatLocalDateTime(log.timestamp)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
                   </TableBody>
                 </Table>
+              )}
+
+              {/* Delivery Logs Pagination */}
+              {(data?.deliveryLogs || []).length > logPageSize && (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs text-muted-foreground">
+                  <span className="tabular-nums">
+                    Showing {(logPage - 1) * logPageSize + 1}–
+                    {Math.min(logPage * logPageSize, (data?.deliveryLogs || []).length)} of{" "}
+                    {(data?.deliveryLogs || []).length} deliveries
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={logPage <= 1}
+                      onClick={() => setLogPage((p) => Math.max(1, p - 1))}
+                      className="h-8 gap-1 px-2.5"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                      Previous
+                    </Button>
+                    <span className="font-mono text-zinc-300">
+                      Page {logPage} of {Math.ceil((data?.deliveryLogs || []).length / logPageSize)}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={logPage >= Math.ceil((data?.deliveryLogs || []).length / logPageSize)}
+                      onClick={() =>
+                        setLogPage((p) =>
+                          Math.min(Math.ceil((data?.deliveryLogs || []).length / logPageSize), p + 1)
+                        )
+                      }
+                      className="h-8 gap-1 px-2.5"
+                    >
+                      Next
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>

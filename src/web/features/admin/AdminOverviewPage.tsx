@@ -82,11 +82,20 @@ export function AdminOverviewPage() {
             <Card className="p-5">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Discord Bot Status</span>
-                {data.botStatus === "online" ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                ) : (
-                  <AlertCircle className="h-4 w-4 text-red-400" />
-                )}
+                <span className="relative flex h-2.5 w-2.5">
+                  <span
+                    className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${
+                      data.botStatus === "online" ? "bg-emerald-400" : "bg-red-400"
+                    }`}
+                  />
+                  <span
+                    className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
+                      data.botStatus === "online"
+                        ? "bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,1)]"
+                        : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]"
+                    }`}
+                  />
+                </span>
               </div>
               <p className="mt-2 text-lg font-bold text-white">
                 {data.botStatus === "online" ? "Bot Online" : "Bot Offline"}
