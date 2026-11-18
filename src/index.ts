@@ -40,8 +40,9 @@ function getLogoBinaryResponse(): Response {
 
 async function isAuthorizedMaintenanceRequest(request: Request, env: any): Promise<boolean> {
   const authHeader = request.headers.get("Authorization") || "";
+  const headerSecret = request.headers.get("X-Cron-Secret") || "";
   const cronSecret = env.CRON_SECRET || env.MAINTENANCE_SECRET || "";
-  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+  if (cronSecret && (authHeader === `Bearer ${cronSecret}` || headerSecret === cronSecret)) {
     return true;
   }
   const user = await verifySessionCookie(
@@ -86,9 +87,25 @@ export default {
     }
 
     // 2. Protected Cron & Diagnostics Health Endpoints
-    if (request.method === "POST" && url.pathname === "/cron") {
+    if (url.pathname === "/cron") {
+      if (request.method !== "POST" && request.method !== "GET") {
+        return new Response(JSON.stringify({ ok: false, error: "Method not allowed" }), {
+          status: 405,
+          headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+        });
+      }
       if (!(await isAuthorizedMaintenanceRequest(request, env))) {
-        return new Response("Unauthorized", { status: 401 });
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "Unauthorized /cron trigger.",
+            hint: "Send POST /cron with Authorization: Bearer <CRON_SECRET> or sign in as administrator. Set CRON_SECRET in both Cloudflare Worker secrets and GitHub Actions repository secrets.",
+          }),
+          {
+            status: 401,
+            headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+          }
+        );
       }
       const result = await runCron(env, origin, "cron-fetch");
       return new Response(JSON.stringify({ ok: true, ...result }), {

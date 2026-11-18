@@ -202,8 +202,8 @@ export function AdminDispatchPage() {
                             />
                             <div className="min-w-0">
                               <p className="truncate font-semibold text-white">{guild.name}</p>
-                              <p className="select-text font-mono text-[11px] text-muted-foreground">
-                                Channel #{guild.channelId}
+                              <p className="font-mono text-[11px] text-muted-foreground">
+                                Channel #<span className="select-text cursor-text">{guild.channelId}</span>
                               </p>
                             </div>
                           </div>

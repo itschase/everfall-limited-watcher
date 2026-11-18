@@ -65,8 +65,14 @@
 }
 
 @layer base {
-  * {
+  *,
+  *::before,
+  *::after {
     border-color: var(--border);
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
   }
 
   html {
@@ -79,18 +85,31 @@
     color: var(--foreground);
     min-height: 100vh;
     margin: 0;
-    user-select: none;
-    -webkit-user-select: none;
   }
 
   input,
   textarea,
-  select,
-  [contenteditable="true"],
-  code,
-  pre {
-    user-select: text;
+  [contenteditable="true"] {
     -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+}
+
+@layer utilities {
+  .select-text {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+
+  .select-all {
+    -webkit-user-select: all;
+    -moz-user-select: all;
+    user-select: all;
+    -webkit-touch-callout: default;
   }
 }
 

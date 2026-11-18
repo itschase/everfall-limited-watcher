@@ -156,8 +156,8 @@ export function AdminServersPage() {
                   <TableCell>
                     {guild.configured ? (
                       <div className="inline-flex items-center gap-1.5">
-                        <Badge variant="success" className="select-text font-mono">
-                          #{guild.channelId}
+                        <Badge variant="success" className="font-mono">
+                          #<span className="select-text cursor-text">{guild.channelId}</span>
                         </Badge>
                         <button
                           type="button"

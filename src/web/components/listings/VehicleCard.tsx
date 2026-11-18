@@ -172,8 +172,8 @@ export function VehicleCard({ listing, isRefreshing, onInspect, className }: Veh
         <div>
           <div className="flex items-start justify-between gap-3">
             <h3 className="text-lg font-bold tracking-tight text-white">{listing.name}</h3>
-            <span className="select-text font-mono text-xs text-muted-foreground tabular-nums">
-              #{listing.id}
+            <span className="font-mono text-xs text-muted-foreground tabular-nums">
+              #<span className="select-text cursor-text">{listing.id}</span>
             </span>
           </div>
 

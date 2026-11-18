@@ -30,7 +30,7 @@ export interface CarListing {
 }
 
 const MIN_STORE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
-const FETCH_CRON_GRACE_MS = 25 * 60 * 1000;
+const FETCH_CRON_GRACE_MS = 45 * 60 * 1000;
 const STORE_URLS = [
   "https://everfall.tebex.io/category/limited-cars",
   "https://store.everfallcommunity.com/category/limited-cars",

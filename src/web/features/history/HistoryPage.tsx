@@ -150,8 +150,8 @@ export function HistoryPage() {
                 <DialogTitle>{selectedListing.name}</DialogTitle>
                 <StockStatusPill isAvailable={selectedListing.isAvailable} />
               </div>
-              <DialogDescription className="select-text font-mono text-xs">
-                Package ID #{selectedListing.id}
+              <DialogDescription className="font-mono text-xs">
+                Package ID #<span className="select-text cursor-text text-zinc-300">{selectedListing.id}</span>
               </DialogDescription>
             </DialogHeader>
 

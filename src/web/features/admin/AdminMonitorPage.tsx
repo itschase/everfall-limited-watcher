@@ -143,6 +143,34 @@ export function AdminMonitorPage() {
     }
   };
 
+  const copyMonitorLog = async (entry: MonitorLogEntry) => {
+    const payload = JSON.stringify(
+      {
+        id: entry.id,
+        timestamp: new Date(entry.timestamp).toISOString(),
+        source: entry.source,
+        outcome: entry.status,
+        httpStatus: entry.httpStatus,
+        cloudflareChallenge: entry.cloudflareChallenge,
+        authoritative: entry.authoritative,
+        responseLength: entry.responseLength,
+        durationMs: entry.durationMs,
+        targetUrl: entry.targetUrl,
+        listingCount: entry.listingCount,
+        newDiscoveries: entry.newDiscoveries,
+        message: entry.message,
+      },
+      null,
+      2
+    );
+    try {
+      await navigator.clipboard.writeText(payload);
+      toast.success("Copied error diagnostic log");
+    } catch {
+      toast.info("Select the log text below to copy.");
+    }
+  };
+
   return (
     <AppShell
       requireAdmin
@@ -245,7 +273,12 @@ export function AdminMonitorPage() {
                   Cloudflare Scheduled Runner Challenge Detected
                 </p>
                 <p className="text-zinc-300">
-                  Tebex&apos;s Cloudflare protection challenges Worker <code className="text-white">scheduled</code> cron triggers (<code className="text-white">403</code>) while permitting <code className="text-white">fetch</code> requests (<code className="text-white">200 OK</code>). Configure <code className="text-white">CRON_SECRET</code> on your GitHub repository &amp; Worker to invoke <code className="text-white">POST /cron</code> every 18 minutes via HTTP fetch.
+                  Tebex&apos;s Cloudflare protection challenges Worker <code className="text-white">scheduled</code> cron triggers (<code className="text-white">403</code>) while permitting <code className="text-white">fetch</code> requests (<code className="text-white">200 OK</code>). Configure <code className="text-white">CRON_SECRET</code> in both Cloudflare Worker Secrets and GitHub Repository Secrets so <code className="text-white">.github/workflows/store-monitor.yml</code> invokes <code className="text-white">POST /cron</code> every 18 minutes via HTTP fetch.
+                </p>
+                <p className="text-[11px] text-amber-300/90">
+                  {monitor?.lastFetchCronSuccessAt
+                    ? `Latest HTTP Cron (/cron) success: ${formatLocalDateTime(monitor.lastFetchCronSuccessAt)}`
+                    : "No HTTP Cron (/cron) execution recorded yet — configure CRON_SECRET to activate automated fetch-context checks."}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={() => void copyCronEndpoint()} className="shrink-0">
@@ -318,9 +351,22 @@ export function AdminMonitorPage() {
                         {entry.message}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => setInspectLog(entry)}>
-                          Inspect
-                        </Button>
+                        <div className="inline-flex items-center gap-1">
+                          {entry.status !== "success" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label="Copy error log"
+                              title="Copy error diagnostic JSON"
+                              onClick={() => void copyMonitorLog(entry)}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" onClick={() => setInspectLog(entry)}>
+                            Inspect
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -358,7 +404,9 @@ export function AdminMonitorPage() {
                     <TableRow key={item.id}>
                       <TableCell>
                         <p className="font-semibold text-white">{item.name}</p>
-                        <p className="select-text font-mono text-[11px] text-muted-foreground">#{item.id}</p>
+                        <p className="font-mono text-[11px] text-muted-foreground">
+                          #<span className="select-text cursor-text">{item.id}</span>
+                        </p>
                       </TableCell>
                       <TableCell>
                         <Badge variant={item.isAvailable ? "success" : "destructive"}>
@@ -464,13 +512,27 @@ export function AdminMonitorPage() {
               </div>
               <div className="rounded-lg border border-border bg-zinc-950 p-3">
                 <span className="text-muted-foreground">Target URL</span>
-                <p className="mt-0.5 select-text break-all font-mono text-[11px] text-zinc-200">
+                <p className="mt-0.5 select-text cursor-text break-all font-mono text-[11px] text-zinc-200">
                   {inspectLog.targetUrl}
                 </p>
               </div>
               <div className="rounded-lg border border-border bg-zinc-950 p-3">
-                <span className="text-muted-foreground">Log Message</span>
-                <p className="mt-1 text-sm text-zinc-200">{inspectLog.message}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Log Message</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-[11px]"
+                    onClick={() => void copyMonitorLog(inspectLog)}
+                  >
+                    <Copy className="h-3 w-3" />
+                    Copy Log JSON
+                  </Button>
+                </div>
+                <p className="mt-1.5 select-text cursor-text text-sm text-zinc-200">
+                  {inspectLog.message}
+                </p>
               </div>
             </div>
           </DialogContent>

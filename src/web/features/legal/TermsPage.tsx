@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 export function TermsPage() {
   return (
     <PublicLayout>
-      <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8 select-text">
+      <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
         <Card className="p-6 sm:p-10">
           <div className="border-b border-border pb-6">
             <h1 className="text-3xl font-extrabold tracking-tight text-white">Terms of Service</h1>

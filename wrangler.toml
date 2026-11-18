@@ -20,7 +20,7 @@ DISCORD_PRIMARY_ADMINISTRATOR = "151037568484507648"
 PUBLIC_ORIGIN = "https://everfall-limited-watcher.itschase.workers.dev"
 
 [triggers]
-crons = ["4-59/18 * * * *"]
+crons = ["12-59/18 * * * *"]
 
 [[kv_namespaces]]
 binding = "DISCORD_BOT"
@@ -43,7 +43,7 @@ DISCORD_PRIMARY_ADMINISTRATOR = "151037568484507648"
 PUBLIC_ORIGIN = "https://everfall-limited-watcher-staging.itschase.workers.dev"
 
 [env.staging.triggers]
-crons = ["4-59/18 * * * *"]
+crons = ["12-59/18 * * * *"]
 
 [[env.staging.kv_namespaces]]
 binding = "DISCORD_BOT"

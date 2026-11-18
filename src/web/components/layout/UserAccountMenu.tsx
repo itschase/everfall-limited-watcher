@@ -58,8 +58,9 @@ export function UserAccountMenu({
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="flex flex-col">
           <span className="text-sm text-white">{user.username}</span>
-          <span className="select-text font-mono text-[11px] font-normal text-muted-foreground">
-            ID: {user.id}
+          <span className="font-mono text-[11px] font-normal text-muted-foreground">
+            ID:{" "}
+            <span className="select-text cursor-text text-zinc-300">{user.id}</span>
           </span>
         </DropdownMenuLabel>
         <DropdownMenuItem onSelect={() => void copyDiscordId()}>
