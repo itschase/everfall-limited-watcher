@@ -7,7 +7,7 @@ export function useAdminOverview() {
   return useQuery({
     queryKey: ADMIN_OVERVIEW_KEY,
     queryFn: () => apiFetch<AdminOverviewResponse>("/api/admin/overview"),
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
     refetchIntervalInBackground: false,
   });
 }
