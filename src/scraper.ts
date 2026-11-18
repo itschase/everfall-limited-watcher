@@ -138,7 +138,18 @@ async function verifyListingPackageEndpoint(
     if (httpStatus === 404 || httpStatus === 410) {
       return { status: "sold_out", httpStatus };
     }
-    const html = await res.text();
+    //const html = await res.text();
+console.log("Everfall store verification", {
+  httpStatus: res.status,
+  responseUrl: res.url,
+  success: res.ok,
+  cloudflareChallenge:
+    html.includes("challenges.cloudflare.com") ||
+    html.includes("Just a moment...") ||
+    html.includes("Attention Required!"),
+  responseLength: html.length,
+  timestamp: new Date().toISOString(),
+});    
     if (
       !res.ok ||
       html.includes("challenges.cloudflare.com") ||
