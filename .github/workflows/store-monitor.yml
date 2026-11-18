@@ -45,15 +45,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ms-playwright-${{ runner.os }}-${{ hashFiles('scripts/requirements-scrapling.txt') }}
+          key: ms-playwright-v2-${{ runner.os }}-${{ hashFiles('scripts/requirements-scrapling.txt') }}
 
-      - name: Install Scrapling Chromium binaries
+      - name: Install Patchright and Playwright Chromium binaries
         if: steps.config.outputs.enabled == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
-        run: scrapling install
+        run: |
+          python -m patchright install chromium
+          python -m playwright install chromium
 
-      - name: Install OS runtime deps for Chromium
+      - name: Install Chromium OS dependencies
         if: steps.config.outputs.enabled == 'true'
-        run: python -m playwright install-deps chromium
+        run: python -m patchright install-deps chromium
 
       - name: Run Scrapling store verification and sync to Worker
         if: steps.config.outputs.enabled == 'true'
