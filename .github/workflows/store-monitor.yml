@@ -2,8 +2,12 @@ name: Scheduled Store Monitor (Scrapling)
 
 on:
   schedule:
-    - cron: "4,22,40,58 * * * *"
+    - cron: "*/7 * * * *"
   workflow_dispatch:
+
+concurrency:
+  group: scrapling-store-monitor
+  cancel-in-progress: false
 
 jobs:
   scrapling-store-check:

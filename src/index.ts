@@ -104,7 +104,7 @@ export default {
           JSON.stringify({
             ok: false,
             error: "Unauthorized /cron trigger.",
-            hint: "Send POST /cron with header X-Cron-Secret: <CRON_SECRET> or Authorization: Bearer <CRON_SECRET> (e.g. from cron-job.org).",
+            hint: "Send POST /cron with header X-Cron-Secret: <CRON_SECRET> or Authorization: Bearer <CRON_SECRET>.",
           }),
           {
             status: 401,

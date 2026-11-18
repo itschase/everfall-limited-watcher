@@ -129,9 +129,17 @@ export function AdminMonitorPage() {
     return true;
   });
 
-  const hasRecentScheduledBlock = monitorLogs
-    .slice(0, 10)
-    .some((entry) => entry.source === "scheduled" && entry.cloudflareChallenge);
+  const latestScraplingSuccess = monitorLogs.find(
+    (entry) => entry.source === "scrapling" && entry.status === "success"
+  );
+  const latestBlockedCheck = monitorLogs.find(
+    (entry) =>
+      (entry.source === "scheduled" || entry.source === "cron-fetch") &&
+      entry.cloudflareChallenge
+  );
+  const hasRecentScheduledBlock =
+    Boolean(latestBlockedCheck) &&
+    (!latestScraplingSuccess || latestBlockedCheck!.timestamp > latestScraplingSuccess.timestamp);
 
   const cronEndpointUrl =
     typeof window !== "undefined" ? `${window.location.origin}/cron` : "/cron";
@@ -206,7 +214,7 @@ export function AdminMonitorPage() {
               <p className="text-lg font-bold text-white">
                 {monitor?.authoritative === false ? "Blocked / Preserved" : "Authoritative"}
               </p>
-              <Badge variant="secondary">Every 18m</Badge>
+              <Badge variant="secondary">Every 7m</Badge>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               Latest check source: {formatSourceLabel(monitor?.lastSource)}
@@ -272,15 +280,15 @@ export function AdminMonitorPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1 text-xs">
                 <p className="font-semibold text-amber-200">
-                  Cloudflare Scheduled Challenge Active — Use Scrapling Runner
+                  Cloudflare Scheduled Challenge Active — Scrapling Sync Recommended
                 </p>
                 <p className="text-zinc-300">
-                  Tebex&apos;s Cloudflare protection blocks raw HTTP cron checks (<code className="text-white">403</code>). Set <code className="text-white">CRON_SECRET</code> in GitHub Repository Secrets so the bundled <strong className="text-white">Scrapling</strong> workflow (<code className="text-white">.github/workflows/store-monitor.yml</code>) verifies the storefront via stealth Chromium every 18 minutes and syncs results to <code className="text-white">POST /cron</code>.
+                  Tebex&apos;s Cloudflare protection blocks raw HTTP checks (<code className="text-white">403</code>). Ensure <code className="text-white">CRON_SECRET</code> matches in both GitHub Secrets and Cloudflare Secrets so <strong className="text-white">Scheduled Store Monitor (Scrapling)</strong> automatically verifies the storefront every 7 minutes on <code className="text-white">master</code>.
                 </p>
                 <p className="text-[11px] text-amber-300/90">
                   {monitor?.lastFetchCronSuccessAt
-                    ? `Latest automated /cron sync: ${formatLocalDateTime(monitor.lastFetchCronSuccessAt)}`
-                    : "No automated Scrapling sync recorded yet — configure CRON_SECRET in GitHub Actions to enable 18-minute background checks."}
+                    ? `Latest automated Scrapling sync: ${formatLocalDateTime(monitor.lastFetchCronSuccessAt)}`
+                    : "No automated Scrapling sync recorded yet — waiting for the next 7-minute Scrapling run."}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={() => void copyCronEndpoint()} className="shrink-0">
