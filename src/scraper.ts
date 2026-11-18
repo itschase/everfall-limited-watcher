@@ -279,6 +279,7 @@ type StoreFetchResult = {
   responseLength: number | null;
   targetUrl: string;
   durationMs: number;
+  confirmedSoldOutIds?: string[];
 };
 
 async function syncListingHistory(
@@ -349,11 +350,16 @@ async function syncListingHistory(
   }
 
   if (result.authoritative) {
+    const confirmedSoldOut = new Set(result.confirmedSoldOutIds || []);
     const missingFromCategory = history.filter(
       (record) => record.isAvailable && !currentIds.has(record.id)
     );
     await Promise.all(
       missingFromCategory.map(async (record) => {
+        if (confirmedSoldOut.has(record.id)) {
+          await setListingAvailability(env, record.id, false, 404);
+          return;
+        }
         // Confirm removal / HTTP 404 directly on the package endpoint before marking Sold Out
         const check = await verifyListingPackageEndpoint(record.id);
         if (check.status === "sold_out") {
@@ -375,7 +381,7 @@ async function syncListingHistory(
       checkedAt: now,
       lastSuccessAt: result.authoritative ? now : previousStatus?.lastSuccessAt,
       lastFetchCronSuccessAt:
-        result.authoritative && source === "cron-fetch"
+        result.authoritative && (source === "cron-fetch" || source === "scrapling")
           ? now
           : previousStatus?.lastFetchCronSuccessAt,
       lastSource: source,
@@ -1241,4 +1247,104 @@ export async function runCron(
   }
 
   return { checked: listings.length, newDrops, notice, authoritative };
+}
+
+export interface ExternalStoreSyncPayload {
+  source?: "scrapling" | "cron-fetch";
+  authoritative: boolean;
+  httpStatus?: number | null;
+  cloudflareChallenge?: boolean;
+  responseLength?: number | null;
+  targetUrl?: string;
+  durationMs?: number;
+  notice?: string;
+  confirmedSoldOutIds?: string[];
+  listings?: Array<{
+    id: string;
+    name?: string;
+    description?: string;
+    url?: string;
+    images?: string[];
+  }>;
+}
+
+export async function ingestVerifiedStoreScan(
+  env: any,
+  originHint: string | undefined,
+  payload: ExternalStoreSyncPayload
+): Promise<{ checked: number; newDrops: number; notice?: string; authoritative: boolean }> {
+  const source: MonitorLogSource = payload.source === "scrapling" ? "scrapling" : "cron-fetch";
+  const targetUrl =
+    typeof payload.targetUrl === "string" && /^https:\/\//i.test(payload.targetUrl)
+      ? payload.targetUrl
+      : STORE_URLS[1];
+
+  const sanitizedListings: CarListing[] = Array.isArray(payload.listings)
+    ? payload.listings
+        .filter((item) => item && /^\d+$/.test(String(item.id || "").trim()))
+        .map((item) => {
+          const id = String(item.id).trim();
+          const known = KNOWN_LIMITED_CARS.find((c) => c.id === id);
+          if (known) return known;
+          const safeImages = Array.isArray(item.images)
+            ? item.images.filter((u) => typeof u === "string" && /^https:\/\//i.test(u)).slice(0, 10)
+            : [];
+          const rawUrl = typeof item.url === "string" ? item.url : "";
+          const safeUrl = /^https:\/\/(store\.everfallcommunity\.com|everfall\.tebex\.io)\/package\/\d+/i.test(
+            rawUrl
+          )
+            ? rawUrl
+            : `https://store.everfallcommunity.com/package/${id}`;
+          return {
+            id,
+            name: String(item.name || `Limited Vehicle #${id}`).slice(0, 140),
+            description: String(
+              item.description || "A new limited edition vehicle is now available on the Everfall store!"
+            ).slice(0, 2500),
+            url: safeUrl,
+            images: safeImages,
+          };
+        })
+    : [];
+
+  const confirmedSoldOutIds = Array.isArray(payload.confirmedSoldOutIds)
+    ? payload.confirmedSoldOutIds.filter((id) => /^\d+$/.test(String(id || "").trim()))
+    : [];
+
+  const result: StoreFetchResult = {
+    listings: payload.authoritative ? sanitizedListings : [],
+    notice: typeof payload.notice === "string" ? payload.notice.slice(0, 400) : undefined,
+    authoritative: Boolean(payload.authoritative),
+    httpStatus: typeof payload.httpStatus === "number" ? payload.httpStatus : null,
+    cloudflareChallenge: Boolean(payload.cloudflareChallenge),
+    responseLength: typeof payload.responseLength === "number" ? payload.responseLength : null,
+    targetUrl,
+    durationMs: typeof payload.durationMs === "number" && payload.durationMs >= 0 ? payload.durationMs : 0,
+    confirmedSoldOutIds,
+  };
+
+  const synced = await syncListingHistory(env, result, {
+    originHint,
+    skipHistoryFetchWhenBlocked: true,
+    source,
+  });
+
+  await recordMonitorAttempt(env, source, result, synced.newDiscoveries);
+
+  let newDrops = 0;
+  if (result.authoritative) {
+    for (const car of synced.availableListings) {
+      const sent = await broadcastListing(env, car, false);
+      if (sent > 0) {
+        newDrops += sent;
+      }
+    }
+  }
+
+  return {
+    checked: synced.availableListings.length,
+    newDrops,
+    notice: result.notice,
+    authoritative: result.authoritative,
+  };
 }

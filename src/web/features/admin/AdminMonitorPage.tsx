@@ -44,6 +44,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function formatSourceLabel(source?: MonitorLogSource): string {
   switch (source) {
+    case "scrapling":
+      return "Scrapling";
     case "cron-fetch":
       return "HTTP Cron";
     case "manual":
@@ -270,15 +272,15 @@ export function AdminMonitorPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1 text-xs">
                 <p className="font-semibold text-amber-200">
-                  Cloudflare Scheduled Runner Challenge Detected
+                  Cloudflare Scheduled Challenge Active — Use Scrapling Runner
                 </p>
                 <p className="text-zinc-300">
-                  Tebex&apos;s Cloudflare protection challenges Worker <code className="text-white">scheduled</code> cron triggers (<code className="text-white">403</code>) while permitting <code className="text-white">fetch</code> requests (<code className="text-white">200 OK</code>). Configure an external scheduler (such as <strong className="text-white">cron-job.org</strong>) to call <code className="text-white">POST /cron</code> every 18 minutes with header <code className="text-white">X-Cron-Secret</code> matching your Cloudflare <code className="text-white">CRON_SECRET</code>.
+                  Tebex&apos;s Cloudflare protection blocks raw HTTP cron checks (<code className="text-white">403</code>). Set <code className="text-white">CRON_SECRET</code> in GitHub Repository Secrets so the bundled <strong className="text-white">Scrapling</strong> workflow (<code className="text-white">.github/workflows/store-monitor.yml</code>) verifies the storefront via stealth Chromium every 18 minutes and syncs results to <code className="text-white">POST /cron</code>.
                 </p>
                 <p className="text-[11px] text-amber-300/90">
                   {monitor?.lastFetchCronSuccessAt
-                    ? `Latest HTTP Cron (/cron) success: ${formatLocalDateTime(monitor.lastFetchCronSuccessAt)}`
-                    : "No HTTP Cron (/cron) execution recorded yet — configure cron-job.org to activate automated checks."}
+                    ? `Latest automated /cron sync: ${formatLocalDateTime(monitor.lastFetchCronSuccessAt)}`
+                    : "No automated Scrapling sync recorded yet — configure CRON_SECRET in GitHub Actions to enable 18-minute background checks."}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={() => void copyCronEndpoint()} className="shrink-0">

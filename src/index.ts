@@ -1,5 +1,10 @@
 import { handleInteraction } from "./commands";
-import { runCron, getArchivedListingImage, ensureHistoricalKnownListingsPreserved } from "./scraper";
+import {
+  runCron,
+  ingestVerifiedStoreScan,
+  getArchivedListingImage,
+  ensureHistoricalKnownListingsPreserved,
+} from "./scraper";
 import { renderLandingPage } from "./landing";
 import { registerCommands } from "./register";
 import {
@@ -106,6 +111,26 @@ export default {
             headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
           }
         );
+      }
+      if (request.method === "POST") {
+        const contentType = request.headers.get("Content-Type") || "";
+        if (contentType.includes("application/json")) {
+          try {
+            const body: any = await request.json();
+            if (body && body.verifiedStoreSync === true) {
+              const syncResult = await ingestVerifiedStoreScan(env, origin, body);
+              return new Response(JSON.stringify({ ok: true, mode: "external-sync", ...syncResult }), {
+                status: 200,
+                headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+              });
+            }
+          } catch {
+            return new Response(JSON.stringify({ ok: false, error: "Invalid JSON sync payload." }), {
+              status: 400,
+              headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+            });
+          }
+        }
       }
       const result = await runCron(env, origin, "cron-fetch");
       return new Response(JSON.stringify({ ok: true, ...result }), {

@@ -19,7 +19,7 @@ export type ListingRecord = {
   payload: any;
 };
 
-export type MonitorLogSource = "manual" | "cron-fetch" | "scheduled" | "other";
+export type MonitorLogSource = "manual" | "cron-fetch" | "scrapling" | "scheduled" | "other";
 
 export type MonitorStatus = {
   checkedAt: number;

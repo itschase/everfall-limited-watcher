@@ -7,7 +7,7 @@ export interface SessionUser {
   isAdmin: boolean;
 }
 
-export type MonitorLogSource = "manual" | "cron-fetch" | "scheduled" | "other";
+export type MonitorLogSource = "manual" | "cron-fetch" | "scrapling" | "scheduled" | "other";
 
 export interface MonitorStatus {
   checkedAt: number;
