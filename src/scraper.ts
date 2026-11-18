@@ -295,7 +295,8 @@ async function getRateLimitedStoreListings(
   if (status && Date.now() - status.checkedAt < MIN_STORE_CHECK_INTERVAL_MS) {
     return {
       listings: await getAvailableHistoryListings(env),
-      notice: "Using recorded listing history; storefront was checked less than 10 minutes ago.",
+      notice: "Using recorded listing history; storefront was checked recently.",
+      //notice: "Using recorded listing history; storefront was checked less than 10 minutes ago.",
       checkedStore: false,
     };
   }
