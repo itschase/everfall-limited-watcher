@@ -31,6 +31,21 @@ export type MonitorStatus = {
   isChecking?: boolean;
   mode?: "fast" | "reduced";
   notice?: string;
+  catalogVersion?: number;
+  listingSummary?: {
+    total: number;
+    available: number;
+    soldOut: number;
+  };
+};
+
+export type MonitorLogAttempt = {
+  url: string;
+  httpStatus: number | null;
+  cloudflareChallenge: boolean;
+  responseLength: number | null;
+  durationMs: number;
+  note?: string;
 };
 
 export type MonitorLogEntry = {
@@ -47,6 +62,14 @@ export type MonitorLogEntry = {
   newDiscoveries: number;
   durationMs: number;
   message: string;
+  detectedListingIds?: string[];
+  detectedListingNames?: string[];
+  soldOutListingIds?: string[];
+  dispatchedDrops?: number;
+  preservedHistoryCount?: number;
+  runner?: string;
+  workflowRunUrl?: string;
+  attempts?: MonitorLogAttempt[];
 };
 
 export type DeliveryLogEntry = {
@@ -101,6 +124,130 @@ async function listKeysByPrefix(kv: KVNamespace, prefix: string): Promise<string
     console.error(`Error listing KV keys for prefix ${prefix}:`, err);
   }
   return names;
+}
+
+const LISTING_SNAPSHOT_KEY = "listings:snapshot";
+
+export type CatalogSnapshot = {
+  version: number;
+  records: ListingRecord[];
+};
+
+function normalizeSnapshotRecord(value: any, fallbackId?: string): ListingRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const id = String(value.id || fallbackId || "").trim();
+  if (!id) return null;
+  const firstSeenAt = value.firstSeenAt || value.ts || Date.now();
+  const lastSeenAt = value.lastSeenAt || value.ts || firstSeenAt;
+  return {
+    id,
+    firstSeenAt,
+    lastSeenAt,
+    lastVerifiedAt: value.lastVerifiedAt || lastSeenAt,
+    soldOutAt: value.soldOutAt || undefined,
+    isAvailable: value.isAvailable !== false,
+    lastHttpStatus: value.lastHttpStatus,
+    payload: value.payload || {},
+  };
+}
+
+function summarizeRecords(records: ListingRecord[]): {
+  total: number;
+  available: number;
+  soldOut: number;
+} {
+  let available = 0;
+  for (const r of records) {
+    if (r.isAvailable) available++;
+  }
+  return {
+    total: records.length,
+    available,
+    soldOut: records.length - available,
+  };
+}
+
+function sameSemanticListingContent(a: any, b: any): boolean {
+  return (
+    String(a?.name || "") === String(b?.name || "") &&
+    String(a?.description || "") === String(b?.description || "") &&
+    String(a?.url || "") === String(b?.url || "") &&
+    JSON.stringify(Array.isArray(a?.images) ? a.images : []) ===
+      JSON.stringify(Array.isArray(b?.images) ? b.images : [])
+  );
+}
+
+async function readSnapshotFromKv(kv: KVNamespace): Promise<CatalogSnapshot | null> {
+  const raw = await kv.get(LISTING_SNAPSHOT_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const records = parsed
+        .map((r) => normalizeSnapshotRecord(r))
+        .filter((r): r is ListingRecord => Boolean(r))
+        .sort((a, b) => b.firstSeenAt - a.firstSeenAt);
+      const maxTs = records.reduce(
+        (max, r) => Math.max(max, r.firstSeenAt, r.soldOutAt || 0),
+        0
+      );
+      return { version: maxTs || 1, records };
+    }
+    if (parsed && Array.isArray(parsed.records)) {
+      const records = parsed.records
+        .map((r: any) => normalizeSnapshotRecord(r))
+        .filter((r: ListingRecord | null): r is ListingRecord => Boolean(r))
+        .sort((a: ListingRecord, b: ListingRecord) => b.firstSeenAt - a.firstSeenAt);
+      return {
+        version: typeof parsed.version === "number" && parsed.version > 0 ? parsed.version : 1,
+        records,
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+async function syncSnapshotRecord(
+  kv: KVNamespace,
+  record: ListingRecord,
+  bumpVersion: boolean
+): Promise<CatalogSnapshot> {
+  const current = (await readSnapshotFromKv(kv)) || { version: Date.now(), records: [] };
+  const idx = current.records.findIndex((item) => item.id === record.id);
+  const nextRecords = [...current.records];
+  if (idx >= 0) {
+    nextRecords[idx] = record;
+  } else {
+    nextRecords.push(record);
+  }
+  nextRecords.sort((a, b) => b.firstSeenAt - a.firstSeenAt);
+  const nextSnapshot: CatalogSnapshot = {
+    version: bumpVersion ? Date.now() : current.version || Date.now(),
+    records: nextRecords,
+  };
+  await kv.put(LISTING_SNAPSHOT_KEY, JSON.stringify(nextSnapshot));
+  return nextSnapshot;
+}
+
+export async function purgePublicEdgeCaches(originHint?: string): Promise<void> {
+  if (typeof caches === "undefined" || !(caches as any)?.default) return;
+  const edgeCache = (caches as any).default as Cache;
+  const origins = new Set<string>(["https://everfall-limited-watcher.itschase.workers.dev"]);
+  if (typeof originHint === "string" && /^https?:\/\//i.test(originHint)) {
+    try {
+      origins.add(new URL(originHint).origin);
+    } catch {
+      // ignore invalid origin
+    }
+  }
+  await Promise.all(
+    [...origins].flatMap((origin) => [
+      edgeCache.delete(new Request(`${origin}/api/public/status`, { method: "GET" })).catch(() => false),
+      edgeCache.delete(new Request(`${origin}/api/public/listings`, { method: "GET" })).catch(() => false),
+    ])
+  );
 }
 
 export async function getGuildConfig(env: any, guildId: string): Promise<GuildConfig | null> {
@@ -268,6 +415,11 @@ export async function upsertListingRecord(
     };
   }
 
+  const semanticChanged =
+    !existing ||
+    existing.isAvailable !== isAvailable ||
+    !sameSemanticListingContent(existing.payload || {}, mergedPayload || {});
+
   const record: ListingRecord = {
     id: listingId,
     firstSeenAt,
@@ -286,6 +438,7 @@ export async function upsertListingRecord(
     registry.push(listingId);
     await kv.put("listings:all", JSON.stringify(registry));
   }
+  await syncSnapshotRecord(kv, record, semanticChanged);
   return record;
 }
 
@@ -300,6 +453,7 @@ export async function setListingAvailability(
   const raw = await kv.get(`listing:${listingId}`);
   if (!raw) return;
   const record = JSON.parse(raw) as ListingRecord;
+  const availabilityChanged = record.isAvailable !== isAvailable;
   const now = Date.now();
   record.isAvailable = isAvailable;
   record.lastSeenAt = now;
@@ -311,11 +465,21 @@ export async function setListingAvailability(
     record.soldOutAt = undefined;
   }
   await kv.put(`listing:${listingId}`, JSON.stringify(record));
+  const normalized = normalizeSnapshotRecord(record, listingId);
+  if (normalized) {
+    await syncSnapshotRecord(kv, normalized, availabilityChanged);
+  }
 }
 
-export async function getListingHistory(env: any): Promise<ListingRecord[]> {
+export async function getCatalogSnapshot(env: any): Promise<CatalogSnapshot> {
   const kv = env.DISCORD_BOT as KVNamespace;
-  if (!kv) return [];
+  if (!kv) return { version: 0, records: [] };
+
+  const snapshot = await readSnapshotFromKv(kv);
+  if (snapshot) {
+    return snapshot;
+  }
+
   let allIds: string[] | null = null;
   const registryRaw = await kv.get("listings:all");
   if (registryRaw !== null) {
@@ -336,26 +500,41 @@ export async function getListingHistory(env: any): Promise<ListingRecord[]> {
     }
   }
 
-  const records = await Promise.all(
+  const rawRecords = await Promise.all(
     allIds.map(async (id) => {
       const raw = await kv.get(`listing:${id}`);
       if (!raw) return null;
-      const value: any = JSON.parse(raw);
-      return {
-        id,
-        firstSeenAt: value.firstSeenAt || value.ts || Date.now(),
-        lastSeenAt: value.lastSeenAt || value.ts || Date.now(),
-        lastVerifiedAt: value.lastVerifiedAt || value.lastSeenAt || value.ts || undefined,
-        soldOutAt: value.soldOutAt || undefined,
-        isAvailable: value.isAvailable !== false,
-        lastHttpStatus: value.lastHttpStatus,
-        payload: value.payload || {},
-      } as ListingRecord;
+      return normalizeSnapshotRecord(JSON.parse(raw), id);
     })
   );
-  return records
+  const records = rawRecords
     .filter((record): record is ListingRecord => Boolean(record))
     .sort((a, b) => b.firstSeenAt - a.firstSeenAt);
+
+  const built: CatalogSnapshot = {
+    version: Date.now(),
+    records,
+  };
+  if (records.length > 0) {
+    await kv.put(LISTING_SNAPSHOT_KEY, JSON.stringify(built));
+  }
+  return built;
+}
+
+export async function getCatalogSummary(env: any): Promise<{
+  version: number;
+  summary: { total: number; available: number; soldOut: number };
+}> {
+  const snapshot = await getCatalogSnapshot(env);
+  return {
+    version: snapshot.version,
+    summary: summarizeRecords(snapshot.records),
+  };
+}
+
+export async function getListingHistory(env: any): Promise<ListingRecord[]> {
+  const snapshot = await getCatalogSnapshot(env);
+  return snapshot.records;
 }
 
 export async function setMonitorStatus(env: any, status: MonitorStatus): Promise<void> {
@@ -371,6 +550,22 @@ export async function getMonitorStatus(env: any): Promise<MonitorStatus | null> 
 }
 
 // Per-Server (Guild) Delivery Tracking
+export async function listSentListingIdsForGuild(
+  env: any,
+  guildId: string
+): Promise<Record<string, boolean>> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return {};
+  const prefix = `guild:${guildId}:sent:`;
+  const keys = await listKeysByPrefix(kv, prefix);
+  const map: Record<string, boolean> = {};
+  for (const key of keys) {
+    const id = key.slice(prefix.length);
+    if (id) map[id] = true;
+  }
+  return map;
+}
+
 export async function isListingSentToGuild(
   env: any,
   guildId: string,

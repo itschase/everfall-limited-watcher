@@ -1,9 +1,11 @@
 import {
   getAllGuildIds,
+  getCatalogSnapshot,
   getGuildConfig,
   getEffectiveEmbedConfig,
   getListingHistory,
   getMonitorStatus,
+  purgePublicEdgeCaches,
   setListingAvailability,
   setMonitorStatus,
   upsertListingRecord,
@@ -11,6 +13,7 @@ import {
   markListingSentToGuild,
   appendDeliveryLog,
   appendMonitorLog,
+  MonitorLogAttempt,
   MonitorLogSource,
   DEFAULT_EMBED_CONFIG,
 } from "./kv";
@@ -280,6 +283,9 @@ type StoreFetchResult = {
   targetUrl: string;
   durationMs: number;
   confirmedSoldOutIds?: string[];
+  runner?: string;
+  workflowRunUrl?: string;
+  attempts?: MonitorLogAttempt[];
 };
 
 async function syncListingHistory(
@@ -293,13 +299,20 @@ async function syncListingHistory(
     forceRecordWrite?: boolean;
     source?: MonitorLogSource;
   } = {}
-): Promise<{ availableListings: CarListing[]; newDiscoveries: number }> {
+): Promise<{
+  availableListings: CarListing[];
+  newDiscoveries: number;
+  soldOutIds: string[];
+  totalHistoryCount: number;
+}> {
   await ensureHistoricalKnownListingsPreserved(env, options.originHint);
   const updateMonitorStatus = options.updateMonitorStatus !== false;
   const previousStatus = await getMonitorStatus(env);
   const source = options.source || "other";
 
   if (!result.authoritative && !options.acceptNonAuthoritativeListings) {
+    const snapshot = await getCatalogSnapshot(env);
+    const availableCount = snapshot.records.filter((r) => r.isAvailable).length;
     if (updateMonitorStatus) {
       await setMonitorStatus(env, {
         checkedAt: Date.now(),
@@ -309,11 +322,21 @@ async function syncListingHistory(
         listingCount: result.listings.length,
         authoritative: false,
         notice: result.notice,
+        catalogVersion: snapshot.version || previousStatus?.catalogVersion,
+        listingSummary: {
+          total: snapshot.records.length,
+          available: availableCount,
+          soldOut: snapshot.records.length - availableCount,
+        },
       });
+      await purgePublicEdgeCaches(options.originHint || env?.PUBLIC_ORIGIN);
     }
+    const preserved = options.skipHistoryFetchWhenBlocked ? snapshot.records : [];
     return {
       availableListings: options.skipHistoryFetchWhenBlocked ? [] : await getAvailableHistoryListings(env),
       newDiscoveries: 0,
+      soldOutIds: [],
+      totalHistoryCount: preserved.length,
     };
   }
 
@@ -337,7 +360,7 @@ async function syncListingHistory(
     const record = await upsertListingRecord(env, listing.id, archived, isAvailable, {
       lastHttpStatus: 200,
       markVerified: result.authoritative,
-      minWriteIntervalMs: options.forceRecordWrite ? undefined : 25 * 60 * 1000,
+      minWriteIntervalMs: options.forceRecordWrite ? undefined : 6 * 60 * 60 * 1000,
     });
     enriched.push({
       ...archived,
@@ -349,6 +372,7 @@ async function syncListingHistory(
     });
   }
 
+  const soldOutIds: string[] = [];
   if (result.authoritative) {
     const confirmedSoldOut = new Set(result.confirmedSoldOutIds || []);
     const missingFromCategory = history.filter(
@@ -358,6 +382,7 @@ async function syncListingHistory(
       missingFromCategory.map(async (record) => {
         if (confirmedSoldOut.has(record.id)) {
           await setListingAvailability(env, record.id, false, 404);
+          soldOutIds.push(record.id);
           return;
         }
         // Confirm removal / HTTP 404 directly on the package endpoint before marking Sold Out
@@ -370,10 +395,14 @@ async function syncListingHistory(
             false,
             check.httpStatus ?? 404
           );
+          soldOutIds.push(record.id);
         }
       })
     );
   }
+
+  const latestSnapshot = await getCatalogSnapshot(env);
+  const availableSummary = latestSnapshot.records.filter((r) => r.isAvailable).length;
 
   if (updateMonitorStatus) {
     const now = Date.now();
@@ -388,11 +417,20 @@ async function syncListingHistory(
       listingCount: enriched.length,
       authoritative: result.authoritative,
       notice: result.notice,
+      catalogVersion: latestSnapshot.version || previousStatus?.catalogVersion,
+      listingSummary: {
+        total: latestSnapshot.records.length,
+        available: availableSummary,
+        soldOut: latestSnapshot.records.length - availableSummary,
+      },
     });
+    await purgePublicEdgeCaches(options.originHint || env?.PUBLIC_ORIGIN);
   }
   return {
     availableListings: enriched.filter((listing) => listing.isAvailable !== false),
     newDiscoveries,
+    soldOutIds,
+    totalHistoryCount: latestSnapshot.records.length,
   };
 }
 
@@ -400,7 +438,12 @@ async function recordMonitorAttempt(
   env: any,
   source: MonitorLogSource,
   fetched: StoreFetchResult,
-  newDiscoveries: number
+  newDiscoveries: number,
+  extra: {
+    soldOutListingIds?: string[];
+    dispatchedDrops?: number;
+    preservedHistoryCount?: number;
+  } = {}
 ): Promise<void> {
   const status: "success" | "blocked" | "error" = fetched.authoritative
     ? "success"
@@ -411,7 +454,7 @@ async function recordMonitorAttempt(
   const message = fetched.authoritative
     ? `Verified ${fetched.listings.length} active listing${fetched.listings.length === 1 ? "" : "s"}${
         newDiscoveries > 0 ? ` (${newDiscoveries} new)` : ""
-      }.`
+      }${extra.soldOutListingIds?.length ? `, ${extra.soldOutListingIds.length} sold out` : ""}.`
     : fetched.notice ||
       (fetched.cloudflareChallenge
         ? `Cloudflare challenge (HTTP ${fetched.httpStatus ?? 403}) blocked ${source} verification.`
@@ -431,6 +474,14 @@ async function recordMonitorAttempt(
     newDiscoveries,
     durationMs: fetched.durationMs,
     message,
+    detectedListingIds: fetched.authoritative ? fetched.listings.map((item) => item.id) : [],
+    detectedListingNames: fetched.authoritative ? fetched.listings.map((item) => item.name) : [],
+    soldOutListingIds: extra.soldOutListingIds || [],
+    dispatchedDrops: extra.dispatchedDrops ?? 0,
+    preservedHistoryCount: extra.preservedHistoryCount,
+    runner: fetched.runner,
+    workflowRunUrl: fetched.workflowRunUrl,
+    attempts: fetched.attempts,
   });
 }
 
@@ -501,7 +552,10 @@ async function getRateLimitedStoreListings(
     skipHistoryFetchWhenBlocked: options.skipHistoryFetchWhenBlocked,
     source,
   });
-  await recordMonitorAttempt(env, source, result, synced.newDiscoveries);
+  await recordMonitorAttempt(env, source, result, synced.newDiscoveries, {
+    soldOutListingIds: synced.soldOutIds,
+    preservedHistoryCount: synced.totalHistoryCount,
+  });
   return {
     listings: synced.availableListings,
     notice: result.notice,
@@ -895,6 +949,8 @@ export async function manualScanStoreOnly(
   await ensureHistoricalKnownListingsPreserved(env, originHint);
   const fetched = await fetchStoreListings("manual");
   let newDiscoveries = 0;
+  let soldOutIds: string[] = [];
+  let preservedHistoryCount: number | undefined;
 
   if (fetched.authoritative) {
     const synced = await syncListingHistory(env, fetched, {
@@ -903,6 +959,8 @@ export async function manualScanStoreOnly(
       source: "manual",
     });
     newDiscoveries = synced.newDiscoveries;
+    soldOutIds = synced.soldOutIds;
+    preservedHistoryCount = synced.totalHistoryCount;
   } else {
     const previousStatus = await getMonitorStatus(env);
     await setMonitorStatus(env, {
@@ -913,10 +971,17 @@ export async function manualScanStoreOnly(
       listingCount: previousStatus?.listingCount || 0,
       authoritative: false,
       notice: fetched.notice,
+      catalogVersion: previousStatus?.catalogVersion,
+      listingSummary: previousStatus?.listingSummary,
     });
   }
 
-  await recordMonitorAttempt(env, "manual", fetched, newDiscoveries);
+  await recordMonitorAttempt(env, "manual", fetched, newDiscoveries, {
+    soldOutListingIds: soldOutIds,
+    dispatchedDrops: 0,
+    preservedHistoryCount,
+  });
+  await purgePublicEdgeCaches(originHint || env?.PUBLIC_ORIGIN);
 
   // Never send Discord notifications during a manual scan
   const updatedHistory = await getListingHistory(env);
@@ -1105,8 +1170,16 @@ export async function fetchStoreListings(
   let lastChallenge = false;
   let lastLength: number | null = null;
   let lastUrl = STORE_URLS[0];
+  const attempts: MonitorLogAttempt[] = [];
+  const runner =
+    source === "manual"
+      ? "Cloudflare Worker (Manual Scan)"
+      : source === "cron-fetch"
+        ? "Cloudflare Worker (HTTP Cron)"
+        : "Cloudflare Worker";
 
   for (const storeUrl of STORE_URLS) {
+    const attemptStart = Date.now();
     lastUrl = storeUrl;
     try {
       const headers: Record<string, string> = storeUrl.includes("store.everfallcommunity.com")
@@ -1148,6 +1221,14 @@ export async function fetchStoreListings(
         lastNotice = cloudflareChallenge
           ? `Cloudflare challenge (HTTP ${res.status}) blocked automated verification on ${storeUrl}; recorded history was preserved.`
           : `Store returned HTTP ${res.status}; recorded history was preserved without availability changes.`;
+        attempts.push({
+          url: lastUrl,
+          httpStatus: res.status,
+          cloudflareChallenge,
+          responseLength: html.length,
+          durationMs: Date.now() - attemptStart,
+          note: cloudflareChallenge ? "Cloudflare challenge" : `HTTP ${res.status}`,
+        });
         continue;
       }
 
@@ -1166,8 +1247,25 @@ export async function fetchStoreListings(
       if (!confirmedCategoryPage) {
         lastNotice =
           "Store response could not be verified as the Limited Cars category; availability history was preserved.";
+        attempts.push({
+          url: lastUrl,
+          httpStatus: res.status,
+          cloudflareChallenge: false,
+          responseLength: html.length,
+          durationMs: Date.now() - attemptStart,
+          note: "Unverified category markup",
+        });
         continue;
       }
+
+      attempts.push({
+        url: lastUrl,
+        httpStatus: res.status,
+        cloudflareChallenge: false,
+        responseLength: html.length,
+        durationMs: Date.now() - attemptStart,
+        note: `Verified (${foundIds.size} package link${foundIds.size === 1 ? "" : "s"})`,
+      });
 
       if (foundIds.size === 0) {
         return {
@@ -1178,6 +1276,8 @@ export async function fetchStoreListings(
           responseLength: html.length,
           targetUrl: res.url || storeUrl,
           durationMs: Date.now() - startedAt,
+          runner,
+          attempts,
         };
       }
 
@@ -1199,6 +1299,8 @@ export async function fetchStoreListings(
         responseLength: html.length,
         targetUrl: res.url || storeUrl,
         durationMs: Date.now() - startedAt,
+        runner,
+        attempts,
       };
     } catch (err: any) {
       console.error("Store scrape fetch error:", {
@@ -1211,6 +1313,14 @@ export async function fetchStoreListings(
       lastChallenge = false;
       lastLength = null;
       lastNotice = `Store scrape failed (${err?.message || "unknown error"}); recorded history was preserved.`;
+      attempts.push({
+        url: storeUrl,
+        httpStatus: null,
+        cloudflareChallenge: false,
+        responseLength: null,
+        durationMs: Date.now() - attemptStart,
+        note: err?.message || "Fetch error",
+      });
     }
   }
 
@@ -1223,6 +1333,8 @@ export async function fetchStoreListings(
     responseLength: lastLength,
     targetUrl: lastUrl,
     durationMs: Date.now() - startedAt,
+    runner,
+    attempts,
   };
 }
 
@@ -1258,6 +1370,9 @@ export interface ExternalStoreSyncPayload {
   targetUrl?: string;
   durationMs?: number;
   notice?: string;
+  runner?: string;
+  workflowRunUrl?: string;
+  attempts?: MonitorLogAttempt[];
   confirmedSoldOutIds?: string[];
   listings?: Array<{
     id: string;
@@ -1311,6 +1426,35 @@ export async function ingestVerifiedStoreScan(
     ? payload.confirmedSoldOutIds.filter((id) => /^\d+$/.test(String(id || "").trim()))
     : [];
 
+  const sanitizedAttempts: MonitorLogAttempt[] | undefined = Array.isArray(payload.attempts)
+    ? payload.attempts
+        .filter((a) => a && typeof a.url === "string" && /^https:\/\//i.test(a.url))
+        .slice(0, 10)
+        .map((a) => ({
+          url: String(a.url).slice(0, 300),
+          httpStatus: typeof a.httpStatus === "number" ? a.httpStatus : null,
+          cloudflareChallenge: Boolean(a.cloudflareChallenge),
+          responseLength: typeof a.responseLength === "number" ? a.responseLength : null,
+          durationMs: typeof a.durationMs === "number" && a.durationMs >= 0 ? a.durationMs : 0,
+          note: typeof a.note === "string" ? a.note.slice(0, 180) : undefined,
+        }))
+    : undefined;
+
+  const workflowRunUrl =
+    typeof payload.workflowRunUrl === "string" &&
+    /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/actions\/runs\/\d+/i.test(
+      payload.workflowRunUrl
+    )
+      ? payload.workflowRunUrl
+      : undefined;
+
+  const runner =
+    typeof payload.runner === "string" && payload.runner.trim()
+      ? payload.runner.trim().slice(0, 100)
+      : source === "scrapling"
+        ? "GitHub Actions (Scrapling)"
+        : "External HTTP Cron";
+
   const result: StoreFetchResult = {
     listings: payload.authoritative ? sanitizedListings : [],
     notice: typeof payload.notice === "string" ? payload.notice.slice(0, 400) : undefined,
@@ -1321,6 +1465,9 @@ export async function ingestVerifiedStoreScan(
     targetUrl,
     durationMs: typeof payload.durationMs === "number" && payload.durationMs >= 0 ? payload.durationMs : 0,
     confirmedSoldOutIds,
+    runner,
+    workflowRunUrl,
+    attempts: sanitizedAttempts,
   };
 
   const synced = await syncListingHistory(env, result, {
@@ -1328,8 +1475,6 @@ export async function ingestVerifiedStoreScan(
     skipHistoryFetchWhenBlocked: true,
     source,
   });
-
-  await recordMonitorAttempt(env, source, result, synced.newDiscoveries);
 
   let newDrops = 0;
   if (result.authoritative) {
@@ -1340,6 +1485,13 @@ export async function ingestVerifiedStoreScan(
       }
     }
   }
+
+  await recordMonitorAttempt(env, source, result, synced.newDiscoveries, {
+    soldOutListingIds: synced.soldOutIds,
+    dispatchedDrops: newDrops,
+    preservedHistoryCount: synced.totalHistoryCount,
+  });
+  await purgePublicEdgeCaches(originHint || env?.PUBLIC_ORIGIN);
 
   return {
     checked: synced.availableListings.length,

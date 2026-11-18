@@ -225,6 +225,17 @@ def post_sync_to_worker(payload: dict[str, Any]) -> tuple[int, str]:
         return err.code, err.read().decode("utf-8", errors="replace")
 
 
+def get_runner_metadata() -> tuple[str, str | None]:
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        runner_os = os.environ.get("RUNNER_OS", "Linux")
+        server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
+        repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
+        run_id = os.environ.get("GITHUB_RUN_ID", "").strip()
+        run_url = f"{server_url}/{repo}/actions/runs/{run_id}" if repo and run_id else None
+        return f"GitHub Actions ({runner_os}) • Scrapling", run_url
+    return "External Python Runner • Scrapling", None
+
+
 def main() -> int:
     if not CRON_SECRET:
         print("CRON_SECRET is not set; skipping Scrapling store sync.")
@@ -236,24 +247,39 @@ def main() -> int:
     last_length: int | None = None
     last_url = STORE_URLS[0]
     last_notice = "Scrapling verification was blocked; recorded history was preserved."
+    runner_label, workflow_run_url = get_runner_metadata()
+    attempts: list[dict[str, Any]] = []
 
     verified_payload: dict[str, Any] | None = None
 
     for store_url in STORE_URLS:
+        attempt_started = time.monotonic()
         last_url = store_url
         try:
             status_code, page_html, final_url = fetch_page(store_url)
             challenged = is_cloudflare_challenge(page_html, status_code)
+            attempt_ms = int((time.monotonic() - attempt_started) * 1000)
             last_http_status = status_code
             last_challenge = challenged
             last_length = len(page_html)
             last_url = final_url
 
             if (status_code and status_code >= 400) or challenged:
+                note = "Cloudflare challenge" if challenged else f"HTTP {status_code}"
                 last_notice = (
                     f"Cloudflare challenge (HTTP {status_code or 403}) blocked Scrapling on {store_url}."
                     if challenged
                     else f"Store returned HTTP {status_code} via Scrapling on {store_url}."
+                )
+                attempts.append(
+                    {
+                        "url": final_url,
+                        "httpStatus": status_code,
+                        "cloudflareChallenge": challenged,
+                        "responseLength": len(page_html),
+                        "durationMs": attempt_ms,
+                        "note": note,
+                    }
                 )
                 continue
 
@@ -274,7 +300,28 @@ def main() -> int:
             )
             if not confirmed_category:
                 last_notice = "Scrapling response could not be confirmed as the Limited Cars category."
+                attempts.append(
+                    {
+                        "url": final_url,
+                        "httpStatus": status_code or 200,
+                        "cloudflareChallenge": False,
+                        "responseLength": len(page_html),
+                        "durationMs": attempt_ms,
+                        "note": "Unverified category markup",
+                    }
+                )
                 continue
+
+            attempts.append(
+                {
+                    "url": final_url,
+                    "httpStatus": status_code or 200,
+                    "cloudflareChallenge": False,
+                    "responseLength": len(page_html),
+                    "durationMs": attempt_ms,
+                    "note": f"Verified ({len(found_ids)} package link{'' if len(found_ids) == 1 else 's'})",
+                }
+            )
 
             listings: list[dict[str, Any]] = []
             for pkg_id in found_ids:
@@ -300,12 +347,26 @@ def main() -> int:
                 "responseLength": len(page_html),
                 "targetUrl": final_url,
                 "durationMs": duration_ms,
+                "runner": runner_label,
+                "workflowRunUrl": workflow_run_url,
+                "attempts": attempts,
                 "listings": listings,
                 "confirmedSoldOutIds": confirmed_sold_out,
             }
             break
         except Exception as exc:
+            attempt_ms = int((time.monotonic() - attempt_started) * 1000)
             last_notice = f"Scrapling error on {store_url}: {exc}"
+            attempts.append(
+                {
+                    "url": store_url,
+                    "httpStatus": None,
+                    "cloudflareChallenge": False,
+                    "responseLength": None,
+                    "durationMs": attempt_ms,
+                    "note": str(exc)[:160],
+                }
+            )
             print(last_notice, file=sys.stderr)
 
     if verified_payload is None:
@@ -320,6 +381,9 @@ def main() -> int:
             "targetUrl": last_url,
             "durationMs": duration_ms,
             "notice": last_notice,
+            "runner": runner_label,
+            "workflowRunUrl": workflow_run_url,
+            "attempts": attempts,
             "listings": [],
             "confirmedSoldOutIds": [],
         }

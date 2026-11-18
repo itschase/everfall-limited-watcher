@@ -19,6 +19,21 @@ export interface MonitorStatus {
   isChecking?: boolean;
   mode?: "fast" | "reduced";
   notice?: string;
+  catalogVersion?: number;
+  listingSummary?: {
+    total: number;
+    available: number;
+    soldOut: number;
+  };
+}
+
+export interface MonitorLogAttempt {
+  url: string;
+  httpStatus: number | null;
+  cloudflareChallenge: boolean;
+  responseLength: number | null;
+  durationMs: number;
+  note?: string;
 }
 
 export interface MonitorLogEntry {
@@ -35,6 +50,14 @@ export interface MonitorLogEntry {
   newDiscoveries: number;
   durationMs: number;
   message: string;
+  detectedListingIds?: string[];
+  detectedListingNames?: string[];
+  soldOutListingIds?: string[];
+  dispatchedDrops?: number;
+  preservedHistoryCount?: number;
+  runner?: string;
+  workflowRunUrl?: string;
+  attempts?: MonitorLogAttempt[];
 }
 
 export interface SessionResponse {
@@ -69,6 +92,7 @@ export interface ListingItem {
 
 export interface PublicListingsResponse {
   listings: ListingItem[];
+  catalogVersion?: number;
   totalCount: number;
   availableCount: number;
   soldOutCount: number;
@@ -77,6 +101,19 @@ export interface PublicListingsResponse {
   monitorStatus: MonitorStatus | null;
   lastCheckedAt: number | null;
   lastSuccessAt: number | null;
+}
+
+export interface PublicStatusResponse {
+  ok: boolean;
+  botStatus: BotStatus;
+  monitorStatus: MonitorStatus | null;
+  lastCheckedAt: number | null;
+  lastSuccessAt: number | null;
+  authoritative: boolean | null;
+  catalogVersion: number;
+  totalCount: number;
+  availableCount: number;
+  soldOutCount: number;
 }
 
 export interface HistoryResponse {
@@ -176,6 +213,7 @@ export interface AdminConnectedGuild {
 
 export interface AdminOverviewResponse {
   botStatus: BotStatus;
+  catalogVersion?: number;
   monitorStatus: MonitorStatus | null;
   monitorLogs: MonitorLogEntry[];
   embedConfig: EmbedConfig;
@@ -191,6 +229,16 @@ export interface AdminOverviewResponse {
     testServers: number;
     recentFailures: number;
   };
+}
+
+export interface AdminMonitorUpdatesResponse {
+  changed: boolean;
+  botStatus: BotStatus;
+  checkedAt?: number | null;
+  catalogVersion?: number;
+  monitorStatus?: MonitorStatus | null;
+  monitorLogs?: MonitorLogEntry[];
+  listings?: ListingItem[];
 }
 
 export class ApiError extends Error {

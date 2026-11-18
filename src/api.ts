@@ -3,13 +3,14 @@ import {
   DEFAULT_EMBED_CONFIG,
   EmbedConfig,
   getAllGuildIds,
+  getCatalogSnapshot,
   getDeliveryLogs,
   getEmbedConfig,
   getGuildConfig,
   getListingHistory,
   getMonitorLogs,
   getMonitorStatus,
-  isListingSentToGuild,
+  listSentListingIdsForGuild,
   ListingRecord,
   MonitorStatus,
   setEmbedConfig,
@@ -45,6 +46,25 @@ function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: NO_STORE_HEADERS,
+  });
+}
+
+function getEdgeCache(): Cache | null {
+  return typeof caches !== "undefined" && (caches as any)?.default ? (caches as any).default : null;
+}
+
+function getPublicCacheRequest(env: any, url: URL): Request {
+  const baseOrigin = resolvePublicOrigin(env, url.origin) || url.origin;
+  return new Request(`${baseOrigin}${url.pathname}`, { method: "GET" });
+}
+
+function publicCachedJson(data: unknown, maxAgeSeconds: number): Response {
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": `public, max-age=${maxAgeSeconds}, stale-while-revalidate=${maxAgeSeconds * 2}`,
+    },
   });
 }
 
@@ -173,30 +193,107 @@ export async function handleApiRequest(
     });
   }
 
-  // 2. Public Limited Drops Showcase (strictly capped at newest 10 records)
+  // 1b. Lightweight Public Monitor Heartbeat & Catalog Version (1 KV read, edge-cached & busted on cron)
+  if (method === "GET" && url.pathname === "/api/public/status") {
+    const edgeCache = getEdgeCache();
+    const cacheKey = getPublicCacheRequest(env, url);
+    if (edgeCache) {
+      try {
+        const hit = await edgeCache.match(cacheKey);
+        if (hit) return hit;
+      } catch {
+        // Ignore cache lookup failure
+      }
+    }
+
+    let monitorStatus = await getMonitorStatus(env);
+    let catalogVersion = monitorStatus?.catalogVersion ?? 0;
+    let listingSummary = monitorStatus?.listingSummary;
+
+    if (!catalogVersion || !listingSummary) {
+      await ensureHistoricalKnownListingsPreserved(env, origin);
+      const snapshot = await getCatalogSnapshot(env);
+      catalogVersion = snapshot.version;
+      const available = snapshot.records.filter((r) => r.isAvailable).length;
+      listingSummary = {
+        total: snapshot.records.length,
+        available,
+        soldOut: snapshot.records.length - available,
+      };
+    }
+
+    const res = publicCachedJson(
+      {
+        ok: true,
+        botStatus: getBotStatus(env, monitorStatus),
+        monitorStatus,
+        lastCheckedAt: monitorStatus?.checkedAt ?? null,
+        lastSuccessAt: monitorStatus?.lastSuccessAt ?? null,
+        authoritative: monitorStatus?.authoritative ?? null,
+        catalogVersion,
+        totalCount: listingSummary.total,
+        availableCount: listingSummary.available,
+        soldOutCount: listingSummary.soldOut,
+      },
+      25
+    );
+    if (edgeCache) {
+      try {
+        await edgeCache.put(cacheKey, res.clone());
+      } catch {
+        // Non-fatal
+      }
+    }
+    return res;
+  }
+
+  // 2. Public Limited Drops Showcase (strictly capped at newest 10 records, single-key snapshot + edge-cached)
   if (method === "GET" && url.pathname === "/api/public/listings") {
+    const edgeCache = getEdgeCache();
+    const cacheKey = getPublicCacheRequest(env, url);
+    if (edgeCache) {
+      try {
+        const hit = await edgeCache.match(cacheKey);
+        if (hit) return hit;
+      } catch {
+        // Ignore cache lookup failure
+      }
+    }
+
     await ensureHistoricalKnownListingsPreserved(env, origin);
-    const [history, monitorStatus] = await Promise.all([
-      getListingHistory(env),
+    const [snapshot, monitorStatus] = await Promise.all([
+      getCatalogSnapshot(env),
       getMonitorStatus(env),
     ]);
 
-    const sorted = [...history].sort((a, b) => b.firstSeenAt - a.firstSeenAt);
+    const sorted = [...snapshot.records].sort((a, b) => b.firstSeenAt - a.firstSeenAt);
     const limited = sorted.slice(0, 10).map(serializeListing);
     const availableCount = sorted.filter((item) => item.isAvailable).length;
     const soldOutCount = sorted.filter((item) => !item.isAvailable).length;
 
-    return json({
-      listings: limited,
-      totalCount: sorted.length,
-      availableCount,
-      soldOutCount,
-      hasMoreArchive: sorted.length > 10,
-      botStatus: getBotStatus(env, monitorStatus),
-      monitorStatus,
-      lastCheckedAt: monitorStatus?.checkedAt ?? null,
-      lastSuccessAt: monitorStatus?.lastSuccessAt ?? null,
-    });
+    const res = publicCachedJson(
+      {
+        listings: limited,
+        catalogVersion: snapshot.version,
+        totalCount: sorted.length,
+        availableCount,
+        soldOutCount,
+        hasMoreArchive: sorted.length > 10,
+        botStatus: getBotStatus(env, monitorStatus),
+        monitorStatus,
+        lastCheckedAt: monitorStatus?.checkedAt ?? null,
+        lastSuccessAt: monitorStatus?.lastSuccessAt ?? null,
+      },
+      45
+    );
+    if (edgeCache) {
+      try {
+        await edgeCache.put(cacheKey, res.clone());
+      } catch {
+        // Non-fatal
+      }
+    }
+    return res;
   }
 
   // Authenticated routes below
@@ -504,9 +601,9 @@ export async function handleApiRequest(
       await ensureHistoricalKnownListingsPreserved(env, origin);
       const forceRefresh = url.searchParams.get("refresh") === "1";
 
-      const [history, monitorStatus, monitorLogs, embedConfig, deliveryLogs, botGuilds, allGuildIds] =
+      const [snapshot, monitorStatus, monitorLogs, embedConfig, deliveryLogs, botGuilds, allGuildIds] =
         await Promise.all([
-          getListingHistory(env),
+          getCatalogSnapshot(env),
           getMonitorStatus(env),
           getMonitorLogs(env),
           getEmbedConfig(env),
@@ -514,6 +611,7 @@ export async function handleApiRequest(
           getBotGuilds(env, forceRefresh),
           getAllGuildIds(env),
         ]);
+      const history = snapshot.records;
 
       const botGuildMap = new Map(botGuilds.map((g) => [g.id, g]));
       const guildIdSet = new Set([...botGuilds.map((g) => g.id), ...allGuildIds]);
@@ -522,14 +620,7 @@ export async function handleApiRequest(
         [...guildIdSet].map(async (guildId) => {
           const cfg = await getGuildConfig(env, guildId);
           const botGuild = botGuildMap.get(guildId);
-          const sentMap: Record<string, boolean> = {};
-          if (cfg?.channelId) {
-            await Promise.all(
-              history.slice(0, 10).map(async (record) => {
-                sentMap[record.id] = await isListingSentToGuild(env, guildId, record.id);
-              })
-            );
-          }
+          const sentMap = cfg?.channelId ? await listSentListingIdsForGuild(env, guildId) : {};
           const iconUrl = botGuild?.icon
             ? `https://cdn.discordapp.com/icons/${encodeURIComponent(guildId)}/${encodeURIComponent(botGuild.icon)}.png?size=64`
             : null;
@@ -555,6 +646,7 @@ export async function handleApiRequest(
 
       return json({
         botStatus: getBotStatus(env, monitorStatus),
+        catalogVersion: snapshot.version,
         monitorStatus,
         monitorLogs,
         embedConfig,
@@ -570,6 +662,51 @@ export async function handleApiRequest(
           testServers: connectedGuilds.filter((g) => g.environment === "test").length,
           recentFailures: deliveryLogs.filter((d) => d.status === "failed").length,
         },
+      });
+    }
+
+    // 7b. Ultra-light Admin Monitor Delta Endpoint (1 KV read when idle)
+    if (method === "GET" && url.pathname === "/api/admin/monitor/updates") {
+      const sinceCheckedAt = Number(url.searchParams.get("checkedAt") || "0") || 0;
+      const sinceCatalogVersion = Number(url.searchParams.get("catalogVersion") || "0") || 0;
+
+      const monitorStatus = await getMonitorStatus(env);
+      const currentCheckedAt = monitorStatus?.checkedAt ?? 0;
+      const currentCatalogVersion = monitorStatus?.catalogVersion ?? 0;
+      const botStatus = getBotStatus(env, monitorStatus);
+
+      if (
+        sinceCheckedAt > 0 &&
+        currentCheckedAt === sinceCheckedAt &&
+        currentCatalogVersion === sinceCatalogVersion
+      ) {
+        return json({
+          changed: false,
+          botStatus,
+          checkedAt: monitorStatus?.checkedAt ?? null,
+          catalogVersion: currentCatalogVersion,
+        });
+      }
+
+      const needListings = sinceCatalogVersion === 0 || currentCatalogVersion !== sinceCatalogVersion;
+      const [monitorLogs, snapshot] = await Promise.all([
+        getMonitorLogs(env),
+        needListings ? getCatalogSnapshot(env) : Promise.resolve(null),
+      ]);
+
+      return json({
+        changed: true,
+        botStatus,
+        monitorStatus,
+        monitorLogs,
+        catalogVersion: snapshot?.version ?? currentCatalogVersion,
+        ...(snapshot
+          ? {
+              listings: [...snapshot.records]
+                .sort((a, b) => b.firstSeenAt - a.firstSeenAt)
+                .map(serializeListing),
+            }
+          : {}),
       });
     }
 
@@ -615,19 +752,20 @@ export async function handleApiRequest(
     // 9. Read-Only Manual Store Scan (never publishes Discord alerts)
     if (method === "POST" && url.pathname === "/api/admin/monitor/scan") {
       const result = await manualScanStoreOnly(env, origin);
-      const [monitorStatus, monitorLogs, history] = await Promise.all([
+      const [monitorStatus, monitorLogs, snapshot] = await Promise.all([
         getMonitorStatus(env),
         getMonitorLogs(env),
-        getListingHistory(env),
+        getCatalogSnapshot(env),
       ]);
       return json({
         ok: true,
         usedVerifiedStoreResponse: result.usedVerifiedStoreResponse,
         newDiscoveries: result.newDiscoveries,
         notice: result.notice || null,
+        catalogVersion: snapshot.version,
         monitorStatus,
         monitorLogs,
-        listings: [...history].sort((a, b) => b.firstSeenAt - a.firstSeenAt).map(serializeListing),
+        listings: [...snapshot.records].sort((a, b) => b.firstSeenAt - a.firstSeenAt).map(serializeListing),
         scannedAt: Date.now(),
       });
     }
