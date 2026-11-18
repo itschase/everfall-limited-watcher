@@ -27,13 +27,11 @@ export interface CarListing {
   lastHttpStatus?: number;
 }
 
-const MIN_STORE_CHECK_INTERVAL_MS = 45 * 1000; // 45 seconds
-//const MIN_STORE_CHECK_INTERVAL_MS = 5 * 60 * 1000; --5 minutes
+const MIN_STORE_CHECK_INTERVAL_MS = 5 * 60 * 1000; --5 minutes
 // const MIN_STORE_CHECK_INTERVAL_MS = 10 * 60 * 1000; --15 minutes
 const STORE_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "User-Agent": "EverfallLimitedWatcher/1.0/itschase",
+  Accept: "text/html",
 };
 
 export function resolvePublicOrigin(env: any, originHint?: string): string {
