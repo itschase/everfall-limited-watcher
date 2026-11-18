@@ -878,7 +878,8 @@ export async function fetchStoreListings(): Promise<{
   notice?: string;
   authoritative: boolean;
 }> {
-  const storeUrl = "https://store.everfallcommunity.com/category/limited-cars";
+  //const storeUrl = "https://store.everfallcommunity.com/category/limited-cars";
+  const storeUrl = "https://everfall.tebex.io/category/limited-cars";
 
   try {
     const res = await fetch(storeUrl, { headers: STORE_HEADERS });
