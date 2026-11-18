@@ -30,7 +30,7 @@ export interface CarListing {
 const MIN_STORE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 // const MIN_STORE_CHECK_INTERVAL_MS = 10 * 60 * 1000; --15 minutes
 const STORE_HEADERS = {
-  "User-Agent": "EverfallLimitedWatcher/1.0/itschase",
+  "User-Agent": "EverfallLimitedWatcher/1.0",
   Accept: "text/html",
 };
 
