@@ -96,7 +96,7 @@ export function HomePage() {
   const { data: listingsData, isLoading, isFetching } = useQuery({
     queryKey: ["public-listings"],
     queryFn: () => apiFetch<PublicListingsResponse>("/api/public/listings"),
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
     refetchIntervalInBackground: false,
   });
 
