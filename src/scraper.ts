@@ -241,7 +241,8 @@ async function syncListingHistory(
       missingFromCategory.map(async (record) => {
         // Confirm removal / HTTP 404 directly on the package endpoint before marking Sold Out
         const check = await verifyListingPackageEndpoint(record.id);
-        if (check.status === "sold_out") { //if (check.status === "sold_out" || missingFromCategory.length > 0) {
+        if (check.status === "sold_out") { //if (check.status === "sold_out" || missingFromCategory.length > 0) { 
+          // ensures vehicles are only marked Sold Out when the individual product verification reports that status, rather than simply because they're missing from the category.
           await setListingAvailability(
             env,
             record.id,
