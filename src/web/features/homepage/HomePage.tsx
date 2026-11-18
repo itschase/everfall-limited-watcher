@@ -22,27 +22,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
 function BotHealthBadge({ status }: { status: BotStatus }) {
-  if (status === "checking") {
-    return (
-      <span className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-zinc-300">
-        <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-300" />
-        Refreshing
-      </span>
-    );
-  }
   if (status === "offline") {
     return (
       <span className="inline-flex items-center gap-2 rounded-md border border-red-500/35 bg-red-950/60 px-2.5 py-1 text-xs font-medium text-red-300">
         <span className="h-2 w-2 rounded-full bg-red-400" />
         Bot Offline
-      </span>
-    );
-  }
-  if (status === "degraded") {
-    return (
-      <span className="inline-flex items-center gap-2 rounded-md border border-amber-500/35 bg-amber-950/60 px-2.5 py-1 text-xs font-medium text-amber-300">
-        <span className="h-2 w-2 rounded-full bg-amber-400" />
-        Verification Degraded
       </span>
     );
   }
@@ -96,8 +80,10 @@ export function HomePage() {
   const { data: listingsData, isLoading, isFetching } = useQuery({
     queryKey: ["public-listings"],
     queryFn: () => apiFetch<PublicListingsResponse>("/api/public/listings"),
-    refetchInterval: 60_000,
+    staleTime: 120_000,
+    refetchInterval: 300_000,
     refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
   });
 
   const listings = listingsData?.listings || [];
@@ -207,7 +193,7 @@ export function HomePage() {
                 <VehicleCard
                   key={car.id}
                   listing={car}
-                  isRefreshing={botStatus === "checking"}
+                  isRefreshing={false}
                 />
               ))}
             </div>
@@ -282,7 +268,7 @@ export function HomePage() {
                   <div key={`mobile-${car.id}`} className="w-[86vw] max-w-[360px] shrink-0 snap-start">
                     <VehicleCard
                       listing={car}
-                      isRefreshing={botStatus === "checking"}
+                      isRefreshing={false}
                     />
                   </div>
                 ))}

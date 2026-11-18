@@ -112,13 +112,25 @@ export async function getAllGuildIds(env: any): Promise<string[]> {
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return [];
   const raw = await kv.get("guilds:all");
-  const fromRegistry: string[] = raw ? JSON.parse(raw) : [];
+  if (raw !== null) {
+    try {
+      const parsed: string[] = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter(Boolean);
+    } catch {
+      // Fall through to one-time index rebuild if corrupted
+    }
+  }
   const listedKeys = await listKeysByPrefix(kv, "guild:");
-  const fromList = listedKeys
-    .filter((name) => !name.includes(":sent:"))
-    .map((name) => name.slice("guild:".length))
-    .filter(Boolean);
-  return [...new Set([...fromRegistry, ...fromList])];
+  const ids = [
+    ...new Set(
+      listedKeys
+        .filter((name) => !name.includes(":sent:"))
+        .map((name) => name.slice("guild:".length))
+        .filter(Boolean)
+    ),
+  ];
+  await kv.put("guilds:all", JSON.stringify(ids));
+  return ids;
 }
 
 export async function addGuildRole(env: any, guildId: string, roleId: string): Promise<void> {
@@ -160,7 +172,12 @@ export async function upsertListingRecord(
   listingId: string,
   payload: any,
   isAvailable: boolean,
-  options: { firstSeenAtOverride?: number; lastHttpStatus?: number; markVerified?: boolean } = {}
+  options: {
+    firstSeenAtOverride?: number;
+    lastHttpStatus?: number;
+    markVerified?: boolean;
+    minWriteIntervalMs?: number;
+  } = {}
 ): Promise<ListingRecord> {
   const kv = env.DISCORD_BOT as KVNamespace;
   const now = Date.now();
@@ -188,6 +205,20 @@ export async function upsertListingRecord(
       ? existing.payload
       : { ...(existing?.payload || {}), ...payload };
 
+  // Preserve archived media URLs if existing record already points to our worker proxy and incoming payload doesn't
+  const existingImages: string[] = Array.isArray(existing?.payload?.images)
+    ? existing.payload.images
+    : [];
+  const nextImages: string[] = Array.isArray(mergedPayload?.images) ? mergedPayload.images : [];
+  if (
+    existingImages.length > 0 &&
+    existingImages.every((u) => typeof u === "string" && u.includes(`/media/listings/${listingId}/`)) &&
+    (nextImages.length === 0 ||
+      nextImages.some((u) => typeof u === "string" && !u.includes(`/media/listings/${listingId}/`)))
+  ) {
+    mergedPayload.images = existingImages;
+  }
+
   const soldOutAt = isAvailable
     ? undefined
     : existing?.soldOutAt || now;
@@ -195,6 +226,27 @@ export async function upsertListingRecord(
     options.markVerified !== false
       ? now
       : existing?.lastVerifiedAt || existing?.lastSeenAt || firstSeenAt;
+
+  // Skip redundant KV writes when listing state and metadata are unchanged inside minWriteIntervalMs
+  if (
+    existing &&
+    options.minWriteIntervalMs &&
+    existing.isAvailable === isAvailable &&
+    (existing.lastHttpStatus ?? null) === (options.lastHttpStatus ?? existing.lastHttpStatus ?? null) &&
+    now - (existing.lastVerifiedAt || existing.lastSeenAt || 0) < options.minWriteIntervalMs &&
+    JSON.stringify(existing.payload || {}) === JSON.stringify(mergedPayload || {})
+  ) {
+    return {
+      id: listingId,
+      firstSeenAt,
+      lastSeenAt: existing.lastSeenAt || firstSeenAt,
+      lastVerifiedAt: existing.lastVerifiedAt || existing.lastSeenAt || firstSeenAt,
+      soldOutAt: existing.soldOutAt || undefined,
+      isAvailable: existing.isAvailable !== false,
+      lastHttpStatus: existing.lastHttpStatus,
+      payload: existing.payload || mergedPayload,
+    };
+  }
 
   const record: ListingRecord = {
     id: listingId,
@@ -244,11 +296,25 @@ export async function setListingAvailability(
 export async function getListingHistory(env: any): Promise<ListingRecord[]> {
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return [];
+  let allIds: string[] | null = null;
   const registryRaw = await kv.get("listings:all");
-  const fromRegistry: string[] = registryRaw ? JSON.parse(registryRaw) : [];
-  const listedKeys = await listKeysByPrefix(kv, "listing:");
-  const fromList = listedKeys.map((name) => name.slice("listing:".length)).filter(Boolean);
-  const allIds = [...new Set([...fromRegistry, ...fromList])];
+  if (registryRaw !== null) {
+    try {
+      const parsed: string[] = JSON.parse(registryRaw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        allIds = [...new Set(parsed.filter(Boolean))];
+      }
+    } catch {
+      allIds = null;
+    }
+  }
+  if (!allIds) {
+    const listedKeys = await listKeysByPrefix(kv, "listing:");
+    allIds = [...new Set(listedKeys.map((name) => name.slice("listing:".length)).filter(Boolean))];
+    if (allIds.length > 0) {
+      await kv.put("listings:all", JSON.stringify(allIds));
+    }
+  }
 
   const records = await Promise.all(
     allIds.map(async (id) => {
@@ -318,15 +384,23 @@ export async function getEmbedConfig(env: any): Promise<EmbedConfig> {
   const parsed = JSON.parse(raw) as EmbedConfig;
   return {
     color: parsed.color || DEFAULT_EMBED_CONFIG.color,
-    titlePrefix: parsed.titlePrefix?.trim() ? parsed.titlePrefix : DEFAULT_EMBED_CONFIG.titlePrefix,
-    footerText: parsed.footerText?.trim() ? parsed.footerText : DEFAULT_EMBED_CONFIG.footerText,
+    titlePrefix:
+      typeof parsed.titlePrefix === "string"
+        ? parsed.titlePrefix
+        : DEFAULT_EMBED_CONFIG.titlePrefix,
+    footerText:
+      typeof parsed.footerText === "string"
+        ? parsed.footerText
+        : DEFAULT_EMBED_CONFIG.footerText,
     galleryHeading: typeof parsed.galleryHeading === "string" ? parsed.galleryHeading : "",
-    storeButtonLabel: parsed.storeButtonLabel?.trim()
-      ? parsed.storeButtonLabel
-      : DEFAULT_EMBED_CONFIG.storeButtonLabel,
-    soldOutButtonLabel: parsed.soldOutButtonLabel?.trim()
-      ? parsed.soldOutButtonLabel
-      : DEFAULT_EMBED_CONFIG.soldOutButtonLabel,
+    storeButtonLabel:
+      typeof parsed.storeButtonLabel === "string" && parsed.storeButtonLabel.trim()
+        ? parsed.storeButtonLabel
+        : DEFAULT_EMBED_CONFIG.storeButtonLabel,
+    soldOutButtonLabel:
+      typeof parsed.soldOutButtonLabel === "string" && parsed.soldOutButtonLabel.trim()
+        ? parsed.soldOutButtonLabel
+        : DEFAULT_EMBED_CONFIG.soldOutButtonLabel,
     showDetectionTime: parsed.showDetectionTime !== false,
     showLastVerified: parsed.showLastVerified !== false,
   };

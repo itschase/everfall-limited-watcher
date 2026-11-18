@@ -10,8 +10,56 @@ interface MemoryKVEntry {
   expiresAt: number | null;
 }
 
+const DEV_KV_FILE = path.resolve(import.meta.dirname, "..", ".dev-kv.json");
+
 function createMemoryKV(): KVNamespace {
   const store = new Map<string, MemoryKVEntry>();
+
+  try {
+    if (fs.existsSync(DEV_KV_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(DEV_KV_FILE, "utf8")) as Record<
+        string,
+        { type: "string" | "bytes"; value: string; metadata: Record<string, unknown> | null; expiresAt: number | null }
+      >;
+      const now = Date.now();
+      for (const [k, item] of Object.entries(parsed)) {
+        if (item.expiresAt !== null && now >= item.expiresAt) continue;
+        store.set(k, {
+          value: item.type === "bytes" ? new Uint8Array(Buffer.from(item.value, "base64")) : item.value,
+          metadata: item.metadata ?? null,
+          expiresAt: item.expiresAt ?? null,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("Could not restore local .dev-kv.json:", err);
+  }
+
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleFlush = () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try {
+        const serialized: Record<string, unknown> = {};
+        const now = Date.now();
+        for (const [k, entry] of store.entries()) {
+          if (entry.expiresAt !== null && now >= entry.expiresAt) continue;
+          serialized[k] =
+            typeof entry.value === "string"
+              ? { type: "string", value: entry.value, metadata: entry.metadata, expiresAt: entry.expiresAt }
+              : {
+                  type: "bytes",
+                  value: Buffer.from(entry.value).toString("base64"),
+                  metadata: entry.metadata,
+                  expiresAt: entry.expiresAt,
+                };
+        }
+        fs.writeFileSync(DEV_KV_FILE, JSON.stringify(serialized), "utf8");
+      } catch (err) {
+        console.warn("Could not persist local .dev-kv.json:", err);
+      }
+    }, 150);
+  };
 
   const getValidEntry = (key: string): MemoryKVEntry | null => {
     const entry = store.get(key);
@@ -82,10 +130,12 @@ function createMemoryKV(): KVNamespace {
         metadata: options?.metadata ?? null,
         expiresAt,
       });
+      scheduleFlush();
     },
 
     async delete(key: string): Promise<void> {
       store.delete(key);
+      scheduleFlush();
     },
 
     async list(options?: { prefix?: string; limit?: number; cursor?: string }) {

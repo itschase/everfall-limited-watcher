@@ -47,11 +47,8 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function getBotStatus(env: any, monitorStatus: MonitorStatus | null): "online" | "checking" | "degraded" | "offline" {
-  if (!env.DISCORD_BOT_TOKEN) return "offline";
-  if (monitorStatus?.isChecking) return "checking";
-  if (monitorStatus && monitorStatus.authoritative === false) return "degraded";
-  return "online";
+function getBotStatus(env: any, _monitorStatus?: MonitorStatus | null): "online" | "offline" {
+  return env.DISCORD_BOT_TOKEN ? "online" : "offline";
 }
 
 function isSameOriginMutation(request: Request, origin: string): boolean {
@@ -524,11 +521,13 @@ export async function handleApiRequest(
           const cfg = await getGuildConfig(env, guildId);
           const botGuild = botGuildMap.get(guildId);
           const sentMap: Record<string, boolean> = {};
-          await Promise.all(
-            history.slice(0, 15).map(async (record) => {
-              sentMap[record.id] = await isListingSentToGuild(env, guildId, record.id);
-            })
-          );
+          if (cfg?.channelId) {
+            await Promise.all(
+              history.slice(0, 10).map(async (record) => {
+                sentMap[record.id] = await isListingSentToGuild(env, guildId, record.id);
+              })
+            );
+          }
           const iconUrl = botGuild?.icon
             ? `https://cdn.discordapp.com/icons/${encodeURIComponent(guildId)}/${encodeURIComponent(botGuild.icon)}.png?size=64`
             : null;
@@ -588,9 +587,13 @@ export async function handleApiRequest(
       const nextConfig: EmbedConfig = {
         color: rawColor,
         titlePrefix:
-          String(body?.titlePrefix || "").trim().slice(0, 120) || DEFAULT_EMBED_CONFIG.titlePrefix,
+          typeof body?.titlePrefix === "string"
+            ? body.titlePrefix.trim().slice(0, 120)
+            : DEFAULT_EMBED_CONFIG.titlePrefix,
         footerText:
-          String(body?.footerText || "").trim().slice(0, 180) || DEFAULT_EMBED_CONFIG.footerText,
+          typeof body?.footerText === "string"
+            ? body.footerText.trim().slice(0, 180)
+            : DEFAULT_EMBED_CONFIG.footerText,
         galleryHeading: "",
         storeButtonLabel:
           String(body?.storeButtonLabel || "").trim().slice(0, 80) ||

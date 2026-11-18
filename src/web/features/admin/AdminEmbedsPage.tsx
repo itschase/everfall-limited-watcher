@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { apiFetch, EmbedConfig } from "@/lib/api";
+import { AdminOverviewResponse, apiFetch, EmbedConfig } from "@/lib/api";
 import { ADMIN_OVERVIEW_KEY, useAdminOverview } from "./useAdminOverview";
 import { formatLocalDateTime } from "@/lib/utils";
 import { AppShell } from "@/components/layout/AppShell";
@@ -28,15 +28,31 @@ export function AdminEmbedsPage() {
   });
   const [previewMode, setPreviewMode] = useState<"in_stock" | "sold_out">("in_stock");
   const [selectedCarId, setSelectedCarId] = useState<string>("");
+  const lastSyncedRef = useRef<string>("");
+
+  const isDirty = Boolean(
+    data?.embedConfig &&
+      (form.color !== data.embedConfig.color ||
+        form.titlePrefix !== data.embedConfig.titlePrefix ||
+        form.footerText !== data.embedConfig.footerText ||
+        form.storeButtonLabel !== data.embedConfig.storeButtonLabel ||
+        form.soldOutButtonLabel !== data.embedConfig.soldOutButtonLabel ||
+        form.showDetectionTime !== data.embedConfig.showDetectionTime ||
+        form.showLastVerified !== data.embedConfig.showLastVerified)
+  );
 
   useEffect(() => {
     if (data?.embedConfig) {
-      setForm(data.embedConfig);
+      const serialized = JSON.stringify(data.embedConfig);
+      if (serialized !== lastSyncedRef.current && (!isDirty || lastSyncedRef.current === "")) {
+        lastSyncedRef.current = serialized;
+        setForm(data.embedConfig);
+      }
     }
     if (data?.listings?.length && !selectedCarId) {
       setSelectedCarId(data.listings[0].id);
     }
-  }, [data?.embedConfig, data?.listings, selectedCarId]);
+  }, [data?.embedConfig, data?.listings, selectedCarId, isDirty]);
 
   const sampleCar =
     data?.listings?.find((l) => l.id === selectedCarId) ||
@@ -52,25 +68,21 @@ export function AdminEmbedsPage() {
       lastVerifiedAt: Date.now(),
     };
 
-  const isDirty =
-    data?.embedConfig &&
-    (form.color !== data.embedConfig.color ||
-      form.titlePrefix !== data.embedConfig.titlePrefix ||
-      form.footerText !== data.embedConfig.footerText ||
-      form.storeButtonLabel !== data.embedConfig.storeButtonLabel ||
-      form.soldOutButtonLabel !== data.embedConfig.soldOutButtonLabel ||
-      form.showDetectionTime !== data.embedConfig.showDetectionTime ||
-      form.showLastVerified !== data.embedConfig.showLastVerified);
-
   const saveMutation = useMutation({
     mutationFn: () =>
       apiFetch<{ ok: boolean; embedConfig: EmbedConfig }>("/api/admin/embed-config", {
         method: "PUT",
         body: JSON.stringify(form),
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      if (res?.embedConfig) {
+        lastSyncedRef.current = JSON.stringify(res.embedConfig);
+        setForm(res.embedConfig);
+        queryClient.setQueryData<AdminOverviewResponse>(ADMIN_OVERVIEW_KEY, (old) =>
+          old ? { ...old, embedConfig: res.embedConfig } : old
+        );
+      }
       toast.success("Global Discord embed settings saved");
-      void queryClient.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to save embed configuration.");

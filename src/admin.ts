@@ -108,9 +108,9 @@ export async function getManagedGuildsForUser(env: any, userId: string): Promise
 
 const BOT_GUILDS_CACHE_KEY = "bot:guilds:cache";
 const BOT_GUILDS_STALE_KEY = "bot:guilds:stale";
-const BOT_GUILDS_CACHE_TTL = 60;
-const BOT_GUILDS_STALE_TTL = 3600;
-const GUILD_CONTROLS_CACHE_TTL = 60;
+const BOT_GUILDS_CACHE_TTL = 600;
+const BOT_GUILDS_STALE_TTL = 86400;
+const GUILD_CONTROLS_CACHE_TTL = 600;
 const inFlightBotGuilds = new Map<string, Promise<BotGuild[]>>();
 
 export async function getGuildControlOptions(
@@ -639,7 +639,7 @@ export async function handleOAuthCallback(request: Request, env: any): Promise<R
 
   if (oauthError) {
     return new Response(
-      `<!DOCTYPE html><html><body style="background:#0B0E14;color:#fff;font-family:sans-serif;padding:40px;text-align:center;"><h2>Discord Login Cancelled</h2><p style="color:#9CA3AF;">${escapeHtml(oauthError)}</p><p><a href="/" style="color:#5865F2;">Return Home</a></p></body></html>`,
+      `<!DOCTYPE html><html><body style="background:#09090b;color:#fafafa;font-family:sans-serif;padding:40px;text-align:center;"><h2>Discord Login Cancelled</h2><p style="color:#a1a1aa;">${escapeHtml(oauthError)}</p><p><a href="/" style="color:#fafafa;">Return Home</a></p></body></html>`,
       { status: 400, headers: { "Content-Type": "text/html; charset=utf-8" } }
     );
   }
@@ -756,11 +756,11 @@ export async function handleOAuthCallback(request: Request, env: any): Promise<R
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><title>Signed In</title></head>
-<body style="background:#0B0E14;color:#F3F4F6;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;">
+<body style="background:#09090b;color:#fafafa;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;">
   <div>
     <h2 style="margin-bottom:8px;">Discord Connected</h2>
-    <p style="color:#9CA3AF;">Completing sign-in…</p>
-    <p style="margin-top:14px;"><a href="${escapeHtml(destination)}" style="color:#93C5FD;">Continue</a></p>
+    <p style="color:#a1a1aa;">Completing sign-in…</p>
+    <p style="margin-top:14px;"><a href="${escapeHtml(destination)}" style="color:#fafafa;">Continue</a></p>
   </div>
   <script>
     (function () {

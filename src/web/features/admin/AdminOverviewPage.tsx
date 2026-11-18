@@ -81,14 +81,16 @@ export function AdminOverviewPage() {
 
             <Card className="p-5">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Store Monitor State</span>
+                <span>Discord Bot Status</span>
                 {data.botStatus === "online" ? (
                   <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                 ) : (
-                  <AlertCircle className="h-4 w-4 text-amber-400" />
+                  <AlertCircle className="h-4 w-4 text-red-400" />
                 )}
               </div>
-              <p className="mt-2 text-lg font-bold text-white capitalize">{data.botStatus}</p>
+              <p className="mt-2 text-lg font-bold text-white">
+                {data.botStatus === "online" ? "Bot Online" : "Bot Offline"}
+              </p>
               <p className="mt-1 text-xs text-muted-foreground tabular-nums">
                 Last check: {monitor?.checkedAt ? formatLocalTime(monitor.checkedAt) : "Not yet run"}
               </p>

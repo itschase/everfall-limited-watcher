@@ -1,4 +1,4 @@
-export type BotStatus = "online" | "checking" | "degraded" | "offline";
+export type BotStatus = "online" | "offline";
 
 export interface SessionUser {
   id: string;

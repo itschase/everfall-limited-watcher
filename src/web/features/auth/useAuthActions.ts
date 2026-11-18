@@ -9,9 +9,10 @@ export function useSession() {
   return useQuery({
     queryKey: SESSION_QUERY_KEY,
     queryFn: () => apiFetch<SessionResponse>("/api/session"),
-    staleTime: 15_000,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
+    staleTime: 120_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -29,17 +30,9 @@ export function useSessionSync() {
       }
     };
 
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        syncSession();
-      }
-    };
-
     window.addEventListener("pageshow", handlePageShow);
-    document.addEventListener("visibilitychange", handleVisibility);
     return () => {
       window.removeEventListener("pageshow", handlePageShow);
-      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [queryClient]);
 }

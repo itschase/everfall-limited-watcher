@@ -77,7 +77,7 @@ export default {
 
     const mediaMatch = url.pathname.match(/^\/media\/listings\/(\d+)\/(\d+)$/);
     if (mediaMatch) {
-      return getArchivedListingImage(env, mediaMatch[1], Number(mediaMatch[2]));
+      return getArchivedListingImage(env, mediaMatch[1], Number(mediaMatch[2]), request);
     }
 
     // 1. Discord Interactions Webhook Endpoint
@@ -90,7 +90,7 @@ export default {
       if (!(await isAuthorizedMaintenanceRequest(request, env))) {
         return new Response("Unauthorized", { status: 401 });
       }
-      const result = await runCron(env, origin);
+      const result = await runCron(env, origin, "cron-fetch");
       return new Response(JSON.stringify({ ok: true, ...result }), {
         status: 200,
         headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
