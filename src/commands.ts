@@ -306,7 +306,7 @@ export async function handleInteraction(
             await editOriginalInteractionResponse(appId, interactionToken, {
               embeds: [
                 {
-                  title: result.error ? "⚠️ Store Check Warning" : "✅ Store Check Dispatched",
+                  title: result.error ? "Store Check Warning" : "Store Check Dispatched",
                   description,
                   color: result.error ? 0xf59e0b : 0x10b981,
                   footer: { text: "Everfall Limited Watcher" },
@@ -319,7 +319,7 @@ export async function handleInteraction(
             await editOriginalInteractionResponse(appId, interactionToken, {
               embeds: [
                 {
-                  title: "❌ Store Check Failed",
+                  title: "Store Check Failed",
                   description: err?.message || "Unexpected error during store check.",
                   color: 0xef4444,
                 },
@@ -397,7 +397,7 @@ export async function handleInteraction(
       flags: EPHEMERAL_FLAG,
       embeds: [
         {
-          title: "⚠️ Server Only",
+          title: "Server Only",
           description: "Please run Everfall Watcher commands inside a Discord server.",
           color: 0xef4444,
         },
@@ -564,12 +564,12 @@ export async function handleInteraction(
             const isAlertChannel = body.channel_id === cfg.channelId;
             await editOriginalInteractionResponse(appId, interactionToken, {
               content: isAlertChannel
-                ? `🔎 **Everfall Limited Store Check**: Scanned store and posted **${result.count}** active limited drop(s) below!`
-                : `✅ **Everfall Limited Store Check**: Scanned store and posted **${result.count}** active limited drop(s) to <#${cfg.channelId}>!`,
+                ? `**Everfall Limited Store Check**: Scanned store and posted **${result.count}** active limited drop(s) below!`
+                : `**Everfall Limited Store Check**: Scanned store and posted **${result.count}** active limited drop(s) to <#${cfg.channelId}>!`,
             });
           } catch (err: any) {
             await editOriginalInteractionResponse(appId, interactionToken, {
-              content: `❌ **Everfall Limited Store Check Failed**: ${err?.message || "Unexpected error."}`,
+              content: `**Everfall Limited Store Check Failed**: ${err?.message || "Unexpected error."}`,
             });
           }
         })()
