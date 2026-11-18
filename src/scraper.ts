@@ -27,8 +27,9 @@ export interface CarListing {
   lastHttpStatus?: number;
 }
 
-const MIN_STORE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
-// const MIN_STORE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
+const MIN_STORE_CHECK_INTERVAL_MS = 45 * 1000; // 45 seconds
+//const MIN_STORE_CHECK_INTERVAL_MS = 5 * 60 * 1000; --5 minutes
+// const MIN_STORE_CHECK_INTERVAL_MS = 10 * 60 * 1000; --15 minutes
 const STORE_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
