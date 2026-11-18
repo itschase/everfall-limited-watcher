@@ -241,7 +241,7 @@ async function syncListingHistory(
       missingFromCategory.map(async (record) => {
         // Confirm removal / HTTP 404 directly on the package endpoint before marking Sold Out
         const check = await verifyListingPackageEndpoint(record.id);
-        if (check.status === "sold_out" || missingFromCategory.length > 0) {
+        if (check.status === "sold_out") { //if (check.status === "sold_out" || missingFromCategory.length > 0) {
           await setListingAvailability(
             env,
             record.id,
