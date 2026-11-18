@@ -82,7 +82,7 @@ export function AppShell({
           <img
             src="/icon.webp"
             alt="Everfall Limited Watcher"
-            className="mx-auto mb-4 h-12 w-12 rounded-xl border border-white/10"
+            className="mx-auto mb-4 h-12 w-12 object-contain"
           />
           <h1 className="text-xl font-bold text-white">Discord Login Required</h1>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -232,7 +232,7 @@ export function AppShell({
               collapsed && "justify-center w-full"
             )}
           >
-            <img src="/icon.webp" alt="" className="h-7 w-7 shrink-0 rounded-lg border border-white/10" />
+            <img src="/icon.webp" alt="" className="h-7 w-7 shrink-0 object-contain" />
             {!collapsed && <span className="truncate text-xs font-bold tracking-tight">Everfall Limited Watcher</span>}
           </Link>
           {!collapsed && (
@@ -269,7 +269,7 @@ export function AppShell({
             Browse Everfall Limited Watcher dashboard and archive routes.
           </DialogDescription>
           <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-4 pr-10">
-            <img src="/icon.webp" alt="" className="h-7 w-7 rounded-lg" />
+            <img src="/icon.webp" alt="" className="h-7 w-7 shrink-0 object-contain" />
             <span className="truncate text-xs font-bold tracking-tight text-white">
               Everfall Limited Watcher
             </span>

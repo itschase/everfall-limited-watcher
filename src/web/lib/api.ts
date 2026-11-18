@@ -60,17 +60,19 @@ export interface MonitorLogEntry {
   attempts?: MonitorLogAttempt[];
 }
 
+export interface CreatorProfile {
+  id: string;
+  username: string;
+  avatarUrl: string;
+  profileUrl: string;
+}
+
 export interface SessionResponse {
   authenticated: boolean;
   user: SessionUser | null;
   appId: string;
   inviteUrl: string;
-  creatorProfile: {
-    id: string;
-    username: string;
-    avatarUrl: string;
-    profileUrl: string;
-  };
+  creatorProfile: CreatorProfile;
   botStatus: BotStatus;
   monitorStatus: MonitorStatus | null;
   publicOrigin: string;

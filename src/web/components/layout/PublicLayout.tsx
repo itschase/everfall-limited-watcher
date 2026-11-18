@@ -4,6 +4,7 @@ import { History, LayoutDashboard, Shield } from "lucide-react";
 import { useAuthActions, useSession, useSessionSync } from "@/features/auth/useAuthActions";
 import { Button } from "@/components/ui/button";
 import { UserAccountMenu } from "./UserAccountMenu";
+import { CreatorProfileCard } from "./CreatorProfileCard";
 
 export function PublicLayout({ children }: { children: ReactNode }) {
   useSessionSync();
@@ -21,11 +22,11 @@ export function PublicLayout({ children }: { children: ReactNode }) {
       {/* 3-Zone Header */}
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex min-w-0 items-center gap-2.5 text-white no-underline sm:gap-3">
+          <Link to="/" className="flex min-w-0 items-center gap-2.5 text-white no-underline sm:gap-3 group">
             <img
               src="/icon.webp"
               alt="Everfall Limited Watcher"
-              className="h-8 w-8 shrink-0 rounded-lg border border-white/10 object-cover"
+              className="h-8 w-8 shrink-0 object-contain transition-transform duration-200 group-hover:scale-105"
             />
             <span className="truncate text-sm font-bold tracking-tight sm:text-base">
               Everfall Limited Watcher
@@ -98,7 +99,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
         <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2.5 text-sm font-semibold text-white">
-              <img src="/icon.webp" alt="" className="h-5 w-5 rounded" />
+              <img src="/icon.webp" alt="" className="h-5 w-5 shrink-0 object-contain" />
               Everfall Limited Watcher
             </div>
             <p className="text-xs text-muted-foreground">
@@ -114,34 +115,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
               Privacy Policy
             </Link>
             {creator && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>Managed by</span>
-                {creator.profileUrl ? (
-                  <a
-                    href={creator.profileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={`View ${creator.username}'s Discord profile`}
-                    className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-semibold text-white transition hover:border-zinc-600 hover:bg-zinc-900"
-                  >
-                    <img
-                      src={creator.avatarUrl}
-                      alt={creator.username}
-                      className="h-4 w-4 rounded-full object-cover"
-                    />
-                    <span>{creator.username}</span>
-                  </a>
-                ) : (
-                  <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-semibold text-white">
-                    <img
-                      src={creator.avatarUrl}
-                      alt={creator.username}
-                      className="h-4 w-4 rounded-full object-cover"
-                    />
-                    <span>{creator.username}</span>
-                  </div>
-                )}
-              </div>
+              <CreatorProfileCard creator={creator} />
             )}
           </div>
         </div>
