@@ -27,11 +27,7 @@ export interface CarListing {
   lastHttpStatus?: number;
 }
 
-const MIN_STORE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
-//const STORE_HEADERS = {
-//  "User-Agent": "EverfallLimitedWatcher/1.0",
-//  Accept: "text/html",
-//};
+const MIN_STORE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const STORE_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -247,7 +243,7 @@ async function syncListingHistory(
       missingFromCategory.map(async (record) => {
         // Confirm removal / HTTP 404 directly on the package endpoint before marking Sold Out
         const check = await verifyListingPackageEndpoint(record.id);
-        if (check.status === "sold_out") { //if (check.status === "sold_out" || missingFromCategory.length > 0) { 
+        if (check.status === "sold_out") {
           // ensures vehicles are only marked Sold Out when the individual product verification reports that status, rather than simply because they're missing from the category.
           await setListingAvailability(
             env,
@@ -294,18 +290,25 @@ async function getAvailableHistoryListings(env: any): Promise<CarListing[]> {
 
 async function getRateLimitedStoreListings(
   env: any,
-  originHint?: string
+  originHint?: string,
+  source: "scheduled" | "manual" | "other" = "other"
 ): Promise<{ listings: CarListing[]; notice?: string; checkedStore: boolean }> {
   const status = await getMonitorStatus(env);
   if (status && Date.now() - status.checkedAt < MIN_STORE_CHECK_INTERVAL_MS) {
+    console.log("Everfall store verification skipped", {
+      source,
+      reason: "rate_limited",
+      lastCheckedAt: status.checkedAt,
+      minimumIntervalMs: MIN_STORE_CHECK_INTERVAL_MS,
+      timestamp: new Date().toISOString(),
+    });
     return {
       listings: await getAvailableHistoryListings(env),
       notice: "Using recorded listing history; storefront was checked recently.",
-      //notice: "Using recorded listing history; storefront was checked less than 10 minutes ago.",
       checkedStore: false,
     };
   }
-  const result = await fetchStoreListings();
+  const result = await fetchStoreListings(source);
   return {
     listings: await syncListingHistory(env, result, { originHint }),
     notice: result.notice,
@@ -687,7 +690,7 @@ export async function manualScanStoreOnly(
 }> {
   await ensureHistoricalKnownListingsPreserved(env, originHint);
   const beforeIds = new Set((await getListingHistory(env)).map((r) => r.id));
-  const fetched = await fetchStoreListings();
+  const fetched = await fetchStoreListings("manual");
 
   if (fetched.authoritative) {
     await syncListingHistory(env, fetched, { originHint });
@@ -880,7 +883,9 @@ async function fetchPackageDetails(id: string): Promise<CarListing> {
   }
 }
 
-export async function fetchStoreListings(): Promise<{
+export async function fetchStoreListings(
+  source: "manual" | "scheduled" | "other" = "other"
+): Promise<{
   listings: CarListing[];
   notice?: string;
   authoritative: boolean;
@@ -891,7 +896,8 @@ export async function fetchStoreListings(): Promise<{
   try {
     const res = await fetch(storeUrl, { headers: STORE_HEADERS });
     const html = await res.text();
-        console.log("Everfall store verification", {
+    console.log("Everfall store verification", {
+      source,
       httpStatus: res.status,
       responseUrl: res.url,
       success: res.ok,
@@ -954,7 +960,11 @@ export async function fetchStoreListings(): Promise<{
 
     return { listings, authoritative: true };
   } catch (err: any) {
-    console.error("Store scrape fetch error:", err);
+    console.error("Store scrape fetch error:", {
+      source,
+      error: err?.message || String(err),
+      timestamp: new Date().toISOString(),
+    });
     return {
       listings: [],
       notice: `Store scrape failed (${err?.message || "unknown error"}); recorded history was preserved.`,
@@ -967,7 +977,7 @@ export async function runCron(
   env: any,
   originHint?: string
 ): Promise<{ checked: number; newDrops: number; notice?: string }> {
-  const { listings, notice } = await getRateLimitedStoreListings(env, originHint);
+  const { listings, notice } = await getRateLimitedStoreListings(env, originHint, "scheduled");
   let newDrops = 0;
 
   for (const car of listings) {
