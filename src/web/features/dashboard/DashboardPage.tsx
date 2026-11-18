@@ -569,7 +569,7 @@ export function DashboardPage() {
       <div className="mt-6 rounded-xl border border-border bg-card/60 p-4 text-xs text-muted-foreground">
         <span className="font-semibold text-zinc-200">Quick Setup:</span> After adding the bot to a
         Discord server, you can also run{" "}
-        <code className="rounded border border-border bg-zinc-950 px-1.5 py-0.5 font-mono text-zinc-200">
+        <code className="select-all cursor-text rounded border border-border bg-zinc-950 px-1.5 py-0.5 font-mono text-zinc-200">
           /setup #your-channel
         </code>{" "}
         inside Discord to set the notification channel.

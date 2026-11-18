@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, Search } from "lucide-react";
+import { Check, Copy, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { AdminConnectedGuild, AdminOverviewResponse, apiFetch } from "@/lib/api";
 import { formatLocalDateTime } from "@/lib/utils";
@@ -31,6 +31,20 @@ export function AdminServersPage() {
   const { data, isLoading, isFetching } = useAdminOverview();
   const [search, setSearch] = useState("");
   const [selectedGuild, setSelectedGuild] = useState<AdminConnectedGuild | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copyId = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedId(value);
+      toast.success(`Copied ${label}: ${value}`);
+      window.setTimeout(() => {
+        setCopiedId((curr) => (curr === value ? null : curr));
+      }, 1500);
+    } catch {
+      toast.info(`${label}: ${value}`);
+    }
+  };
 
   const guilds = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -113,7 +127,24 @@ export function AdminServersPage() {
                       )}
                       <div>
                         <p className="font-semibold text-white">{guild.name}</p>
-                        <p className="font-mono text-[11px] text-muted-foreground">{guild.id}</p>
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          <span className="select-text font-mono text-[11px] text-muted-foreground">
+                            {guild.id}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void copyId(guild.id, "Server ID")}
+                            aria-label={`Copy server ID ${guild.id}`}
+                            title="Copy Server ID"
+                            className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
+                          >
+                            {copiedId === guild.id ? (
+                              <Check className="h-3 w-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </TableCell>
@@ -124,7 +155,24 @@ export function AdminServersPage() {
                   </TableCell>
                   <TableCell>
                     {guild.configured ? (
-                      <Badge variant="success">Channel #{guild.channelId}</Badge>
+                      <div className="inline-flex items-center gap-1.5">
+                        <Badge variant="success" className="select-text font-mono">
+                          #{guild.channelId}
+                        </Badge>
+                        <button
+                          type="button"
+                          onClick={() => void copyId(guild.channelId, "Channel ID")}
+                          aria-label={`Copy channel ID ${guild.channelId}`}
+                          title="Copy Channel ID"
+                          className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
+                        >
+                          {copiedId === guild.channelId ? (
+                            <Check className="h-3 w-3 text-emerald-400" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                        </button>
+                      </div>
                     ) : (
                       <Badge variant="secondary">Channel Not Set</Badge>
                     )}
@@ -149,8 +197,23 @@ export function AdminServersPage() {
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>{selectedGuild.name}</DialogTitle>
-              <DialogDescription className="font-mono text-xs">
-                Guild ID {selectedGuild.id} &bull; Mode: {selectedGuild.environment}
+              <DialogDescription className="flex flex-wrap items-center gap-2 font-mono text-xs">
+                <span>
+                  Guild ID <span className="select-text text-zinc-200">{selectedGuild.id}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void copyId(selectedGuild.id, "Guild ID")}
+                  aria-label="Copy Guild ID"
+                  className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-white cursor-pointer"
+                >
+                  {copiedId === selectedGuild.id ? (
+                    <Check className="h-3 w-3 text-emerald-400" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                </button>
+                <span>&bull; Mode: {selectedGuild.environment}</span>
               </DialogDescription>
             </DialogHeader>
 
@@ -158,9 +221,25 @@ export function AdminServersPage() {
               <div className="grid gap-3 rounded-lg border border-border bg-zinc-950 p-4 text-xs sm:grid-cols-2">
                 <div>
                   <span className="text-muted-foreground">Alert Channel ID</span>
-                  <p className="mt-0.5 font-mono text-white">
-                    {selectedGuild.channelId || "Not configured"}
-                  </p>
+                  <div className="mt-0.5 flex items-center gap-1.5">
+                    <p className="select-text font-mono text-white">
+                      {selectedGuild.channelId || "Not configured"}
+                    </p>
+                    {selectedGuild.channelId && (
+                      <button
+                        type="button"
+                        onClick={() => void copyId(selectedGuild.channelId, "Channel ID")}
+                        aria-label="Copy Alert Channel ID"
+                        className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-white cursor-pointer"
+                      >
+                        {copiedId === selectedGuild.channelId ? (
+                          <Check className="h-3 w-3 text-emerald-400" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Mention Roles Configured</span>

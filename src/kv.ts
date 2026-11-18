@@ -19,14 +19,34 @@ export type ListingRecord = {
   payload: any;
 };
 
+export type MonitorLogSource = "manual" | "cron-fetch" | "scheduled" | "other";
+
 export type MonitorStatus = {
   checkedAt: number;
   lastSuccessAt?: number;
+  lastFetchCronSuccessAt?: number;
+  lastSource?: MonitorLogSource;
   listingCount: number;
   authoritative: boolean;
   isChecking?: boolean;
   mode?: "fast" | "reduced";
   notice?: string;
+};
+
+export type MonitorLogEntry = {
+  id: string;
+  timestamp: number;
+  source: MonitorLogSource;
+  status: "success" | "blocked" | "error";
+  httpStatus: number | null;
+  cloudflareChallenge: boolean;
+  authoritative: boolean;
+  responseLength: number | null;
+  targetUrl: string;
+  listingCount: number;
+  newDiscoveries: number;
+  durationMs: number;
+  message: string;
 };
 
 export type DeliveryLogEntry = {
@@ -424,6 +444,8 @@ export async function getEffectiveEmbedConfig(env: any, guildId?: string): Promi
 }
 
 const DELIVERY_LOG_KEY = "dispatch:logs";
+const MONITOR_LOG_KEY = "monitor:logs";
+const MONITOR_LOG_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export async function appendDeliveryLog(env: any, entry: DeliveryLogEntry): Promise<void> {
   const kv = env.DISCORD_BOT as KVNamespace;
@@ -446,6 +468,40 @@ export async function getDeliveryLogs(env: any): Promise<DeliveryLogEntry[]> {
   try {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function appendMonitorLog(env: any, entry: MonitorLogEntry): Promise<void> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return;
+  try {
+    const cutoff = Date.now() - MONITOR_LOG_RETENTION_MS;
+    const raw = await kv.get(MONITOR_LOG_KEY);
+    const existing: MonitorLogEntry[] = raw ? JSON.parse(raw) : [];
+    const retained = Array.isArray(existing)
+      ? existing.filter((item) => item && typeof item.timestamp === "number" && item.timestamp >= cutoff)
+      : [];
+    const updated = [entry, ...retained].slice(0, 600);
+    await kv.put(MONITOR_LOG_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.error("Failed to persist store monitor log:", err);
+  }
+}
+
+export async function getMonitorLogs(env: any): Promise<MonitorLogEntry[]> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return [];
+  const raw = await kv.get(MONITOR_LOG_KEY);
+  if (!raw) return [];
+  try {
+    const cutoff = Date.now() - MONITOR_LOG_RETENTION_MS;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item) => item && typeof item.timestamp === "number" && item.timestamp >= cutoff)
+      .sort((a, b) => b.timestamp - a.timestamp);
   } catch {
     return [];
   }

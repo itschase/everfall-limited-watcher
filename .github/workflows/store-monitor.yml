@@ -1,0 +1,34 @@
+name: Scheduled Store Monitor
+
+on:
+  schedule:
+    - cron: "4,22,40,58 * * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger-store-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Trigger Worker Store Check via HTTP Fetch
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          PUBLIC_ORIGIN: https://everfall-limited-watcher.itschase.workers.dev
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET secret is not configured; skipping HTTP cron call."
+            exit 0
+          fi
+
+          http_code=$(curl -sS -o /tmp/cron_response.json -w "%{http_code}" \
+            -X POST "${PUBLIC_ORIGIN}/cron" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json")
+
+          cat /tmp/cron_response.json
+          echo ""
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "Store monitor HTTP cron returned status ${http_code}"
+            exit 1
+          fi

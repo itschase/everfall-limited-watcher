@@ -2,13 +2,10 @@ import { ReactNode, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
-  Check,
-  Copy,
   FlaskConical,
   History,
   Home,
   LayoutDashboard,
-  LogOut,
   Menu,
   Palette,
   PanelLeftClose,
@@ -17,19 +14,11 @@ import {
   Server,
   Shield,
 } from "lucide-react";
-import { toast } from "sonner";
 import { useAuthActions, useSession, useSessionSync } from "@/features/auth/useAuthActions";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { UserAccountMenu } from "./UserAccountMenu";
 
 interface NavItem {
   label: string;
@@ -75,7 +64,6 @@ export function AppShell({
 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
 
   const user = session?.user;
 
@@ -134,17 +122,6 @@ export function AppShell({
       </div>
     );
   }
-
-  const copyDiscordId = async () => {
-    try {
-      await navigator.clipboard.writeText(user.id);
-      setCopiedId(true);
-      toast.success("Copied Discord user ID");
-      window.setTimeout(() => setCopiedId(false), 1800);
-    } catch {
-      toast.error("Unable to copy ID");
-    }
-  };
 
   const isActivePath = (item: NavItem) => {
     if (item.exact) return location.pathname === item.to;
@@ -286,10 +263,16 @@ export function AppShell({
 
       {/* Mobile Navigation Drawer */}
       <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-        <DialogContent className="left-0 top-0 h-full max-w-[280px] translate-x-0 translate-y-0 rounded-none border-r border-sidebar-border bg-sidebar p-0">
-          <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-4">
+        <DialogContent className="left-0 top-0 h-dvh max-h-none w-[280px] max-w-[85vw] translate-x-0 translate-y-0 rounded-none border-r border-sidebar-border bg-sidebar p-0 sm:p-0">
+          <DialogTitle className="sr-only">Navigation Menu</DialogTitle>
+          <DialogDescription className="sr-only">
+            Browse Everfall Limited Watcher dashboard and archive routes.
+          </DialogDescription>
+          <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-4 pr-10">
             <img src="/icon.webp" alt="" className="h-7 w-7 rounded-lg" />
-            <span className="text-xs font-bold tracking-tight text-white">Everfall Limited Watcher</span>
+            <span className="truncate text-xs font-bold tracking-tight text-white">
+              Everfall Limited Watcher
+            </span>
           </div>
           {renderNavLinks(() => setMobileOpen(false))}
         </DialogContent>
@@ -331,56 +314,7 @@ export function AppShell({
               {user.isAdmin ? "Master Administrator" : "Server Manager"}
             </span>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm font-medium text-white transition hover:bg-secondary cursor-pointer"
-                >
-                  <img src={user.avatarUrl} alt={user.username} className="h-6 w-6 rounded-full" />
-                  <span className="max-w-[110px] truncate text-xs font-semibold">{user.username}</span>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel className="flex flex-col">
-                  <span className="text-sm text-white">{user.username}</span>
-                  <span className="font-mono text-[11px] font-normal text-muted-foreground">
-                    ID: {user.id}
-                  </span>
-                </DropdownMenuLabel>
-                <DropdownMenuItem onSelect={() => void copyDiscordId()}>
-                  {copiedId ? (
-                    <Check className="h-3.5 w-3.5 text-emerald-400" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5 text-muted-foreground" />
-                  )}
-                  Copy Discord ID
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => void navigate({ to: "/dashboard" })}>
-                  <LayoutDashboard className="h-4 w-4 text-muted-foreground" />
-                  Server Dashboard
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => void navigate({ to: "/history" })}>
-                  <History className="h-4 w-4 text-muted-foreground" />
-                  Limited Drop History
-                </DropdownMenuItem>
-                {user.isAdmin && (
-                  <DropdownMenuItem onSelect={() => void navigate({ to: "/admin" })}>
-                    <Shield className="h-4 w-4 text-amber-400" />
-                    Admin Overview
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onSelect={() => void logout()}
-                  className="text-red-400 focus:text-red-300"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Log Out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <UserAccountMenu user={user} onLogout={logout} />
           </div>
         </header>
 

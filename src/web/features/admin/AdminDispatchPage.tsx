@@ -122,7 +122,7 @@ export function AdminDispatchPage() {
 
                 {selectedListing && (
                   <div className="rounded-lg border border-border bg-zinc-950 p-4 space-y-2 text-xs">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-sm font-semibold text-white">{selectedListing.name}</span>
                       <div className="flex items-center gap-1.5">
                         <Badge variant={selectedListing.isAvailable ? "success" : "destructive"}>
@@ -170,7 +170,7 @@ export function AdminDispatchPage() {
 
             {/* Step 2: Destination Selection (Unchecked by default) */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-wrap items-center justify-between gap-2">
                 <CardTitle>2. Select Destination Servers</CardTitle>
                 <span className="text-xs text-muted-foreground">
                   {selectedGuildIds.length} selected
@@ -202,7 +202,7 @@ export function AdminDispatchPage() {
                             />
                             <div className="min-w-0">
                               <p className="truncate font-semibold text-white">{guild.name}</p>
-                              <p className="font-mono text-[11px] text-muted-foreground">
+                              <p className="select-text font-mono text-[11px] text-muted-foreground">
                                 Channel #{guild.channelId}
                               </p>
                             </div>
@@ -268,7 +268,7 @@ export function AdminDispatchPage() {
                     {(data?.deliveryLogs || []).slice(0, 20).map((log) => (
                       <TableRow key={log.id}>
                         <TableCell className="font-medium text-white">{log.listingName}</TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
+                        <TableCell className="select-text font-mono text-xs text-muted-foreground">
                           {log.guildId}
                         </TableCell>
                         <TableCell className="capitalize text-xs text-zinc-300">{log.method}</TableCell>

@@ -94,9 +94,19 @@ export function useAuthActions(onSuccess?: (destination?: string) => void) {
   };
 
   const logout = async () => {
-    await fetch("/logout", { credentials: "same-origin", redirect: "manual" });
-    await queryClient.invalidateQueries();
-    window.location.assign("/");
+    try {
+      await fetch("/logout", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+    } finally {
+      queryClient.setQueryData(SESSION_QUERY_KEY, (old: any) =>
+        old ? { ...old, authenticated: false, user: null } : old
+      );
+      queryClient.clear();
+      window.location.replace("/");
+    }
   };
 
   return { startLogin, logout, isLoggingIn };

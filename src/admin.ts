@@ -87,7 +87,19 @@ function getCookieAttributes(isHttps: boolean, maxAgeSeconds: number): string {
 export function buildLogoutCookie(request: Request, env: any): string {
   const origin = getRequestOrigin(request, env);
   const isHttps = isHttpsContext(request, origin);
-  return `${SESSION_COOKIE}=; ${getCookieAttributes(isHttps, 0)}`;
+  return `${SESSION_COOKIE}=; ${getCookieAttributes(isHttps, 0)}; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+}
+
+export function buildLogoutCookies(request: Request, env: any): string[] {
+  const origin = getRequestOrigin(request, env);
+  const isHttps = isHttpsContext(request, origin);
+  const expired = "Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  const cookies = [`${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; ${expired}`];
+  if (isHttps) {
+    cookies.push(`${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=None; ${expired}`);
+    cookies.push(`${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=None; Partitioned; ${expired}`);
+  }
+  return cookies;
 }
 
 export async function getManagedGuildsForUser(env: any, userId: string): Promise<any[]> {

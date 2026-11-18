@@ -15,7 +15,7 @@ import {
   getSessionSecret,
   getCreatorProfile,
   getRequestOrigin,
-  buildLogoutCookie,
+  buildLogoutCookies,
 } from "./admin";
 import { handleApiRequest } from "./api";
 import { EF_LOGO_BASE64 } from "./assets";
@@ -165,14 +165,19 @@ export default {
     }
 
     if (url.pathname === "/logout") {
-      return new Response(null, {
-        status: 302,
-        headers: {
-          Location: "/",
-          "Set-Cookie": buildLogoutCookie(request, env),
-          "Cache-Control": "no-store",
-        },
+      const headers = new Headers({
+        "Cache-Control": "no-store, no-cache, must-revalidate, private",
+        Vary: "Cookie",
       });
+      for (const cookie of buildLogoutCookies(request, env)) {
+        headers.append("Set-Cookie", cookie);
+      }
+      if (request.method === "POST") {
+        headers.set("Content-Type", "application/json; charset=utf-8");
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
+      }
+      headers.set("Location", "/");
+      return new Response(null, { status: 302, headers });
     }
 
     // 6. Serve React SPA & Vite Static Assets

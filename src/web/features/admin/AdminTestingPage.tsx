@@ -87,7 +87,7 @@ export function AdminTestingPage() {
                   return (
                     <div
                       key={guild.id}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-border bg-zinc-950 p-3.5"
+                      className="flex flex-col items-start justify-between gap-3 rounded-lg border border-border bg-zinc-950 p-3.5 sm:flex-row sm:items-center"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-white">{guild.name}</p>

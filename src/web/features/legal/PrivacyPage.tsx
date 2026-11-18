@@ -36,10 +36,10 @@ export function PrivacyPage() {
                 delivery tracking markers.
               </p>
               <p>
-                <strong className="text-white">Application Activity &amp; Delivery Logs:</strong> We retain
+                <strong className="text-white">Application Activity &amp; Monitoring Logs:</strong> We retain
                 recent notification delivery logs (up to the most recent 100 dispatch entries containing
-                server ID, channel ID, Discord message ID, timestamp, and delivery outcome) alongside store
-                check status timestamps to operate and troubleshoot the service.
+                server ID, channel ID, Discord message ID, timestamp, and delivery outcome) and store
+                verification monitor logs (retained for up to 7 days) alongside store check status timestamps to operate and troubleshoot the service.
               </p>
               <p>
                 <strong className="text-white">Store Listing Information:</strong> Everfall Limited Watcher collects
@@ -79,7 +79,7 @@ export function PrivacyPage() {
               <p>
                 Everfall Limited Watcher runs on Cloudflare infrastructure (Cloudflare Workers and Workers KV).
                 Cached user Discord server lists (<code>user_guilds:*</code>) automatically expire after 24
-                hours, and temporary Discord API guild caches expire within 60 seconds to 1 hour. Server
+                hours, and temporary Discord API guild caches expire within 10 minutes to 24 hours. Server
                 configurations and historical public vehicle records (alongside archived listing images) are
                 retained to provide ongoing drop notifications and historical reference until modified or
                 removed. Removing the bot from a Discord server does not automatically purge shared public

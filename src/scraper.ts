@@ -10,6 +10,8 @@ import {
   isListingSentToGuild,
   markListingSentToGuild,
   appendDeliveryLog,
+  appendMonitorLog,
+  MonitorLogSource,
   DEFAULT_EMBED_CONFIG,
 } from "./kv";
 import { fetchDiscordWithRetry } from "./discord";
@@ -27,7 +29,8 @@ export interface CarListing {
   lastHttpStatus?: number;
 }
 
-const MIN_STORE_CHECK_INTERVAL_MS = 6 * 60 * 1000;
+const MIN_STORE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
+const FETCH_CRON_GRACE_MS = 25 * 60 * 1000;
 const STORE_URLS = [
   "https://everfall.tebex.io/category/limited-cars",
   "https://store.everfallcommunity.com/category/limited-cars",
@@ -155,6 +158,18 @@ export async function getArchivedListingImage(
     });
   }
 
+  const edgeCache: Cache | null =
+    typeof caches !== "undefined" && (caches as any)?.default ? (caches as any).default : null;
+  const cacheKey = request ? new Request(new URL(request.url).toString(), { method: "GET" }) : null;
+  if (edgeCache && cacheKey) {
+    try {
+      const cached = await edgeCache.match(cacheKey);
+      if (cached) return cached;
+    } catch {
+      // Fall back to KV read
+    }
+  }
+
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return new Response("Not found", { status: 404 });
   const result = await kv.getWithMetadata<{ contentType?: string }>(
@@ -162,13 +177,24 @@ export async function getArchivedListingImage(
     "arrayBuffer"
   );
   if (!result.value) return new Response("Not found", { status: 404 });
-  return new Response(result.value, {
+
+  const response = new Response(result.value, {
     headers: {
       "Content-Type": result.metadata?.contentType || "image/webp",
       "Cache-Control": "public, max-age=31536000, immutable",
       ETag: etag,
     },
   });
+
+  if (edgeCache && cacheKey) {
+    try {
+      await edgeCache.put(cacheKey, response.clone());
+    } catch {
+      // Non-fatal if cache put fails
+    }
+  }
+
+  return response;
 }
 
 async function verifyListingPackageEndpoint(
@@ -244,38 +270,57 @@ export async function ensureHistoricalKnownListingsPreserved(
   historicalSeededKVs.add(kv as object);
 }
 
+type StoreFetchResult = {
+  listings: CarListing[];
+  notice?: string;
+  authoritative: boolean;
+  httpStatus: number | null;
+  cloudflareChallenge: boolean;
+  responseLength: number | null;
+  targetUrl: string;
+  durationMs: number;
+};
+
 async function syncListingHistory(
   env: any,
-  result: { listings: CarListing[]; notice?: string; authoritative: boolean },
+  result: StoreFetchResult,
   options: {
     acceptNonAuthoritativeListings?: boolean;
     updateMonitorStatus?: boolean;
     originHint?: string;
     skipHistoryFetchWhenBlocked?: boolean;
     forceRecordWrite?: boolean;
+    source?: MonitorLogSource;
   } = {}
-): Promise<CarListing[]> {
+): Promise<{ availableListings: CarListing[]; newDiscoveries: number }> {
   await ensureHistoricalKnownListingsPreserved(env, options.originHint);
   const updateMonitorStatus = options.updateMonitorStatus !== false;
   const previousStatus = await getMonitorStatus(env);
+  const source = options.source || "other";
 
   if (!result.authoritative && !options.acceptNonAuthoritativeListings) {
     if (updateMonitorStatus) {
       await setMonitorStatus(env, {
         checkedAt: Date.now(),
         lastSuccessAt: previousStatus?.lastSuccessAt,
+        lastFetchCronSuccessAt: previousStatus?.lastFetchCronSuccessAt,
+        lastSource: source,
         listingCount: result.listings.length,
         authoritative: false,
         notice: result.notice,
       });
     }
-    return options.skipHistoryFetchWhenBlocked ? [] : getAvailableHistoryListings(env);
+    return {
+      availableListings: options.skipHistoryFetchWhenBlocked ? [] : await getAvailableHistoryListings(env),
+      newDiscoveries: 0,
+    };
   }
 
   const currentIds = new Set(result.listings.map((listing) => listing.id));
   const enriched: CarListing[] = [];
   const history = await getListingHistory(env);
   const historyById = new Map(history.map((record) => [record.id, record]));
+  const newDiscoveries = result.listings.filter((listing) => !historyById.has(listing.id)).length;
 
   for (const listing of result.listings) {
     const existingRecord = historyById.get(listing.id);
@@ -329,12 +374,58 @@ async function syncListingHistory(
     await setMonitorStatus(env, {
       checkedAt: now,
       lastSuccessAt: result.authoritative ? now : previousStatus?.lastSuccessAt,
+      lastFetchCronSuccessAt:
+        result.authoritative && source === "cron-fetch"
+          ? now
+          : previousStatus?.lastFetchCronSuccessAt,
+      lastSource: source,
       listingCount: enriched.length,
       authoritative: result.authoritative,
       notice: result.notice,
     });
   }
-  return enriched.filter((listing) => listing.isAvailable !== false);
+  return {
+    availableListings: enriched.filter((listing) => listing.isAvailable !== false),
+    newDiscoveries,
+  };
+}
+
+async function recordMonitorAttempt(
+  env: any,
+  source: MonitorLogSource,
+  fetched: StoreFetchResult,
+  newDiscoveries: number
+): Promise<void> {
+  const status: "success" | "blocked" | "error" = fetched.authoritative
+    ? "success"
+    : fetched.cloudflareChallenge || fetched.httpStatus === 403 || fetched.httpStatus === 429
+      ? "blocked"
+      : "error";
+
+  const message = fetched.authoritative
+    ? `Verified ${fetched.listings.length} active listing${fetched.listings.length === 1 ? "" : "s"}${
+        newDiscoveries > 0 ? ` (${newDiscoveries} new)` : ""
+      }.`
+    : fetched.notice ||
+      (fetched.cloudflareChallenge
+        ? `Cloudflare challenge (HTTP ${fetched.httpStatus ?? 403}) blocked ${source} verification.`
+        : `Store check returned non-authoritative status (HTTP ${fetched.httpStatus ?? "error"}).`);
+
+  await appendMonitorLog(env, {
+    id: crypto.randomUUID(),
+    timestamp: Date.now(),
+    source,
+    status,
+    httpStatus: fetched.httpStatus,
+    cloudflareChallenge: fetched.cloudflareChallenge,
+    authoritative: fetched.authoritative,
+    responseLength: fetched.responseLength,
+    targetUrl: fetched.targetUrl,
+    listingCount: fetched.authoritative ? fetched.listings.length : 0,
+    newDiscoveries,
+    durationMs: fetched.durationMs,
+    message,
+  });
 }
 
 async function getAvailableHistoryListings(env: any): Promise<CarListing[]> {
@@ -359,10 +450,24 @@ async function getAvailableHistoryListings(env: any): Promise<CarListing[]> {
 async function getRateLimitedStoreListings(
   env: any,
   originHint?: string,
-  source: "scheduled" | "cron-fetch" | "manual" | "other" = "other",
+  source: MonitorLogSource = "other",
   options: { skipHistoryFetchWhenBlocked?: boolean } = {}
 ): Promise<{ listings: CarListing[]; notice?: string; checkedStore: boolean; authoritative?: boolean }> {
   const status = await getMonitorStatus(env);
+  // If HTTP fetch cron (/cron) succeeded within 25m, let scheduled runner yield cleanly
+  if (
+    source === "scheduled" &&
+    status?.lastFetchCronSuccessAt &&
+    Date.now() - status.lastFetchCronSuccessAt < FETCH_CRON_GRACE_MS
+  ) {
+    return {
+      listings: options.skipHistoryFetchWhenBlocked ? [] : await getAvailableHistoryListings(env),
+      notice: "HTTP fetch cron verified storefront recently; scheduled runner deferred.",
+      checkedStore: false,
+      authoritative: status.authoritative,
+    };
+  }
+
   const cooldownMs = status?.authoritative ? MIN_STORE_CHECK_INTERVAL_MS : 60 * 1000;
   if (status && Date.now() - status.checkedAt < cooldownMs) {
     console.log("Everfall store verification skipped", {
@@ -380,11 +485,14 @@ async function getRateLimitedStoreListings(
     };
   }
   const result = await fetchStoreListings(source);
+  const synced = await syncListingHistory(env, result, {
+    originHint,
+    skipHistoryFetchWhenBlocked: options.skipHistoryFetchWhenBlocked,
+    source,
+  });
+  await recordMonitorAttempt(env, source, result, synced.newDiscoveries);
   return {
-    listings: await syncListingHistory(env, result, {
-      originHint,
-      skipHistoryFetchWhenBlocked: options.skipHistoryFetchWhenBlocked,
-    }),
+    listings: synced.availableListings,
     notice: result.notice,
     checkedStore: true,
     authoritative: result.authoritative,
@@ -774,21 +882,30 @@ export async function manualScanStoreOnly(
   notice?: string;
 }> {
   await ensureHistoricalKnownListingsPreserved(env, originHint);
-  const beforeIds = new Set((await getListingHistory(env)).map((r) => r.id));
   const fetched = await fetchStoreListings("manual");
+  let newDiscoveries = 0;
 
   if (fetched.authoritative) {
-    await syncListingHistory(env, fetched, { originHint, forceRecordWrite: true });
+    const synced = await syncListingHistory(env, fetched, {
+      originHint,
+      forceRecordWrite: true,
+      source: "manual",
+    });
+    newDiscoveries = synced.newDiscoveries;
   } else {
     const previousStatus = await getMonitorStatus(env);
     await setMonitorStatus(env, {
       checkedAt: Date.now(),
       lastSuccessAt: previousStatus?.lastSuccessAt,
+      lastFetchCronSuccessAt: previousStatus?.lastFetchCronSuccessAt,
+      lastSource: "manual",
       listingCount: previousStatus?.listingCount || 0,
       authoritative: false,
       notice: fetched.notice,
     });
   }
+
+  await recordMonitorAttempt(env, "manual", fetched, newDiscoveries);
 
   // Never send Discord notifications during a manual scan
   const updatedHistory = await getListingHistory(env);
@@ -804,7 +921,6 @@ export async function manualScanStoreOnly(
         lastHttpStatus: record.lastHttpStatus,
       }) as CarListing
   );
-  const newDiscoveries = updatedHistory.filter((r) => !beforeIds.has(r.id)).length;
 
   return {
     listings,
@@ -969,19 +1085,29 @@ async function fetchPackageDetails(id: string): Promise<CarListing> {
 }
 
 export async function fetchStoreListings(
-  source: "manual" | "scheduled" | "cron-fetch" | "other" = "other"
-): Promise<{
-  listings: CarListing[];
-  notice?: string;
-  authoritative: boolean;
-}> {
+  source: MonitorLogSource = "other"
+): Promise<StoreFetchResult> {
+  const startedAt = Date.now();
   let lastNotice =
     "Store verification was blocked; recorded history was preserved without availability changes.";
+  let lastHttpStatus: number | null = null;
+  let lastChallenge = false;
+  let lastLength: number | null = null;
+  let lastUrl = STORE_URLS[0];
 
   for (const storeUrl of STORE_URLS) {
+    lastUrl = storeUrl;
     try {
+      const headers: Record<string, string> = storeUrl.includes("store.everfallcommunity.com")
+        ? {
+            ...STORE_HEADERS,
+            "Sec-Fetch-Site": "same-origin",
+            Referer: "https://store.everfallcommunity.com/",
+          }
+        : STORE_HEADERS;
+
       const res = await fetch(storeUrl, {
-        headers: STORE_HEADERS,
+        headers,
         redirect: "follow",
         cf: { cacheTtl: 0, cacheEverything: false },
       } as RequestInit);
@@ -989,7 +1115,13 @@ export async function fetchStoreListings(
       const cloudflareChallenge =
         html.includes("challenges.cloudflare.com") ||
         html.includes("Just a moment...") ||
-        html.includes("Attention Required!");
+        html.includes("Attention Required!") ||
+        res.headers.get("cf-mitigated") === "challenge";
+
+      lastHttpStatus = res.status;
+      lastChallenge = cloudflareChallenge;
+      lastLength = html.length;
+      lastUrl = res.url || storeUrl;
 
       console.log("Everfall store verification", {
         source,
@@ -1002,8 +1134,9 @@ export async function fetchStoreListings(
       });
 
       if (!res.ok || cloudflareChallenge) {
-        lastNotice =
-          "Store verification was blocked; recorded history was preserved without availability changes.";
+        lastNotice = cloudflareChallenge
+          ? `Cloudflare challenge (HTTP ${res.status}) blocked automated verification on ${storeUrl}; recorded history was preserved.`
+          : `Store returned HTTP ${res.status}; recorded history was preserved without availability changes.`;
         continue;
       }
 
@@ -1026,7 +1159,15 @@ export async function fetchStoreListings(
       }
 
       if (foundIds.size === 0) {
-        return { listings: [], authoritative: true };
+        return {
+          listings: [],
+          authoritative: true,
+          httpStatus: res.status,
+          cloudflareChallenge: false,
+          responseLength: html.length,
+          targetUrl: res.url || storeUrl,
+          durationMs: Date.now() - startedAt,
+        };
       }
 
       const listings: CarListing[] = [];
@@ -1039,7 +1180,15 @@ export async function fetchStoreListings(
         }
       }
 
-      return { listings, authoritative: true };
+      return {
+        listings,
+        authoritative: true,
+        httpStatus: res.status,
+        cloudflareChallenge: false,
+        responseLength: html.length,
+        targetUrl: res.url || storeUrl,
+        durationMs: Date.now() - startedAt,
+      };
     } catch (err: any) {
       console.error("Store scrape fetch error:", {
         source,
@@ -1047,6 +1196,9 @@ export async function fetchStoreListings(
         error: err?.message || String(err),
         timestamp: new Date().toISOString(),
       });
+      lastHttpStatus = null;
+      lastChallenge = false;
+      lastLength = null;
       lastNotice = `Store scrape failed (${err?.message || "unknown error"}); recorded history was preserved.`;
     }
   }
@@ -1055,6 +1207,11 @@ export async function fetchStoreListings(
     listings: [],
     notice: lastNotice,
     authoritative: false,
+    httpStatus: lastHttpStatus,
+    cloudflareChallenge: lastChallenge,
+    responseLength: lastLength,
+    targetUrl: lastUrl,
+    durationMs: Date.now() - startedAt,
   };
 }
 

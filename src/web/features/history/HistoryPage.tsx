@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Search } from "lucide-react";
 import { apiFetch, HistoryResponse, ListingItem } from "@/lib/api";
 import { formatLocalDateTime, safeExternalUrl } from "@/lib/utils";
 import { AppShell } from "@/components/layout/AppShell";
@@ -22,6 +22,12 @@ export function HistoryPage() {
   const [status, setStatus] = useState<"all" | "in_stock" | "sold_out">("all");
   const [page, setPage] = useState(1);
   const [selectedListing, setSelectedListing] = useState<ListingItem | null>(null);
+  const [modalImgIdx, setModalImgIdx] = useState(0);
+
+  const openInspect = (listing: ListingItem) => {
+    setModalImgIdx(0);
+    setSelectedListing(listing);
+  };
 
   const queryParams = new URLSearchParams({
     q: search,
@@ -102,13 +108,13 @@ export function HistoryPage() {
               <VehicleCard
                 key={item.id}
                 listing={item}
-                onInspect={(listing) => setSelectedListing(listing)}
+                onInspect={openInspect}
               />
             ))}
           </div>
 
           {data && data.totalPages > 1 && (
-            <div className="mt-8 flex items-center justify-between border-t border-border pt-4 text-xs text-muted-foreground">
+            <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs text-muted-foreground">
               <span>
                 Page {data.page} of {data.totalPages} ({data.total} listings)
               </span>
@@ -140,25 +146,63 @@ export function HistoryPage() {
         {selectedListing && (
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <div className="flex items-center justify-between gap-3 pr-6">
+              <div className="flex flex-wrap items-center justify-between gap-2 pr-8">
                 <DialogTitle>{selectedListing.name}</DialogTitle>
                 <StockStatusPill isAvailable={selectedListing.isAvailable} />
               </div>
-              <DialogDescription className="font-mono text-xs">
+              <DialogDescription className="select-text font-mono text-xs">
                 Package ID #{selectedListing.id}
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4">
-              {selectedListing.images[0] && (
-                <img
-                  src={selectedListing.images[0]}
-                  alt={selectedListing.name}
-                  referrerPolicy="no-referrer"
-                  className="aspect-video w-full rounded-lg border border-border object-cover"
-                />
+              {selectedListing.images.length > 0 && (
+                <div className="relative overflow-hidden rounded-lg border border-border bg-zinc-950">
+                  <img
+                    src={
+                      selectedListing.images[
+                        Math.min(modalImgIdx, selectedListing.images.length - 1)
+                      ]
+                    }
+                    alt={selectedListing.name}
+                    referrerPolicy="no-referrer"
+                    className="max-h-56 w-full object-cover sm:max-h-72"
+                  />
+                  {selectedListing.images.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Previous vehicle image"
+                        onClick={() =>
+                          setModalImgIdx(
+                            (prev) =>
+                              (prev - 1 + selectedListing.images.length) %
+                              selectedListing.images.length
+                          )
+                        }
+                        className="absolute left-2 top-1/2 -translate-y-1/2 rounded-lg border border-white/10 bg-black/65 p-1.5 text-white/85 transition hover:bg-black/85 hover:text-white cursor-pointer"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Next vehicle image"
+                        onClick={() =>
+                          setModalImgIdx((prev) => (prev + 1) % selectedListing.images.length)
+                        }
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg border border-white/10 bg-black/65 p-1.5 text-white/85 transition hover:bg-black/85 hover:text-white cursor-pointer"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                      <div className="absolute bottom-2 right-2 rounded-md border border-white/10 bg-black/70 px-2 py-0.5 text-[11px] font-medium text-zinc-200 tabular-nums">
+                        {Math.min(modalImgIdx, selectedListing.images.length - 1) + 1} /{" "}
+                        {selectedListing.images.length}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
-              <div className="grid gap-3 rounded-lg border border-border bg-zinc-950 p-4 text-xs sm:grid-cols-2 tabular-nums">
+              <div className="grid gap-3 rounded-lg border border-border bg-zinc-950 p-3.5 text-xs sm:grid-cols-2 sm:p-4 tabular-nums">
                 <div>
                   <span className="text-muted-foreground">First Detected</span>
                   <p className="mt-0.5 font-medium text-white">
@@ -193,7 +237,7 @@ export function HistoryPage() {
                 {selectedListing.description}
               </p>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end pt-2">
                 <a
                   href={
                     selectedListing.isAvailable
@@ -202,7 +246,7 @@ export function HistoryPage() {
                   }
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-zinc-200"
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-xs font-semibold text-primary-foreground transition hover:bg-zinc-200 sm:w-auto sm:py-2"
                 >
                   {selectedListing.isAvailable ? "View Package on Everfall" : "Open Everfall Store"}
                   <ExternalLink className="h-3.5 w-3.5" />

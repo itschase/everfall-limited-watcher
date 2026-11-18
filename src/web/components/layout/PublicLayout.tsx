@@ -1,16 +1,9 @@
 import { ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ChevronDown, LayoutDashboard, LogOut, Shield } from "lucide-react";
+import { History, LayoutDashboard, Shield } from "lucide-react";
 import { useAuthActions, useSession, useSessionSync } from "@/features/auth/useAuthActions";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { UserAccountMenu } from "./UserAccountMenu";
 
 export function PublicLayout({ children }: { children: ReactNode }) {
   useSessionSync();
@@ -27,14 +20,14 @@ export function PublicLayout({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* 3-Zone Header */}
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex items-center gap-3 text-white no-underline">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6 lg:px-8">
+          <Link to="/" className="flex min-w-0 items-center gap-2.5 text-white no-underline sm:gap-3">
             <img
               src="/icon.webp"
               alt="Everfall Limited Watcher"
-              className="h-8 w-8 rounded-lg object-cover border border-white/10"
+              className="h-8 w-8 shrink-0 rounded-lg border border-white/10 object-cover"
             />
-            <span className="text-base font-bold tracking-tight whitespace-nowrap">
+            <span className="truncate text-sm font-bold tracking-tight sm:text-base">
               Everfall Limited Watcher
             </span>
           </Link>
@@ -54,14 +47,21 @@ export function PublicLayout({ children }: { children: ReactNode }) {
             </Link>
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             {isLoading ? (
-              <div className="h-9 w-32 animate-pulse rounded-lg bg-secondary" />
+              <div className="h-9 w-28 animate-pulse rounded-lg bg-secondary sm:w-32" />
             ) : user ? (
               <div className="flex items-center gap-2">
                 <Link
+                  to="/history"
+                  aria-label="Limited Drop History"
+                  className="inline-flex items-center justify-center rounded-lg border border-border bg-secondary p-2 text-zinc-200 transition hover:bg-zinc-800 md:hidden"
+                >
+                  <History className="h-4 w-4" />
+                </Link>
+                <Link
                   to="/dashboard"
-                  className="hidden rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-zinc-200 transition hover:bg-zinc-800 sm:inline-flex items-center gap-1.5"
+                  className="hidden items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-zinc-200 transition hover:bg-zinc-800 sm:inline-flex"
                 >
                   <LayoutDashboard className="h-3.5 w-3.5" />
                   Dashboard
@@ -69,61 +69,20 @@ export function PublicLayout({ children }: { children: ReactNode }) {
                 {user.isAdmin && (
                   <Link
                     to="/admin"
-                    className="hidden rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition hover:bg-amber-500/20 sm:inline-flex items-center gap-1.5"
+                    className="hidden items-center gap-1.5 rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition hover:bg-amber-500/20 sm:inline-flex"
                   >
                     <Shield className="h-3.5 w-3.5" />
                     Admin
                   </Link>
                 )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm font-medium text-white transition hover:bg-secondary cursor-pointer"
-                    >
-                      <img
-                        src={user.avatarUrl}
-                        alt={user.username}
-                        className="h-6 w-6 rounded-full"
-                      />
-                      <span className="max-w-[110px] truncate text-xs font-semibold">
-                        {user.username}
-                      </span>
-                      <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>{user.username}</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => void navigate({ to: "/dashboard" })}>
-                      <LayoutDashboard className="h-4 w-4 text-muted-foreground" />
-                      Server Dashboard
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => void navigate({ to: "/history" })}>
-                      Limited Drop History
-                    </DropdownMenuItem>
-                    {user.isAdmin && (
-                      <DropdownMenuItem onSelect={() => void navigate({ to: "/admin" })}>
-                        <Shield className="h-4 w-4 text-amber-400" />
-                        Admin Console
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onSelect={() => void logout()}
-                      className="text-red-400 focus:text-red-300"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      Log Out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <UserAccountMenu user={user} onLogout={logout} />
               </div>
             ) : (
               <Button
                 size="sm"
                 onClick={() => void startLogin()}
                 disabled={isLoggingIn}
+                className="px-2.5 sm:px-3"
               >
                 {isLoggingIn ? "Connecting..." : "Sign in with Discord"}
               </Button>

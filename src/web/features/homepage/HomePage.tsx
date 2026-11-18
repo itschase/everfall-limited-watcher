@@ -316,7 +316,7 @@ export function HomePage() {
                 key={item.command}
                 className="rounded-lg border border-border bg-zinc-950/80 p-4"
               >
-                <code className="font-mono text-xs font-semibold text-zinc-100">
+                <code className="select-all cursor-text font-mono text-xs font-semibold text-zinc-100">
                   {item.command}
                 </code>
                 <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">

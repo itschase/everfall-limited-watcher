@@ -181,7 +181,7 @@ export function AdminOverviewPage() {
                     {recentDeliveries.map((entry) => (
                       <TableRow key={entry.id}>
                         <TableCell className="font-medium text-white">{entry.listingName}</TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
+                        <TableCell className="select-text font-mono text-xs text-muted-foreground">
                           {entry.guildId}
                         </TableCell>
                         <TableCell className="capitalize text-xs text-zinc-300">{entry.method}</TableCell>

@@ -7,6 +7,7 @@ import {
   getEmbedConfig,
   getGuildConfig,
   getListingHistory,
+  getMonitorLogs,
   getMonitorStatus,
   isListingSentToGuild,
   ListingRecord,
@@ -503,10 +504,11 @@ export async function handleApiRequest(
       await ensureHistoricalKnownListingsPreserved(env, origin);
       const forceRefresh = url.searchParams.get("refresh") === "1";
 
-      const [history, monitorStatus, embedConfig, deliveryLogs, botGuilds, allGuildIds] =
+      const [history, monitorStatus, monitorLogs, embedConfig, deliveryLogs, botGuilds, allGuildIds] =
         await Promise.all([
           getListingHistory(env),
           getMonitorStatus(env),
+          getMonitorLogs(env),
           getEmbedConfig(env),
           getDeliveryLogs(env),
           getBotGuilds(env, forceRefresh),
@@ -554,6 +556,7 @@ export async function handleApiRequest(
       return json({
         botStatus: getBotStatus(env, monitorStatus),
         monitorStatus,
+        monitorLogs,
         embedConfig,
         deliveryLogs,
         connectedGuilds,
@@ -612,14 +615,18 @@ export async function handleApiRequest(
     // 9. Read-Only Manual Store Scan (never publishes Discord alerts)
     if (method === "POST" && url.pathname === "/api/admin/monitor/scan") {
       const result = await manualScanStoreOnly(env, origin);
-      const monitorStatus = await getMonitorStatus(env);
-      const history = await getListingHistory(env);
+      const [monitorStatus, monitorLogs, history] = await Promise.all([
+        getMonitorStatus(env),
+        getMonitorLogs(env),
+        getListingHistory(env),
+      ]);
       return json({
         ok: true,
         usedVerifiedStoreResponse: result.usedVerifiedStoreResponse,
         newDiscoveries: result.newDiscoveries,
         notice: result.notice || null,
         monitorStatus,
+        monitorLogs,
         listings: [...history].sort((a, b) => b.firstSeenAt - a.firstSeenAt).map(serializeListing),
         scannedAt: Date.now(),
       });

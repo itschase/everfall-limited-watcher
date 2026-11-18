@@ -7,14 +7,34 @@ export interface SessionUser {
   isAdmin: boolean;
 }
 
+export type MonitorLogSource = "manual" | "cron-fetch" | "scheduled" | "other";
+
 export interface MonitorStatus {
   checkedAt: number;
   lastSuccessAt?: number;
+  lastFetchCronSuccessAt?: number;
+  lastSource?: MonitorLogSource;
   listingCount: number;
   authoritative: boolean;
   isChecking?: boolean;
   mode?: "fast" | "reduced";
   notice?: string;
+}
+
+export interface MonitorLogEntry {
+  id: string;
+  timestamp: number;
+  source: MonitorLogSource;
+  status: "success" | "blocked" | "error";
+  httpStatus: number | null;
+  cloudflareChallenge: boolean;
+  authoritative: boolean;
+  responseLength: number | null;
+  targetUrl: string;
+  listingCount: number;
+  newDiscoveries: number;
+  durationMs: number;
+  message: string;
 }
 
 export interface SessionResponse {
@@ -157,6 +177,7 @@ export interface AdminConnectedGuild {
 export interface AdminOverviewResponse {
   botStatus: BotStatus;
   monitorStatus: MonitorStatus | null;
+  monitorLogs: MonitorLogEntry[];
   embedConfig: EmbedConfig;
   deliveryLogs: DeliveryLogEntry[];
   connectedGuilds: AdminConnectedGuild[];
