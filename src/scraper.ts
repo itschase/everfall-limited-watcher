@@ -468,7 +468,12 @@ async function getRateLimitedStoreListings(
     };
   }
 
-  const cooldownMs = status?.authoritative ? MIN_STORE_CHECK_INTERVAL_MS : 60 * 1000;
+  const cooldownMs =
+    source === "cron-fetch"
+      ? 60 * 1000
+      : status?.authoritative
+        ? MIN_STORE_CHECK_INTERVAL_MS
+        : 60 * 1000;
   if (status && Date.now() - status.checkedAt < cooldownMs) {
     console.log("Everfall store verification skipped", {
       source,

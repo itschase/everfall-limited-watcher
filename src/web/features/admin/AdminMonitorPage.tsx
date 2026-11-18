@@ -273,12 +273,12 @@ export function AdminMonitorPage() {
                   Cloudflare Scheduled Runner Challenge Detected
                 </p>
                 <p className="text-zinc-300">
-                  Tebex&apos;s Cloudflare protection challenges Worker <code className="text-white">scheduled</code> cron triggers (<code className="text-white">403</code>) while permitting <code className="text-white">fetch</code> requests (<code className="text-white">200 OK</code>). Configure <code className="text-white">CRON_SECRET</code> in both Cloudflare Worker Secrets and GitHub Repository Secrets so <code className="text-white">.github/workflows/store-monitor.yml</code> invokes <code className="text-white">POST /cron</code> every 18 minutes via HTTP fetch.
+                  Tebex&apos;s Cloudflare protection challenges Worker <code className="text-white">scheduled</code> cron triggers (<code className="text-white">403</code>) while permitting <code className="text-white">fetch</code> requests (<code className="text-white">200 OK</code>). Configure an external scheduler (such as <strong className="text-white">cron-job.org</strong>) to call <code className="text-white">POST /cron</code> every 18 minutes with header <code className="text-white">X-Cron-Secret</code> matching your Cloudflare <code className="text-white">CRON_SECRET</code>.
                 </p>
                 <p className="text-[11px] text-amber-300/90">
                   {monitor?.lastFetchCronSuccessAt
                     ? `Latest HTTP Cron (/cron) success: ${formatLocalDateTime(monitor.lastFetchCronSuccessAt)}`
-                    : "No HTTP Cron (/cron) execution recorded yet — configure CRON_SECRET to activate automated fetch-context checks."}
+                    : "No HTTP Cron (/cron) execution recorded yet — configure cron-job.org to activate automated checks."}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={() => void copyCronEndpoint()} className="shrink-0">

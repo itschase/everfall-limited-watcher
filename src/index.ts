@@ -99,7 +99,7 @@ export default {
           JSON.stringify({
             ok: false,
             error: "Unauthorized /cron trigger.",
-            hint: "Send POST /cron with Authorization: Bearer <CRON_SECRET> or sign in as administrator. Set CRON_SECRET in both Cloudflare Worker secrets and GitHub Actions repository secrets.",
+            hint: "Send POST /cron with header X-Cron-Secret: <CRON_SECRET> or Authorization: Bearer <CRON_SECRET> (e.g. from cron-job.org).",
           }),
           {
             status: 401,
