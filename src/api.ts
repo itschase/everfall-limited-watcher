@@ -1,9 +1,12 @@
 import {
   appendDeliveryLog,
+  BotCommandSyncMeta,
   DEFAULT_EMBED_CONFIG,
   deleteWidgetDeployment,
   EmbedConfig,
   getAllGuildIds,
+  getAllWidgetGuildIds,
+  getBotCommandSyncMeta,
   getCatalogSnapshot,
   getDeliveryLogs,
   getEmbedConfig,
@@ -17,6 +20,7 @@ import {
   MonitorStatus,
   purgeListingMediaEdgeCaches,
   purgePublicEdgeCaches,
+  setBotCommandSyncMeta,
   setEmbedConfig,
   setGuildConfig,
   updateListingImages,
@@ -43,6 +47,13 @@ import {
   updateSentListingEmbedForGuild,
 } from "./scraper";
 import { fetchDiscordWithRetry } from "./discord";
+import {
+  COMMANDS,
+  compareDiscordCommands,
+  fetchBotApplicationInfo,
+  fetchLiveDiscordCommands,
+  syncDiscordCommands,
+} from "./register";
 
 const NO_STORE_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -1337,7 +1348,179 @@ export async function handleApiRequest(
       const nextState = await buildListingImageState(listingId);
       return json({ ok: true, ...nextState });
     }
+
+    // 16. Bot Control Center (Inspect Bot, Slash Command Sync, Guild Cache & Widget Refresh)
+    const buildBotStatePayload = async (forceRefreshGuilds = false) => {
+      const [identity, liveCommandsRes, syncMeta, botGuilds, widgetGuildIds, monitorStatus] =
+        await Promise.all([
+          fetchBotApplicationInfo(env),
+          fetchLiveDiscordCommands(env),
+          getBotCommandSyncMeta(env),
+          env.DISCORD_BOT_TOKEN ? getBotGuilds(env, forceRefreshGuilds) : Promise.resolve([]),
+          getAllWidgetGuildIds(env),
+          getMonitorStatus(env),
+        ]);
+
+      const comparison = compareDiscordCommands(liveCommandsRes.commands);
+
+      return {
+        ok: true,
+        botStatus: getBotStatus(env, monitorStatus),
+        identity,
+        liveCommandsOk: liveCommandsRes.ok,
+        liveCommandsError: liveCommandsRes.error || null,
+        totalLocalCommands: COMMANDS.length,
+        totalRemoteCommands: liveCommandsRes.commands.length,
+        ...comparison,
+        syncMeta,
+        environment: {
+          botTokenConfigured: Boolean(env.DISCORD_BOT_TOKEN),
+          publicKeyConfigured: Boolean(env.DISCORD_PUBLIC_KEY),
+          clientSecretConfigured: Boolean(env.DISCORD_CLIENT_SECRET),
+          kvBound: Boolean(env.DISCORD_BOT),
+          r2Bound: Boolean(env.MEDIA_BUCKET),
+          publicOrigin: resolvePublicOrigin(env, origin),
+          interactionsUrl: `${resolvePublicOrigin(env, origin)}/interactions`,
+        },
+        counts: {
+          connectedServers: botGuilds.length,
+          deployedWidgets: widgetGuildIds.length,
+        },
+      };
+    };
+
+    if (method === "GET" && url.pathname === "/api/admin/bot") {
+      const payload = await buildBotStatePayload(false);
+      return json(payload);
+    }
+
+    if (method === "POST" && url.pathname === "/api/admin/bot/register-commands") {
+      let body: any = {};
+      try {
+        body = await request.json();
+      } catch {
+        body = {};
+      }
+      const guildId =
+        typeof body?.guildId === "string" && /^\d{17,20}$/.test(body.guildId.trim())
+          ? body.guildId.trim()
+          : undefined;
+
+      const syncResult = await syncDiscordCommands(env, guildId ? { guildId } : undefined);
+      const syncMeta: BotCommandSyncMeta = {
+        syncedAt: Date.now(),
+        syncedBy: user.username || user.id,
+        scope: syncResult.scope,
+        ...(syncResult.guildId ? { guildId: syncResult.guildId } : {}),
+        ok: syncResult.ok,
+        httpStatus: syncResult.status,
+        commandCount: syncResult.ok ? syncResult.commands.length : 0,
+        commandNames: syncResult.ok ? syncResult.commands.map((c) => c.name) : [],
+        ...(syncResult.error ? { error: syncResult.error } : {}),
+      };
+      await setBotCommandSyncMeta(env, syncMeta);
+
+      if (!syncResult.ok) {
+        return json(
+          {
+            ok: false,
+            error: syncResult.error || "Failed to register slash commands with Discord.",
+            status: syncResult.status,
+            syncMeta,
+          },
+          syncResult.status >= 400 && syncResult.status < 500 ? syncResult.status : 502
+        );
+      }
+
+      const botState = await buildBotStatePayload(false);
+      return json({
+        ok: true,
+        scope: syncResult.scope,
+        registeredCount: syncResult.commands.length,
+        syncMeta,
+        botState,
+      });
+    }
+
+    if (method === "POST" && url.pathname === "/api/admin/bot/refresh") {
+      let body: any = {};
+      try {
+        body = await request.json();
+      } catch {
+        body = {};
+      }
+
+      const doCommands = body?.syncCommands !== false;
+      const doGuilds = body?.refreshGuilds !== false;
+      const doWidgets = body?.refreshWidgets !== false;
+      const doCaches = body?.purgeCaches !== false;
+
+      let commandStep: {
+        ran: boolean;
+        ok: boolean;
+        count: number;
+        error?: string;
+      } = { ran: false, ok: true, count: 0 };
+
+      if (doCommands) {
+        const syncResult = await syncDiscordCommands(env);
+        const syncMeta: BotCommandSyncMeta = {
+          syncedAt: Date.now(),
+          syncedBy: user.username || user.id,
+          scope: "global",
+          ok: syncResult.ok,
+          httpStatus: syncResult.status,
+          commandCount: syncResult.ok ? syncResult.commands.length : 0,
+          commandNames: syncResult.ok ? syncResult.commands.map((c) => c.name) : [],
+          ...(syncResult.error ? { error: syncResult.error } : {}),
+        };
+        await setBotCommandSyncMeta(env, syncMeta);
+        commandStep = {
+          ran: true,
+          ok: syncResult.ok,
+          count: syncResult.commands.length,
+          ...(syncResult.error ? { error: syncResult.error } : {}),
+        };
+      }
+
+      let guildsRefreshedCount = 0;
+      if (doGuilds && env.DISCORD_BOT_TOKEN) {
+        const kv = env.DISCORD_BOT as KVNamespace | undefined;
+        if (kv) await kv.delete("discord:bot_guilds").catch(() => null);
+        const refreshed = await getBotGuilds(env, true);
+        guildsRefreshedCount = refreshed.length;
+      }
+
+      let widgetResult = { refreshed: 0, failed: 0 };
+      if (doWidgets) {
+        widgetResult = await refreshAllWidgets(env, resolvePublicOrigin(env, origin));
+      }
+
+      if (doCaches) {
+        await purgePublicEdgeCaches(resolvePublicOrigin(env, origin));
+      }
+
+      const botState = await buildBotStatePayload(false);
+      const overallOk = commandStep.ok;
+
+      return json(
+        {
+          ok: overallOk,
+          refreshedAt: Date.now(),
+          error: commandStep.error || null,
+          steps: {
+            commands: commandStep,
+            guilds: { ran: doGuilds, count: guildsRefreshedCount },
+            widgets: { ran: doWidgets, ...widgetResult },
+            caches: { ran: doCaches },
+          },
+          botState,
+        },
+        overallOk ? 200 : 502
+      );
+    }
   }
 
   return json({ error: "Not found" }, 404);
 }
+

@@ -11,6 +11,7 @@ import { AdminMonitorPage } from "@/features/admin/AdminMonitorPage";
 import { AdminDispatchPage } from "@/features/admin/AdminDispatchPage";
 import { AdminTestingPage } from "@/features/admin/AdminTestingPage";
 import { AdminImagesPage } from "@/features/admin/AdminImagesPage";
+import { AdminBotPage } from "@/features/admin/AdminBotPage";
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
@@ -88,6 +89,12 @@ const adminImagesRoute = createRoute({
   component: AdminImagesPage,
 });
 
+const adminBotRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/bot",
+  component: AdminBotPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   historyRoute,
@@ -101,6 +108,7 @@ const routeTree = rootRoute.addChildren([
   adminDispatchRoute,
   adminTestingRoute,
   adminImagesRoute,
+  adminBotRoute,
 ]);
 
 export const router = createRouter({

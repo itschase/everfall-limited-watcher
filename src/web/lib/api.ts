@@ -286,6 +286,96 @@ export interface AdminMonitorUpdatesResponse {
   listings?: ListingItem[];
 }
 
+export interface BotCommandOptionDef {
+  name: string;
+  description: string;
+  type: number;
+  required?: boolean;
+}
+
+export interface BotCommandComparison {
+  name: string;
+  description: string;
+  defaultMemberPermissions: string | null;
+  options: BotCommandOptionDef[];
+  syncState: "synced" | "outdated" | "missing";
+  liveId: string | null;
+  liveVersion: string | null;
+  liveDescription: string | null;
+  diffReason: string | null;
+}
+
+export interface BotCommandSyncMeta {
+  syncedAt: number;
+  syncedBy: string;
+  scope: "global" | "guild";
+  guildId?: string;
+  ok: boolean;
+  httpStatus: number;
+  commandCount: number;
+  commandNames: string[];
+  error?: string;
+}
+
+export interface AdminBotStateResponse {
+  ok: boolean;
+  botStatus: BotStatus;
+  identity: {
+    ok: boolean;
+    appId: string;
+    botUser: {
+      id: string;
+      username: string;
+      globalName: string | null;
+      avatarUrl: string | null;
+    } | null;
+    application: {
+      id: string;
+      name: string;
+      description: string;
+      interactionsEndpointUrl: string | null;
+    } | null;
+    error?: string;
+  };
+  liveCommandsOk: boolean;
+  liveCommandsError: string | null;
+  totalLocalCommands: number;
+  totalRemoteCommands: number;
+  comparisons: BotCommandComparison[];
+  extraRemoteCommands: Array<{ id: string; name: string; description: string }>;
+  syncedCount: number;
+  missingCount: number;
+  outdatedCount: number;
+  allInSync: boolean;
+  syncMeta: BotCommandSyncMeta | null;
+  environment: {
+    botTokenConfigured: boolean;
+    publicKeyConfigured: boolean;
+    clientSecretConfigured: boolean;
+    kvBound: boolean;
+    r2Bound: boolean;
+    publicOrigin: string;
+    interactionsUrl: string;
+  };
+  counts: {
+    connectedServers: number;
+    deployedWidgets: number;
+  };
+}
+
+export interface BotRefreshResponse {
+  ok: boolean;
+  refreshedAt: number;
+  error?: string | null;
+  steps: {
+    commands: { ran: boolean; ok: boolean; count: number; error?: string };
+    guilds: { ran: boolean; count: number };
+    widgets: { ran: boolean; refreshed: number; failed: number };
+    caches: { ran: boolean };
+  };
+  botState: AdminBotStateResponse;
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {

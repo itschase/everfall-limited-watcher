@@ -931,3 +931,36 @@ export async function getMonitorLogs(env: any): Promise<MonitorLogEntry[]> {
     return [];
   }
 }
+
+export type BotCommandSyncMeta = {
+  syncedAt: number;
+  syncedBy: string;
+  scope: "global" | "guild";
+  guildId?: string;
+  ok: boolean;
+  httpStatus: number;
+  commandCount: number;
+  commandNames: string[];
+  error?: string;
+};
+
+const BOT_COMMANDS_SYNC_KEY = "bot:commands_sync_meta";
+
+export async function getBotCommandSyncMeta(env: any): Promise<BotCommandSyncMeta | null> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return null;
+  const raw = await kv.get(BOT_COMMANDS_SYNC_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as BotCommandSyncMeta;
+  } catch {
+    return null;
+  }
+}
+
+export async function setBotCommandSyncMeta(env: any, meta: BotCommandSyncMeta): Promise<void> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return;
+  await kv.put(BOT_COMMANDS_SYNC_KEY, JSON.stringify(meta));
+}
+

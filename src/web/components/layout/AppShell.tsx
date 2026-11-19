@@ -2,6 +2,7 @@ import { ReactNode, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
+  Bot,
   FlaskConical,
   History,
   Home,
@@ -36,6 +37,7 @@ const GENERAL_NAV: NavItem[] = [
 
 const ADMIN_NAV: NavItem[] = [
   { label: "Overview", to: "/admin", icon: Shield, exact: true },
+  { label: "Bot Control", to: "/admin/bot", icon: Bot },
   { label: "Connected Servers", to: "/admin/servers", icon: Server },
   { label: "Image Manager", to: "/admin/images", icon: Images },
   { label: "Embed Manager", to: "/admin/embeds", icon: Palette },

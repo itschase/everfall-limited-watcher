@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
+  Bot,
   FlaskConical,
   Images,
   Palette,
@@ -123,7 +124,17 @@ export function AdminOverviewPage() {
           </div>
 
           {/* Quick Operational Shortcuts */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Link
+              to="/admin/bot"
+              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-white/20"
+            >
+              <Bot className="h-5 w-5 shrink-0 text-white" />
+              <div>
+                <p className="text-sm font-semibold text-white">Bot Control</p>
+                <p className="text-xs text-muted-foreground">Refresh bot &amp; load slash commands</p>
+              </div>
+            </Link>
             <Link
               to="/admin/monitor"
               className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-white/20"
