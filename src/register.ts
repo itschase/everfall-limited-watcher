@@ -1,10 +1,15 @@
 import { fetchDiscordWithRetry } from "./discord";
+import { BotHealthSnapshot, getBotHealthSnapshot, setBotHealthSnapshot } from "./kv";
+import type { DiscordEmojiRef } from "./shared/presentation";
 
 export const COMMANDS = [
   {
     name: "setup",
+    type: 1,
     description: "Configure the channel for Everfall limited drop alerts",
     default_member_permissions: "32", // MANAGE_GUILD
+    integration_types: [0],
+    contexts: [0],
     options: [
       {
         name: "channel",
@@ -16,8 +21,11 @@ export const COMMANDS = [
   },
   {
     name: "add-role",
+    type: 1,
     description: "Add a role to ping when a limited drop occurs",
     default_member_permissions: "32", // MANAGE_GUILD
+    integration_types: [0],
+    contexts: [0],
     options: [
       {
         name: "role",
@@ -29,8 +37,11 @@ export const COMMANDS = [
   },
   {
     name: "remove-role",
+    type: 1,
     description: "Remove a role from drop notifications",
     default_member_permissions: "32", // MANAGE_GUILD
+    integration_types: [0],
+    contexts: [0],
     options: [
       {
         name: "role",
@@ -42,17 +53,26 @@ export const COMMANDS = [
   },
   {
     name: "check",
+    type: 1,
     description: "Manually check the Everfall store for limited car stock",
+    integration_types: [0],
+    contexts: [0],
   },
   {
     name: "widget",
+    type: 1,
     description:
       "Preview & deploy an auto-updating live Everfall stock & recent drops widget embed here",
     default_member_permissions: "32", // MANAGE_GUILD
+    integration_types: [0],
+    contexts: [0],
   },
   {
     name: "help",
+    type: 1,
     description: "View Everfall Limited Watcher setup and commands",
+    integration_types: [0],
+    contexts: [0],
   },
 ];
 
@@ -65,8 +85,11 @@ export interface DiscordCommandOptionDef {
 
 export interface DiscordCommandDef {
   name: string;
+  type?: number;
   description: string;
   default_member_permissions?: string;
+  integration_types?: number[];
+  contexts?: number[];
   options?: DiscordCommandOptionDef[];
 }
 
@@ -74,15 +97,20 @@ export interface LiveDiscordCommand {
   id: string;
   application_id: string;
   version?: string;
+  type?: number;
   name: string;
   description: string;
   default_member_permissions?: string | null;
+  integration_types?: number[];
+  contexts?: number[];
   options?: DiscordCommandOptionDef[];
 }
 
 export interface BotIdentityInfo {
   ok: boolean;
   appId: string;
+  envAppId: string;
+  appIdMismatch: boolean;
   botUser: {
     id: string;
     username: string;
@@ -98,18 +126,31 @@ export interface BotIdentityInfo {
   error?: string;
 }
 
+export interface GuildCommandAvailabilityItem {
+  guildId: string;
+  guildName: string;
+  hasCommandsScope: boolean;
+  httpStatus: number;
+  guildCommandCount: number;
+  widgetStatus: "available_global" | "available_guild" | "missing_scope" | "missing_command" | "error";
+  detail: string;
+  guildCommandNames: string[];
+}
+
 export function getDiscordApplicationId(env: any): string {
-  return env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
+  return String(env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378").trim();
 }
 
 export async function fetchBotApplicationInfo(env: any): Promise<BotIdentityInfo> {
   const token = env.DISCORD_BOT_TOKEN;
-  const appId = getDiscordApplicationId(env);
+  const envAppId = getDiscordApplicationId(env);
 
   if (!token) {
     return {
       ok: false,
-      appId,
+      appId: envAppId,
+      envAppId,
+      appIdMismatch: false,
       botUser: null,
       application: null,
       error: "DISCORD_BOT_TOKEN secret is not configured in this environment.",
@@ -131,7 +172,7 @@ export async function fetchBotApplicationInfo(env: any): Promise<BotIdentityInfo
       const userData: any = await userRes.json();
       const avatarHash = userData?.avatar;
       botUser = {
-        id: String(userData?.id || appId),
+        id: String(userData?.id || envAppId),
         username: String(userData?.username || "Everfall Watcher"),
         globalName: userData?.global_name ? String(userData.global_name) : null,
         avatarUrl:
@@ -145,7 +186,7 @@ export async function fetchBotApplicationInfo(env: any): Promise<BotIdentityInfo
     if (appRes.ok) {
       const appData: any = await appRes.json();
       application = {
-        id: String(appData?.id || appId),
+        id: String(appData?.id || envAppId),
         name: String(appData?.name || "Everfall Limited Watcher"),
         description: String(appData?.description || ""),
         interactionsEndpointUrl: appData?.interactions_endpoint_url
@@ -154,11 +195,16 @@ export async function fetchBotApplicationInfo(env: any): Promise<BotIdentityInfo
       };
     }
 
+    const authoritativeAppId = application?.id || botUser?.id || envAppId;
+    const appIdMismatch = Boolean(envAppId && authoritativeAppId && envAppId !== authoritativeAppId);
+
     if (!userRes.ok) {
       const errBody = await userRes.text().catch(() => "");
       return {
         ok: false,
-        appId: application?.id || appId,
+        appId: authoritativeAppId,
+        envAppId,
+        appIdMismatch,
         botUser,
         application,
         error: `Discord bot authentication returned HTTP ${userRes.status}${errBody ? `: ${errBody.slice(0, 180)}` : ""}`,
@@ -167,14 +213,18 @@ export async function fetchBotApplicationInfo(env: any): Promise<BotIdentityInfo
 
     return {
       ok: true,
-      appId: application?.id || botUser?.id || appId,
+      appId: authoritativeAppId,
+      envAppId,
+      appIdMismatch,
       botUser,
       application,
     };
   } catch (err: any) {
     return {
       ok: false,
-      appId,
+      appId: envAppId,
+      envAppId,
+      appIdMismatch: false,
       botUser: null,
       application: null,
       error: err?.message || "Failed to reach Discord API.",
@@ -182,22 +232,62 @@ export async function fetchBotApplicationInfo(env: any): Promise<BotIdentityInfo
   }
 }
 
+export async function resolveAuthoritativeAppId(env: any): Promise<string> {
+  if (!env.DISCORD_BOT_TOKEN) return getDiscordApplicationId(env);
+  const info = await fetchBotApplicationInfo(env);
+  return info.appId || getDiscordApplicationId(env);
+}
+
+export async function checkBotHealthSnapshot(
+  env: any,
+  forceRefresh = false
+): Promise<BotHealthSnapshot> {
+  if (!env.DISCORD_BOT_TOKEN) {
+    return {
+      verified: true,
+      online: false,
+      checkedAt: Date.now(),
+      error: "DISCORD_BOT_TOKEN is not configured.",
+    };
+  }
+  if (!forceRefresh) {
+    const cached = await getBotHealthSnapshot(env);
+    if (cached && Date.now() - cached.checkedAt < 5 * 60 * 1000) {
+      return cached;
+    }
+  }
+  const info = await fetchBotApplicationInfo(env);
+  const snapshot: BotHealthSnapshot = {
+    verified: true,
+    online: info.ok,
+    checkedAt: Date.now(),
+    appId: info.appId,
+    botUsername: info.botUser?.username,
+    ...(info.error ? { error: info.error } : {}),
+  };
+  await setBotHealthSnapshot(env, snapshot);
+  return snapshot;
+}
+
 export async function fetchLiveDiscordCommands(
   env: any,
-  guildId?: string
+  guildId?: string,
+  appIdOverride?: string
 ): Promise<{
   ok: boolean;
   httpStatus: number;
+  appId: string;
   commands: LiveDiscordCommand[];
   error?: string;
 }> {
   const token = env.DISCORD_BOT_TOKEN;
-  const appId = getDiscordApplicationId(env);
+  const appId = appIdOverride || (await resolveAuthoritativeAppId(env));
 
   if (!token) {
     return {
       ok: false,
       httpStatus: 400,
+      appId,
       commands: [],
       error: "DISCORD_BOT_TOKEN secret is not configured in Worker environment.",
     };
@@ -218,6 +308,7 @@ export async function fetchLiveDiscordCommands(
       return {
         ok: false,
         httpStatus: res.status,
+        appId,
         commands: [],
         error: parsed?.message || `Discord API returned HTTP ${res.status}`,
       };
@@ -226,12 +317,14 @@ export async function fetchLiveDiscordCommands(
     return {
       ok: true,
       httpStatus: res.status,
+      appId,
       commands: Array.isArray(parsed) ? parsed : [],
     };
   } catch (err: any) {
     return {
       ok: false,
       httpStatus: 502,
+      appId,
       commands: [],
       error: err?.message || "Failed to query live Discord commands.",
     };
@@ -240,10 +333,11 @@ export async function fetchLiveDiscordCommands(
 
 export async function syncDiscordCommands(
   env: any,
-  options?: { guildId?: string }
+  options?: { guildId?: string; appIdOverride?: string }
 ): Promise<{
   ok: boolean;
   status: number;
+  appId: string;
   scope: "global" | "guild";
   guildId?: string;
   commands: LiveDiscordCommand[];
@@ -251,7 +345,7 @@ export async function syncDiscordCommands(
   rawResult?: unknown;
 }> {
   const token = env.DISCORD_BOT_TOKEN;
-  const appId = getDiscordApplicationId(env);
+  const appId = options?.appIdOverride || (await resolveAuthoritativeAppId(env));
   const guildId = options?.guildId ? String(options.guildId).trim() : undefined;
   const scope: "global" | "guild" = guildId ? "guild" : "global";
 
@@ -259,6 +353,7 @@ export async function syncDiscordCommands(
     return {
       ok: false,
       status: 400,
+      appId,
       scope,
       ...(guildId ? { guildId } : {}),
       commands: [],
@@ -285,6 +380,7 @@ export async function syncDiscordCommands(
       return {
         ok: false,
         status: res.status,
+        appId,
         scope,
         ...(guildId ? { guildId } : {}),
         commands: [],
@@ -296,6 +392,7 @@ export async function syncDiscordCommands(
     return {
       ok: true,
       status: res.status,
+      appId,
       scope,
       ...(guildId ? { guildId } : {}),
       commands: Array.isArray(data) ? data : [],
@@ -305,12 +402,179 @@ export async function syncDiscordCommands(
     return {
       ok: false,
       status: 502,
+      appId,
       scope,
       ...(guildId ? { guildId } : {}),
       commands: [],
       error: err?.message || "Failed to contact Discord command API.",
     };
   }
+}
+
+export async function clearGuildCommands(
+  env: any,
+  guildId: string,
+  appIdOverride?: string
+): Promise<{ ok: boolean; status: number; error?: string }> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return { ok: false, status: 400, error: "DISCORD_BOT_TOKEN is not configured." };
+  const appId = appIdOverride || (await resolveAuthoritativeAppId(env));
+  const res = await fetchDiscordWithRetry(
+    `https://discord.com/api/v10/applications/${appId}/guilds/${guildId}/commands`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bot ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: "[]",
+    }
+  );
+  if (!res.ok) {
+    const err: any = await res.json().catch(() => null);
+    return { ok: false, status: res.status, error: err?.message || `Discord HTTP ${res.status}` };
+  }
+  return { ok: true, status: res.status };
+}
+
+export async function inspectGuildCommandAvailability(
+  env: any,
+  guilds: Array<{ id: string; name: string }>,
+  globalCommands: LiveDiscordCommand[],
+  appIdOverride?: string
+): Promise<GuildCommandAvailabilityItem[]> {
+  const appId = appIdOverride || (await resolveAuthoritativeAppId(env));
+  const hasGlobalWidget = globalCommands.some((c) => c.name === "widget");
+
+  return Promise.all(
+    guilds.slice(0, 25).map(async (g) => {
+      const guildRes = await fetchLiveDiscordCommands(env, g.id, appId);
+      if (!guildRes.ok) {
+        const missingScope = guildRes.httpStatus === 403;
+        return {
+          guildId: g.id,
+          guildName: g.name,
+          hasCommandsScope: !missingScope,
+          httpStatus: guildRes.httpStatus,
+          guildCommandCount: 0,
+          widgetStatus: missingScope ? "missing_scope" : "error",
+          detail: missingScope
+            ? "Server was invited without applications.commands scope (HTTP 403 Missing Access). Re-authorize using the invite link."
+            : guildRes.error || `Discord returned HTTP ${guildRes.httpStatus}`,
+          guildCommandNames: [],
+        } satisfies GuildCommandAvailabilityItem;
+      }
+
+      const guildNames = guildRes.commands.map((c) => c.name);
+      const hasGuildWidget = guildNames.includes("widget");
+      let widgetStatus: GuildCommandAvailabilityItem["widgetStatus"] = "missing_command";
+      let detail = "/widget is not registered globally or in this server yet.";
+
+      if (hasGuildWidget) {
+        widgetStatus = "available_guild";
+        detail = `Active via instant guild registration (${guildNames.length} guild commands).`;
+      } else if (hasGlobalWidget) {
+        widgetStatus = "available_global";
+        detail =
+          guildNames.length > 0
+            ? `/widget is active globally; ${guildNames.length} guild-specific command(s) also exist (may override globals).`
+            : "Active globally. Use Sync Guild Commands for immediate client refresh if Discord caches old menu.";
+      }
+
+      return {
+        guildId: g.id,
+        guildName: g.name,
+        hasCommandsScope: true,
+        httpStatus: guildRes.httpStatus,
+        guildCommandCount: guildNames.length,
+        widgetStatus,
+        detail,
+        guildCommandNames: guildNames,
+      } satisfies GuildCommandAvailabilityItem;
+    })
+  );
+}
+
+export async function fetchBotEmojis(
+  env: any,
+  guilds: Array<{ id: string; name: string }>,
+  appIdOverride?: string
+): Promise<{
+  applicationEmojis: DiscordEmojiRef[];
+  guildEmojis: DiscordEmojiRef[];
+  errors: string[];
+}> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) {
+    return {
+      applicationEmojis: [],
+      guildEmojis: [],
+      errors: ["DISCORD_BOT_TOKEN is not configured."],
+    };
+  }
+  const appId = appIdOverride || (await resolveAuthoritativeAppId(env));
+  const errors: string[] = [];
+  const applicationEmojis: DiscordEmojiRef[] = [];
+  const guildEmojis: DiscordEmojiRef[] = [];
+
+  try {
+    const appRes = await fetchDiscordWithRetry(
+      `https://discord.com/api/v10/applications/${appId}/emojis`,
+      { headers: { Authorization: `Bot ${token}` } }
+    );
+    if (appRes.ok) {
+      const payload: any = await appRes.json();
+      const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : [];
+      for (const e of items) {
+        if (!e?.id || !e?.name || e.available === false) continue;
+        const animated = Boolean(e.animated);
+        applicationEmojis.push({
+          kind: "custom",
+          id: String(e.id),
+          name: String(e.name),
+          animated,
+          source: "application",
+          imageUrl: `https://cdn.discordapp.com/emojis/${e.id}.${animated ? "gif" : "webp"}?size=64&quality=lossless`,
+        });
+      }
+    } else {
+      errors.push(`Application emojis returned HTTP ${appRes.status}`);
+    }
+  } catch (err: any) {
+    errors.push(`Application emojis error: ${err?.message || "unknown"}`);
+  }
+
+  await Promise.all(
+    guilds.slice(0, 15).map(async (g) => {
+      try {
+        const res = await fetchDiscordWithRetry(
+          `https://discord.com/api/v10/guilds/${g.id}/emojis`,
+          { headers: { Authorization: `Bot ${token}` } }
+        );
+        if (!res.ok) return;
+        const items: any = await res.json();
+        if (!Array.isArray(items)) return;
+        for (const e of items) {
+          if (!e?.id || !e?.name || e.available === false) continue;
+          const animated = Boolean(e.animated);
+          guildEmojis.push({
+            kind: "custom",
+            id: String(e.id),
+            name: String(e.name),
+            animated,
+            source: "guild",
+            guildId: g.id,
+            guildName: g.name,
+            imageUrl: `https://cdn.discordapp.com/emojis/${e.id}.${animated ? "gif" : "webp"}?size=64&quality=lossless`,
+          });
+        }
+      } catch {
+        // Non-fatal per guild
+      }
+    })
+  );
+
+  return { applicationEmojis, guildEmojis, errors };
 }
 
 export function compareDiscordCommands(liveCommands: LiveDiscordCommand[]) {
@@ -410,4 +674,5 @@ export async function registerCommands(env: any): Promise<Response> {
     }
   );
 }
+
 

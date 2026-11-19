@@ -4,10 +4,13 @@ import {
   Bot,
   FlaskConical,
   Images,
+  LayoutPanelTop,
   Palette,
   RefreshCw,
   Send,
   Server,
+  SlidersHorizontal,
+  Sparkles,
 } from "lucide-react";
 import { useAdminOverview } from "./useAdminOverview";
 import { formatLocalDateTime, formatLocalTime } from "@/lib/utils";
@@ -79,7 +82,7 @@ export function AdminOverviewPage() {
                 {stats?.connectedServers ?? 0}
               </p>
               <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                {stats?.configuredServers ?? 0} Configured &bull; {stats?.testServers ?? 0} Test Mode
+                {stats?.configuredServers ?? 0} Configured &bull; {stats?.deployedWidgets ?? 0} Widgets &bull; {stats?.testServers ?? 0} Test
               </p>
             </Card>
 
@@ -153,6 +156,36 @@ export function AdminOverviewPage() {
               <div>
                 <p className="text-sm font-semibold text-white">Dispatch &amp; Edits</p>
                 <p className="text-xs text-muted-foreground">Publish or update embeds</p>
+              </div>
+            </Link>
+            <Link
+              to="/admin/widgets"
+              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-white/20"
+            >
+              <LayoutPanelTop className="h-5 w-5 shrink-0 text-white" />
+              <div>
+                <p className="text-sm font-semibold text-white">Status Widgets</p>
+                <p className="text-xs text-muted-foreground">Manage deployed live Discord widgets</p>
+              </div>
+            </Link>
+            <Link
+              to="/admin/metadata"
+              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-white/20"
+            >
+              <SlidersHorizontal className="h-5 w-5 shrink-0 text-white" />
+              <div>
+                <p className="text-sm font-semibold text-white">Vehicle Metadata</p>
+                <p className="text-xs text-muted-foreground">Edit titles, chips &amp; summaries</p>
+              </div>
+            </Link>
+            <Link
+              to="/admin/hero"
+              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-white/20"
+            >
+              <Sparkles className="h-5 w-5 shrink-0 text-white" />
+              <div>
+                <p className="text-sm font-semibold text-white">Homepage Hero</p>
+                <p className="text-xs text-muted-foreground">Configure messages &amp; motion</p>
               </div>
             </Link>
             <Link

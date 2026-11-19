@@ -1,11 +1,22 @@
 // KV helper for Everfall Limited Watcher
 // Accesses env.DISCORD_BOT KV binding
 
+import {
+  AnnouncementTemplate,
+  createDefaultPresentationConfig,
+  DEFAULT_IN_STOCK_TEMPLATE,
+  DEFAULT_SOLD_OUT_TEMPLATE,
+  PresentationConfigBundle,
+  WidgetTemplateConfig,
+} from "./shared/presentation";
+import { VehicleMetadataOverride } from "./shared/features";
+
 export type GuildConfig = {
   channelId: string;
   roleIds: string[]; // Discord role IDs to mention
   environment?: "production" | "test";
   embedConfig?: EmbedConfig;
+  widgetTemplateId?: string;
 };
 
 export type SentListingMessageMeta = {
@@ -18,14 +29,44 @@ export type SentListingMessageMeta = {
   isSoldOutRendered?: boolean;
 };
 
+export type WidgetSyncHistoryEntry = {
+  timestamp: number;
+  status: "ok" | "error" | "skipped";
+  httpStatus?: number;
+  error?: string;
+  trigger: string;
+  contentHash?: string;
+};
+
 export type WidgetDeployment = {
+  id: string;
   guildId: string;
   channelId: string;
   messageId: string;
   deployedAt: number;
+  deployedBy?: string;
+  deployedByUsername?: string;
   lastSyncedAt?: number;
-  lastSyncStatus?: "ok" | "error";
+  lastAttemptedSyncAt?: number;
+  lastSyncStatus?: "ok" | "error" | "skipped";
   lastSyncError?: string;
+  templateId?: string;
+  customTemplate?: WidgetTemplateConfig | null;
+  configVersion?: number;
+  lastCatalogVersion?: number;
+  lastContentHash?: string;
+  history?: WidgetSyncHistoryEntry[];
+};
+
+export type PendingWidgetConfirmation = {
+  token: string;
+  guildId: string;
+  channelId: string;
+  userId: string;
+  username?: string;
+  templateId?: string;
+  createdAt: number;
+  expiresAt: number;
 };
 
 export type ListingRecord = {
@@ -753,55 +794,232 @@ export async function markListingSentToGuild(
   ]);
 }
 
-// Per-Server Deployed Status Widget Registry (/widget)
-const WIDGET_INDEX_KEY = "widgets:all";
+// Per-Server & Multi-Channel Deployed Status Widget Registry (/widget)
+const LEGACY_WIDGET_INDEX_KEY = "widgets:all";
+const WIDGET_IDS_INDEX_KEY = "widgets:all_ids";
+const WIDGET_INSTANCE_PREFIX = "widget_instance:";
+const WIDGET_PENDING_PREFIX = "widget_pending:";
 
-export async function getAllWidgetGuildIds(env: any): Promise<string[]> {
+function normalizeWidgetRecord(raw: any): WidgetDeployment | null {
+  if (!raw || typeof raw !== "object") return null;
+  const guildId = String(raw.guildId || "").trim();
+  const channelId = String(raw.channelId || "").trim();
+  const messageId = String(raw.messageId || "").trim();
+  if (!guildId || !channelId || !messageId) return null;
+  const id = String(raw.id || `${guildId}:${channelId}`).trim();
+  return {
+    id,
+    guildId,
+    channelId,
+    messageId,
+    deployedAt: Number(raw.deployedAt || Date.now()),
+    ...(raw.deployedBy ? { deployedBy: String(raw.deployedBy) } : {}),
+    ...(raw.deployedByUsername ? { deployedByUsername: String(raw.deployedByUsername) } : {}),
+    ...(raw.lastSyncedAt ? { lastSyncedAt: Number(raw.lastSyncedAt) } : {}),
+    ...(raw.lastAttemptedSyncAt ? { lastAttemptedSyncAt: Number(raw.lastAttemptedSyncAt) } : {}),
+    ...(raw.lastSyncStatus ? { lastSyncStatus: raw.lastSyncStatus } : {}),
+    ...(raw.lastSyncError ? { lastSyncError: String(raw.lastSyncError) } : {}),
+    ...(raw.templateId ? { templateId: String(raw.templateId) } : {}),
+    ...(raw.customTemplate ? { customTemplate: raw.customTemplate } : {}),
+    ...(typeof raw.configVersion === "number" ? { configVersion: raw.configVersion } : {}),
+    ...(typeof raw.lastCatalogVersion === "number" ? { lastCatalogVersion: raw.lastCatalogVersion } : {}),
+    ...(raw.lastContentHash ? { lastContentHash: String(raw.lastContentHash) } : {}),
+    history: Array.isArray(raw.history) ? raw.history.slice(0, 15) : [],
+  };
+}
+
+export async function getAllWidgetDeployments(env: any): Promise<WidgetDeployment[]> {
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return [];
-  const raw = await kv.get(WIDGET_INDEX_KEY);
-  if (raw !== null) {
+
+  const resultMap = new Map<string, WidgetDeployment>();
+  let ids: string[] = [];
+  const rawIdx = await kv.get(WIDGET_IDS_INDEX_KEY);
+  if (rawIdx) {
     try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return [...new Set(parsed.filter(Boolean))];
+      const parsed = JSON.parse(rawIdx);
+      if (Array.isArray(parsed)) ids = parsed.map(String).filter(Boolean);
     } catch {
-      // fall through
+      ids = [];
     }
   }
-  const keys = await listKeysByPrefix(kv, "widget:");
-  const ids = keys.map((k) => k.slice("widget:".length)).filter(Boolean);
-  if (ids.length > 0) {
-    await kv.put(WIDGET_INDEX_KEY, JSON.stringify(ids));
+
+  if (ids.length === 0) {
+    const instanceKeys = await listKeysByPrefix(kv, WIDGET_INSTANCE_PREFIX);
+    ids = instanceKeys.map((k) => k.slice(WIDGET_INSTANCE_PREFIX.length)).filter(Boolean);
   }
-  return ids;
+
+  await Promise.all(
+    ids.map(async (id) => {
+      const raw = await kv.get(`${WIDGET_INSTANCE_PREFIX}${id}`);
+      if (!raw) return;
+      try {
+        const normalized = normalizeWidgetRecord(JSON.parse(raw));
+        if (normalized) resultMap.set(normalized.id, normalized);
+      } catch {
+        // skip corrupted record
+      }
+    })
+  );
+
+  // Backward-compatible read of legacy 1-per-guild keys (`widget:${guildId}`)
+  let legacyGuildIds: string[] = [];
+  const rawLegacyIdx = await kv.get(LEGACY_WIDGET_INDEX_KEY);
+  if (rawLegacyIdx) {
+    try {
+      const parsed = JSON.parse(rawLegacyIdx);
+      if (Array.isArray(parsed)) legacyGuildIds = parsed.map(String).filter(Boolean);
+    } catch {
+      legacyGuildIds = [];
+    }
+  } else {
+    const legacyKeys = await listKeysByPrefix(kv, "widget:");
+    legacyGuildIds = legacyKeys.map((k) => k.slice("widget:".length)).filter(Boolean);
+  }
+
+  for (const guildId of legacyGuildIds) {
+    const raw = await kv.get(`widget:${guildId}`);
+    if (!raw) continue;
+    try {
+      const normalized = normalizeWidgetRecord(JSON.parse(raw));
+      if (normalized && !resultMap.has(normalized.id)) {
+        resultMap.set(normalized.id, normalized);
+      }
+    } catch {
+      // skip corrupted legacy record
+    }
+  }
+
+  return [...resultMap.values()].sort((a, b) => b.deployedAt - a.deployedAt);
+}
+
+export async function getAllWidgetGuildIds(env: any): Promise<string[]> {
+  const all = await getAllWidgetDeployments(env);
+  return [...new Set(all.map((w) => w.guildId))];
+}
+
+export async function getWidgetsForGuild(env: any, guildId: string): Promise<WidgetDeployment[]> {
+  const all = await getAllWidgetDeployments(env);
+  return all.filter((w) => w.guildId === guildId);
+}
+
+export async function getWidgetDeploymentById(
+  env: any,
+  widgetId: string
+): Promise<WidgetDeployment | null> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return null;
+  const raw = await kv.get(`${WIDGET_INSTANCE_PREFIX}${widgetId}`);
+  if (raw) {
+    try {
+      return normalizeWidgetRecord(JSON.parse(raw));
+    } catch {
+      return null;
+    }
+  }
+  const all = await getAllWidgetDeployments(env);
+  return all.find((w) => w.id === widgetId) || null;
 }
 
 export async function getWidgetDeployment(
   env: any,
   guildId: string
 ): Promise<WidgetDeployment | null> {
-  const kv = env.DISCORD_BOT as KVNamespace;
-  if (!kv) return null;
-  const raw = await kv.get(`widget:${guildId}`);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as WidgetDeployment;
-  } catch {
-    return null;
-  }
+  const forGuild = await getWidgetsForGuild(env, guildId);
+  return forGuild[0] || null;
 }
 
 export async function setWidgetDeployment(
   env: any,
-  widget: WidgetDeployment
-): Promise<void> {
+  widget: Omit<WidgetDeployment, "id"> & { id?: string }
+): Promise<WidgetDeployment> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  const normalized = normalizeWidgetRecord({
+    ...widget,
+    id: widget.id || `${widget.guildId}:${widget.channelId}`,
+  })!;
+  if (!kv) return normalized;
+
+  await kv.put(`${WIDGET_INSTANCE_PREFIX}${normalized.id}`, JSON.stringify(normalized));
+
+  const rawIdx = await kv.get(WIDGET_IDS_INDEX_KEY);
+  let ids: string[] = [];
+  if (rawIdx) {
+    try {
+      const parsed = JSON.parse(rawIdx);
+      if (Array.isArray(parsed)) ids = parsed.map(String).filter(Boolean);
+    } catch {
+      ids = [];
+    }
+  }
+  if (!ids.includes(normalized.id)) {
+    ids.push(normalized.id);
+    await kv.put(WIDGET_IDS_INDEX_KEY, JSON.stringify([...new Set(ids)]));
+  }
+
+  // Keep legacy key updated for backward compatibility on primary guild widget
+  await kv.put(`widget:${normalized.guildId}`, JSON.stringify(normalized));
+  const rawLegacyIdx = await kv.get(LEGACY_WIDGET_INDEX_KEY);
+  let legacyIds: string[] = [];
+  if (rawLegacyIdx) {
+    try {
+      const parsed = JSON.parse(rawLegacyIdx);
+      if (Array.isArray(parsed)) legacyIds = parsed.map(String).filter(Boolean);
+    } catch {
+      legacyIds = [];
+    }
+  }
+  if (!legacyIds.includes(normalized.guildId)) {
+    legacyIds.push(normalized.guildId);
+    await kv.put(LEGACY_WIDGET_INDEX_KEY, JSON.stringify([...new Set(legacyIds)]));
+  }
+  return normalized;
+}
+
+export async function deleteWidgetDeploymentById(env: any, widgetId: string): Promise<void> {
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return;
-  await kv.put(`widget:${widget.guildId}`, JSON.stringify(widget));
-  const ids = await getAllWidgetGuildIds(env);
-  if (!ids.includes(widget.guildId)) {
-    ids.push(widget.guildId);
-    await kv.put(WIDGET_INDEX_KEY, JSON.stringify(ids));
+  const existing = await getWidgetDeploymentById(env, widgetId);
+  await kv.delete(`${WIDGET_INSTANCE_PREFIX}${widgetId}`);
+
+  const rawIdx = await kv.get(WIDGET_IDS_INDEX_KEY);
+  if (rawIdx) {
+    try {
+      const parsed: string[] = JSON.parse(rawIdx);
+      if (Array.isArray(parsed)) {
+        await kv.put(
+          WIDGET_IDS_INDEX_KEY,
+          JSON.stringify(parsed.filter((id) => id !== widgetId))
+        );
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (existing) {
+    const remaining = (await getAllWidgetDeployments(env)).filter(
+      (w) => w.guildId === existing.guildId
+    );
+    if (remaining.length === 0) {
+      await kv.delete(`widget:${existing.guildId}`);
+      const rawLegacy = await kv.get(LEGACY_WIDGET_INDEX_KEY);
+      if (rawLegacy) {
+        try {
+          const parsed: string[] = JSON.parse(rawLegacy);
+          if (Array.isArray(parsed)) {
+            await kv.put(
+              LEGACY_WIDGET_INDEX_KEY,
+              JSON.stringify(parsed.filter((g) => g !== existing.guildId))
+            );
+          }
+        } catch {
+          // ignore
+        }
+      }
+    } else {
+      await kv.put(`widget:${existing.guildId}`, JSON.stringify(remaining[0]));
+    }
   }
 }
 
@@ -811,11 +1029,76 @@ export async function deleteWidgetDeployment(
 ): Promise<void> {
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return;
+  const forGuild = await getWidgetsForGuild(env, guildId);
+  for (const w of forGuild) {
+    await deleteWidgetDeploymentById(env, w.id);
+  }
   await kv.delete(`widget:${guildId}`);
-  const ids = await getAllWidgetGuildIds(env);
-  const filtered = ids.filter((id) => id !== guildId);
-  await kv.put(WIDGET_INDEX_KEY, JSON.stringify(filtered));
+  const rawLegacy = await kv.get(LEGACY_WIDGET_INDEX_KEY);
+  if (rawLegacy) {
+    try {
+      const parsed: string[] = JSON.parse(rawLegacy);
+      if (Array.isArray(parsed)) {
+        await kv.put(
+          LEGACY_WIDGET_INDEX_KEY,
+          JSON.stringify(parsed.filter((id) => id !== guildId))
+        );
+      }
+    } catch {
+      // ignore
+    }
+  }
 }
+
+export async function createPendingWidgetConfirmation(
+  env: any,
+  input: Omit<PendingWidgetConfirmation, "token" | "createdAt" | "expiresAt">
+): Promise<PendingWidgetConfirmation> {
+  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+  const now = Date.now();
+  const record: PendingWidgetConfirmation = {
+    ...input,
+    token,
+    createdAt: now,
+    expiresAt: now + 15 * 60 * 1000,
+  };
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  if (kv) {
+    await kv.put(`${WIDGET_PENDING_PREFIX}${token}`, JSON.stringify(record), {
+      expirationTtl: 900,
+    });
+  }
+  return record;
+}
+
+export async function getPendingWidgetConfirmation(
+  env: any,
+  token: string
+): Promise<PendingWidgetConfirmation | null> {
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  if (!kv || !token) return null;
+  const raw = await kv.get(`${WIDGET_PENDING_PREFIX}${token}`);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as PendingWidgetConfirmation;
+    if (!parsed || typeof parsed.expiresAt !== "number" || Date.now() > parsed.expiresAt) {
+      await kv.delete(`${WIDGET_PENDING_PREFIX}${token}`).catch(() => null);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export async function deletePendingWidgetConfirmation(env: any, token: string): Promise<void> {
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  if (!kv || !token) return;
+  await kv.delete(`${WIDGET_PENDING_PREFIX}${token}`).catch(() => null);
+}
+
+const PRESENTATION_CONFIG_KEY = "admin:presentation_config";
+const LISTING_OVERRIDES_KEY = "listings:metadata_overrides";
 
 export async function getEmbedConfig(env: any): Promise<EmbedConfig> {
   const kv = env.DISCORD_BOT as KVNamespace;
@@ -866,6 +1149,189 @@ export async function getEffectiveEmbedConfig(env: any, guildId?: string): Promi
     ...base,
     ...guildCfg.embedConfig,
   };
+}
+
+function mergeAnnouncementTemplate(
+  base: AnnouncementTemplate,
+  incoming?: Partial<AnnouncementTemplate> | null
+): AnnouncementTemplate {
+  if (!incoming || typeof incoming !== "object") return { ...base };
+  return {
+    ...base,
+    ...incoming,
+    featureOrder:
+      Array.isArray(incoming.featureOrder) && incoming.featureOrder.length > 0
+        ? incoming.featureOrder
+        : [...base.featureOrder],
+  };
+}
+
+export async function getPresentationConfig(env: any): Promise<PresentationConfigBundle> {
+  const defaults = createDefaultPresentationConfig();
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  if (!kv) return defaults;
+
+  const raw = await kv.get(PRESENTATION_CONFIG_KEY);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as Partial<PresentationConfigBundle>;
+      return {
+        version: typeof parsed.version === "number" ? parsed.version : 1,
+        updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+        ...(parsed.updatedBy ? { updatedBy: String(parsed.updatedBy) } : {}),
+        announcements: {
+          inStock: mergeAnnouncementTemplate(
+            defaults.announcements.inStock,
+            parsed.announcements?.inStock
+          ),
+          soldOut: mergeAnnouncementTemplate(
+            defaults.announcements.soldOut,
+            parsed.announcements?.soldOut
+          ),
+        },
+        widgetDefault: {
+          ...defaults.widgetDefault,
+          ...(parsed.widgetDefault || {}),
+          featureOrder:
+            Array.isArray(parsed.widgetDefault?.featureOrder) &&
+            parsed.widgetDefault.featureOrder.length > 0
+              ? parsed.widgetDefault.featureOrder
+              : [...defaults.widgetDefault.featureOrder],
+          featureLabelOverrides: parsed.widgetDefault?.featureLabelOverrides || {},
+          hiddenFeatureKeys: Array.isArray(parsed.widgetDefault?.hiddenFeatureKeys)
+            ? parsed.widgetDefault.hiddenFeatureKeys
+            : [],
+        },
+        widgetTemplates: Array.isArray(parsed.widgetTemplates)
+          ? parsed.widgetTemplates.map((tpl) => ({
+              ...defaults.widgetDefault,
+              ...tpl,
+              featureOrder:
+                Array.isArray(tpl?.featureOrder) && tpl.featureOrder.length > 0
+                  ? tpl.featureOrder
+                  : [...defaults.widgetDefault.featureOrder],
+              featureLabelOverrides: tpl?.featureLabelOverrides || {},
+              hiddenFeatureKeys: Array.isArray(tpl?.hiddenFeatureKeys)
+                ? tpl.hiddenFeatureKeys
+                : [],
+            }))
+          : [],
+        hero: {
+          ...defaults.hero,
+          ...(parsed.hero || {}),
+          messages:
+            Array.isArray(parsed.hero?.messages) && parsed.hero.messages.length > 0
+              ? parsed.hero.messages
+              : defaults.hero.messages,
+        },
+        recentEmojis: Array.isArray(parsed.recentEmojis) ? parsed.recentEmojis.slice(0, 24) : [],
+      };
+    } catch {
+      // Fall through to legacy migration
+    }
+  }
+
+  // First-read automatic migration from legacy admin:embed_config
+  const legacy = await getEmbedConfig(env);
+  defaults.announcements.inStock = {
+    ...DEFAULT_IN_STOCK_TEMPLATE,
+    accentColor: legacy.color || DEFAULT_IN_STOCK_TEMPLATE.accentColor,
+    titlePrefix:
+      typeof legacy.titlePrefix === "string"
+        ? legacy.titlePrefix.replace(/<a?:[a-zA-Z0-9_]+:\d+>\s*/g, "").trim() ||
+          DEFAULT_IN_STOCK_TEMPLATE.titlePrefix
+        : DEFAULT_IN_STOCK_TEMPLATE.titlePrefix,
+    footerText: legacy.footerText || DEFAULT_IN_STOCK_TEMPLATE.footerText,
+    storeButtonLabel: legacy.storeButtonLabel || DEFAULT_IN_STOCK_TEMPLATE.storeButtonLabel,
+    showDetectionTime: legacy.showDetectionTime !== false,
+    showLastVerified: legacy.showLastVerified !== false,
+  };
+  defaults.announcements.soldOut = {
+    ...DEFAULT_SOLD_OUT_TEMPLATE,
+    storeButtonLabel: legacy.soldOutButtonLabel || DEFAULT_SOLD_OUT_TEMPLATE.storeButtonLabel,
+    showDetectionTime: legacy.showDetectionTime !== false,
+    showLastVerified: legacy.showLastVerified !== false,
+  };
+  return defaults;
+}
+
+export async function setPresentationConfig(
+  env: any,
+  bundle: PresentationConfigBundle
+): Promise<PresentationConfigBundle> {
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  const next: PresentationConfigBundle = {
+    ...bundle,
+    version: (bundle.version || 1) + 1,
+    updatedAt: Date.now(),
+  };
+  if (kv) {
+    await kv.put(PRESENTATION_CONFIG_KEY, JSON.stringify(next));
+    // Keep legacy admin:embed_config synchronized for older consumers
+    await setEmbedConfig(env, {
+      color: next.announcements.inStock.accentColor,
+      titlePrefix: next.announcements.inStock.titlePrefix,
+      footerText: next.announcements.inStock.footerText,
+      galleryHeading: "",
+      storeButtonLabel: next.announcements.inStock.storeButtonLabel,
+      soldOutButtonLabel: next.announcements.soldOut.storeButtonLabel,
+      showDetectionTime: next.announcements.inStock.showDetectionTime,
+      showLastVerified: next.announcements.inStock.showLastVerified,
+    });
+  }
+  return next;
+}
+
+export async function getListingOverridesMap(
+  env: any
+): Promise<Record<string, VehicleMetadataOverride>> {
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  if (!kv) return {};
+  const raw = await kv.get(LISTING_OVERRIDES_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, VehicleMetadataOverride>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function getListingOverride(
+  env: any,
+  listingId: string
+): Promise<VehicleMetadataOverride | null> {
+  const map = await getListingOverridesMap(env);
+  return map[listingId] || null;
+}
+
+export async function setListingOverride(
+  env: any,
+  listingId: string,
+  override: VehicleMetadataOverride
+): Promise<Record<string, VehicleMetadataOverride>> {
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  const map = await getListingOverridesMap(env);
+  map[listingId] = { ...override, listingId, updatedAt: Date.now() };
+  if (kv) {
+    await kv.put(LISTING_OVERRIDES_KEY, JSON.stringify(map));
+  }
+  return map;
+}
+
+export async function deleteListingOverride(
+  env: any,
+  listingId: string
+): Promise<Record<string, VehicleMetadataOverride>> {
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  const map = await getListingOverridesMap(env);
+  delete map[listingId];
+  if (kv) {
+    await kv.put(LISTING_OVERRIDES_KEY, JSON.stringify(map));
+  }
+  return map;
 }
 
 const DELIVERY_LOG_KEY = "dispatch:logs";
@@ -932,7 +1398,7 @@ export async function getMonitorLogs(env: any): Promise<MonitorLogEntry[]> {
   }
 }
 
-export type BotCommandSyncMeta = {
+export type BotCommandSyncRecord = {
   syncedAt: number;
   syncedBy: string;
   scope: "global" | "guild";
@@ -944,7 +1410,22 @@ export type BotCommandSyncMeta = {
   error?: string;
 };
 
+export type BotCommandSyncMeta = BotCommandSyncRecord & {
+  lastSuccess?: BotCommandSyncRecord | null;
+  lastFailure?: BotCommandSyncRecord | null;
+};
+
+export type BotHealthSnapshot = {
+  verified: boolean;
+  online: boolean;
+  checkedAt: number;
+  appId?: string;
+  botUsername?: string;
+  error?: string;
+};
+
 const BOT_COMMANDS_SYNC_KEY = "bot:commands_sync_meta";
+const BOT_HEALTH_SNAPSHOT_KEY = "bot:health_snapshot";
 
 export async function getBotCommandSyncMeta(env: any): Promise<BotCommandSyncMeta | null> {
   const kv = env.DISCORD_BOT as KVNamespace;
@@ -958,9 +1439,43 @@ export async function getBotCommandSyncMeta(env: any): Promise<BotCommandSyncMet
   }
 }
 
-export async function setBotCommandSyncMeta(env: any, meta: BotCommandSyncMeta): Promise<void> {
+export async function setBotCommandSyncMeta(
+  env: any,
+  meta: BotCommandSyncRecord
+): Promise<BotCommandSyncMeta> {
   const kv = env.DISCORD_BOT as KVNamespace;
+  const existing = await getBotCommandSyncMeta(env);
+  const combined: BotCommandSyncMeta = {
+    ...meta,
+    lastSuccess: meta.ok ? meta : existing?.lastSuccess || (existing?.ok ? existing : null),
+    lastFailure: !meta.ok ? meta : existing?.lastFailure || (existing && !existing.ok ? existing : null),
+  };
+  if (kv) {
+    await kv.put(BOT_COMMANDS_SYNC_KEY, JSON.stringify(combined));
+  }
+  return combined;
+}
+
+export async function getBotHealthSnapshot(env: any): Promise<BotHealthSnapshot | null> {
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  if (!kv) return null;
+  const raw = await kv.get(BOT_HEALTH_SNAPSHOT_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as BotHealthSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+export async function setBotHealthSnapshot(
+  env: any,
+  snapshot: BotHealthSnapshot
+): Promise<void> {
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
   if (!kv) return;
-  await kv.put(BOT_COMMANDS_SYNC_KEY, JSON.stringify(meta));
+  await kv.put(BOT_HEALTH_SNAPSHOT_KEY, JSON.stringify(snapshot), {
+    expirationTtl: 600,
+  });
 }
 

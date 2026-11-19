@@ -10,7 +10,7 @@ export function PrivacyPage() {
           <div className="border-b border-border pb-6">
             <h1 className="text-3xl font-extrabold tracking-tight text-white">Privacy Policy</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Effective Date: November 17, 2026 &bull; Operated by xchasex
+              Effective Date: November 19, 2026 &bull; Operated by xchasex
             </p>
           </div>
 
@@ -32,10 +32,11 @@ export function PrivacyPage() {
               <p>
                 <strong className="text-white">Discord Server Configuration &amp; Widget Tracking:</strong> When Everfall Limited Watcher
                 is configured in a Discord server, we store server IDs, selected notification channel IDs,
-                configured mention role IDs, environment designations (production vs. test), deployed live
-                status widget channel and message IDs (only when explicitly deployed by an administrator via{" "}
-                <code>/widget</code>), and sent listing message IDs so posted Discord embeds can be updated
-                when vehicles become sold out.
+                configured mention role IDs, environment designations (production vs. test), and sent listing
+                message IDs so posted Discord embeds can be updated when vehicles become sold out. When an
+                administrator explicitly confirms deployment of a live status widget via <code>/widget</code> or
+                the dashboard, we also store the target channel ID, widget message ID, widget sync history, and
+                the deploying administrator&apos;s Discord user ID and username.
               </p>
               <p>
                 <strong className="text-white">Application Activity &amp; Monitoring Logs:</strong> We retain
@@ -44,10 +45,12 @@ export function PrivacyPage() {
                 verification monitor logs (retained for up to 7 days) alongside store check status timestamps to operate and troubleshoot the service.
               </p>
               <p>
-                <strong className="text-white">Store Listing Information &amp; Media:</strong> Everfall Limited Watcher collects
+                <strong className="text-white">Store Listing Information, Media &amp; Presentation Overrides:</strong> Everfall Limited Watcher collects
                 publicly accessible product metadata from the Everfall storefront, including listing names,
                 descriptions, product URLs, archived or administrator-managed vehicle images, availability state, and detection or
-                verification timestamps.
+                verification timestamps. Administrator-configured vehicle metadata overrides, Discord embed and
+                widget presentation templates, and homepage hero configurations are persisted in Cloudflare
+                Workers KV alongside preserved historical listing data.
               </p>
             </section>
 
@@ -82,12 +85,13 @@ export function PrivacyPage() {
                 Everfall Limited Watcher runs on Cloudflare infrastructure (Cloudflare Workers, Workers KV,
                 and Cloudflare R2 object storage for archived listing media). Cached user Discord server lists (
                 <code>user_guilds:*</code>) automatically expire after 24 hours, and temporary Discord API
-                guild caches expire within 10 minutes to 24 hours. Server configurations, widget deployment
-                pointers, and historical public vehicle records (alongside archived listing images stored in
-                Cloudflare R2) are retained to provide ongoing drop notifications, live embed updates, and
-                historical reference until modified or removed. Removing the bot from a Discord server does
-                not automatically purge shared public vehicle history or historical delivery records unless
-                requested.
+                guild caches expire within 10 minutes to 24 hours, and single-use Discord command confirmation
+                tokens expire shortly after interaction. Server configurations, widget deployment records and
+                sync history, administrator-managed presentation overrides and hero configurations, and
+                historical public vehicle records (alongside archived listing images stored in Cloudflare R2)
+                are retained to provide ongoing drop notifications, live embed updates, and historical reference
+                until modified or removed. Removing the bot from a Discord server does not automatically purge
+                shared public vehicle history or historical delivery records unless requested.
               </p>
             </section>
 

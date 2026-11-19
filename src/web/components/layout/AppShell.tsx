@@ -8,6 +8,7 @@ import {
   Home,
   Images,
   LayoutDashboard,
+  LayoutPanelTop,
   Menu,
   Palette,
   PanelLeftClose,
@@ -15,6 +16,8 @@ import {
   Send,
   Server,
   Shield,
+  SlidersHorizontal,
+  Sparkles,
 } from "lucide-react";
 import { useAuthActions, useSession, useSessionSync } from "@/features/auth/useAuthActions";
 import { cn } from "@/lib/utils";
@@ -38,9 +41,12 @@ const GENERAL_NAV: NavItem[] = [
 const ADMIN_NAV: NavItem[] = [
   { label: "Overview", to: "/admin", icon: Shield, exact: true },
   { label: "Bot Control", to: "/admin/bot", icon: Bot },
+  { label: "Status Widgets", to: "/admin/widgets", icon: LayoutPanelTop },
   { label: "Connected Servers", to: "/admin/servers", icon: Server },
+  { label: "Vehicle Metadata", to: "/admin/metadata", icon: SlidersHorizontal },
   { label: "Image Manager", to: "/admin/images", icon: Images },
   { label: "Embed Manager", to: "/admin/embeds", icon: Palette },
+  { label: "Homepage Hero", to: "/admin/hero", icon: Sparkles },
   { label: "Store Monitoring", to: "/admin/monitor", icon: Activity },
   { label: "Dispatch & Deliveries", to: "/admin/dispatch", icon: Send },
   { label: "Testing", to: "/admin/testing", icon: FlaskConical },

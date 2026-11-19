@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Activity,
   ArrowRight,
   Bell,
   Check,
@@ -14,21 +15,28 @@ import {
   Images,
   Loader2,
   Plus,
+  SlidersHorizontal,
   Terminal,
   Users,
-  Zap,
 } from "lucide-react";
 import {
   apiFetch,
   BotStatus,
   ListingItem,
+  MonitorHealth,
   PublicListingsResponse,
   PublicStatusResponse,
 } from "@/lib/api";
+import { resolveListingPresentation, sortAndFilterFeatures } from "../../../shared/features";
 import { cn, formatLocalDateTime, formatLocalTime, safeExternalUrl } from "@/lib/utils";
 import { useAuthActions, useSession } from "@/features/auth/useAuthActions";
 import { PublicLayout } from "@/components/layout/PublicLayout";
-import { StockStatusPill, VehicleCard } from "@/components/listings/VehicleCard";
+import { AnimatedHero } from "@/components/hero/AnimatedHero";
+import {
+  FeatureChipList,
+  StockStatusPill,
+  VehicleCard,
+} from "@/components/listings/VehicleCard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -61,6 +69,10 @@ function BotHealthBadge({ status }: { status: BotStatus }) {
   );
 }
 
+function formatScheduledCadence(intervalMs?: number): string {
+  const minutes = Math.max(1, Math.round((intervalMs || 900_000) / 60_000));
+  return `Every ${minutes}m`;
+}
 
 const FEATURES = [
   {
@@ -116,7 +128,7 @@ export function HomePage() {
     refetchOnReconnect: false,
   });
 
-  // Lightweight 1-KV-read / edge-cached status heartbeat to fast-refresh Last Checked timestamp
+  // Lightweight 1-KV-read / edge-cached status heartbeat
   const { data: statusHeartbeat, isFetching: isStatusFetching } = useQuery({
     queryKey: ["public-status"],
     queryFn: () => apiFetch<PublicStatusResponse>("/api/public/status"),
@@ -136,7 +148,6 @@ export function HomePage() {
   }, [statusHeartbeat, listingsData, queryClient]);
 
   const allListings = listingsData?.listings || [];
-
   const filteredListings = allListings.filter((car) => {
     if (statusFilter === "in_stock") return car.isAvailable;
     if (statusFilter === "sold_out") return !car.isAvailable;
@@ -145,15 +156,26 @@ export function HomePage() {
 
   const inStockCount = allListings.filter((c) => c.isAvailable).length;
   const soldOutCount = allListings.filter((c) => !c.isAvailable).length;
-
   const desktopListings = filteredListings.slice(0, Math.min(desktopVisibleCount, 10));
+
   const botStatus: BotStatus =
-    statusHeartbeat?.botStatus || listingsData?.botStatus || session?.botStatus || "online";
+    statusHeartbeat?.botStatus || listingsData?.botStatus || session?.botStatus || "offline";
+  const monitorHealth: MonitorHealth =
+    statusHeartbeat?.monitorHealth ||
+    listingsData?.monitorHealth ||
+    session?.monitorHealth || { state: "monitoring_pending", label: "Monitoring Pending" };
+  const scheduledIntervalMs =
+    statusHeartbeat?.scheduledIntervalMs ||
+    listingsData?.scheduledIntervalMs ||
+    session?.scheduledIntervalMs ||
+    900_000;
   const lastCheckedAt =
     statusHeartbeat?.lastCheckedAt ||
     listingsData?.lastCheckedAt ||
     statusHeartbeat?.lastSuccessAt ||
     listingsData?.lastSuccessAt;
+  const heroConfig = statusHeartbeat?.hero || listingsData?.hero;
+
   const inviteUrl =
     session?.inviteUrl ||
     "https://discord.com/oauth2/authorize?client_id=1571958001928245378&permissions=8462935362366544&integration_type=0&scope=bot+applications.commands";
@@ -175,26 +197,30 @@ export function HomePage() {
     carouselRef.current.scrollBy({ left: delta, behavior: "smooth" });
   };
 
+  const modalPresentation = selectedListing
+    ? selectedListing.presentation ||
+      resolveListingPresentation({
+        id: selectedListing.id,
+        name: selectedListing.name,
+        description: selectedListing.description,
+        url: selectedListing.url,
+        images: selectedListing.images,
+      })
+    : null;
+  const modalFeatures = modalPresentation
+    ? sortAndFilterFeatures(modalPresentation.effective.features, "card")
+    : [];
+
   return (
     <PublicLayout>
-      {/* Enhanced Hero Section with Ambient Glow Effect & Live Radar Beacon */}
+      {/* Hero Section powered by Homepage Hero Controller (zero visitor pagination arrows/dots) */}
       <section className="relative overflow-hidden border-b border-border bg-background">
-        {/* Subtle Ambient Radial Glow */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="absolute -top-32 left-1/2 -translate-x-1/2 h-[450px] w-[700px] rounded-full bg-gradient-to-tr from-emerald-500/10 via-zinc-800/15 to-transparent blur-[140px] opacity-70" />
+          <div className="absolute -top-32 left-1/2 h-[450px] w-[700px] -translate-x-1/2 rounded-full bg-gradient-to-tr from-emerald-500/10 via-zinc-800/15 to-transparent blur-[140px] opacity-70" />
         </div>
 
         <div className="relative mx-auto max-w-4xl px-4 py-16 text-center sm:px-6 sm:py-24 lg:px-8">
-          <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-            Never Miss an Everfall <br className="hidden sm:inline" />
-            <span className="bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
-              Limited Drop
-            </span>
-          </h1>
-
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-            Track Everfall's limited vehicle releases, inspect verified stock availability, and receive structured Discord alerts with archived multi-image galleries.
-          </p>
+          <AnimatedHero config={heroConfig} />
 
           <div className="mt-8 flex justify-center">
             <a
@@ -208,48 +234,60 @@ export function HomePage() {
             </a>
           </div>
 
-          {/* Live Operational Metrics (Check Frequency & Latency with glowing state beacons) */}
-          <div className="mx-auto mt-12 grid max-w-lg grid-cols-1 gap-3.5 border-t border-border/60 pt-8 sm:grid-cols-2">
+          {/* Truthful Operational Telemetry Metrics */}
+          <div className="mx-auto mt-12 grid max-w-xl grid-cols-1 gap-3.5 border-t border-border/60 pt-8 sm:grid-cols-2">
+            <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/75 p-3.5 text-center shadow-sm backdrop-blur-sm transition-all hover:border-zinc-700">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Clock className="h-3.5 w-3.5 text-zinc-400" />
+                <span>Scheduled Store Check</span>
+              </div>
+              <div className="mt-1 font-mono text-sm font-semibold text-white tabular-nums">
+                {formatScheduledCadence(scheduledIntervalMs)}
+              </div>
+              <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                {lastCheckedAt ? `Last check ${formatLocalTime(lastCheckedAt)}` : "Awaiting run"}
+              </p>
+            </div>
+
             <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/75 p-3.5 text-center shadow-sm backdrop-blur-sm transition-all hover:border-zinc-700">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="relative flex h-2 w-2">
                   <span
                     className={cn(
                       "absolute inline-flex h-full w-full animate-ping rounded-full opacity-80 duration-1000",
-                      botStatus === "online" ? "bg-emerald-400" : "bg-red-400"
+                      monitorHealth.state === "verification_successful"
+                        ? "bg-emerald-400"
+                        : monitorHealth.state === "verification_blocked"
+                          ? "bg-red-400"
+                          : "bg-amber-400"
                     )}
                   />
                   <span
                     className={cn(
                       "relative inline-flex h-2 w-2 rounded-full",
-                      botStatus === "online"
+                      monitorHealth.state === "verification_successful"
                         ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)]"
-                        : "bg-red-400 shadow-[0_0_8px_rgba(239,68,68,1)]"
+                        : monitorHealth.state === "verification_blocked"
+                          ? "bg-red-400"
+                          : "bg-amber-400"
                     )}
                   />
                 </span>
-                <Clock className="h-3.5 w-3.5 text-zinc-400" />
-                <span>Check Frequency</span>
+                <Activity className="h-3.5 w-3.5 text-zinc-400" />
+                <span>Monitor Health</span>
               </div>
-              <div className="mt-1 font-mono text-sm font-semibold text-white">Every 7m</div>
-            </div>
-
-            <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/75 p-3.5 text-center shadow-sm backdrop-blur-sm transition-all hover:border-zinc-700">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-80 duration-1000" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)]" />
-                </span>
-                <Zap className="h-3.5 w-3.5 text-zinc-400" />
-                <span>Notification Latency</span>
+              <div className="mt-1 font-mono text-sm font-semibold text-white">
+                {monitorHealth.label}
               </div>
-              <div className="mt-1 font-mono text-sm font-semibold text-white">&lt;15s Real-Time</div>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Bot: {botStatus === "online" ? "Authenticated" : "Offline"}
+              </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Limited Drop History Showcase with Interactive Filters & Inspection */}
+      {/* Limited Drop History Showcase */}
       <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -272,7 +310,6 @@ export function HomePage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Filter Tabs */}
             <Tabs
               value={statusFilter}
               onValueChange={(val) => setStatusFilter(val as any)}
@@ -317,13 +354,12 @@ export function HomePage() {
           <Card className="mt-8 p-10 text-center">
             <p className="text-sm text-muted-foreground">
               {statusFilter === "in_stock"
-                ? "No limited vehicles are currently in stock. The store monitor checks every 7 minutes."
+                ? `No limited vehicles are currently in stock. Scheduled checks run ${formatScheduledCadence(scheduledIntervalMs).toLowerCase()}.`
                 : "No limited vehicle releases recorded matching this filter."}
             </p>
           </Card>
         ) : (
           <>
-            {/* Desktop Grid: 3 initially, Load More up to 10 */}
             <div className="mt-8 hidden gap-6 md:grid md:grid-cols-2 lg:grid-cols-3">
               {desktopListings.map((car) => (
                 <VehicleCard
@@ -334,6 +370,11 @@ export function HomePage() {
                   editImagesHref={
                     session?.user?.isAdmin
                       ? `/admin/images?listingId=${encodeURIComponent(car.id)}`
+                      : undefined
+                  }
+                  editMetadataHref={
+                    session?.user?.isAdmin
+                      ? `/admin/metadata?listingId=${encodeURIComponent(car.id)}`
                       : undefined
                   }
                 />
@@ -351,7 +392,8 @@ export function HomePage() {
               </div>
             )}
 
-            {(listingsData?.hasMoreArchive || (desktopVisibleCount >= 10 && filteredListings.length >= 10)) && (
+            {(listingsData?.hasMoreArchive ||
+              (desktopVisibleCount >= 10 && filteredListings.length >= 10)) && (
               <div className="mt-6 hidden items-center justify-center gap-3 md:flex">
                 <span className="text-xs text-muted-foreground">
                   Showing up to the 10 most recent public drops.
@@ -377,7 +419,7 @@ export function HomePage() {
               </div>
             )}
 
-            {/* Mobile Horizontal Swipeable Carousel */}
+            {/* Mobile Carousel */}
             <div className="mt-6 md:hidden">
               <div className="mb-3 flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">
@@ -407,7 +449,10 @@ export function HomePage() {
                 className="thin-scrollbar flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3"
               >
                 {filteredListings.map((car) => (
-                  <div key={`mobile-${car.id}`} className="w-[86vw] max-w-[360px] shrink-0 snap-start">
+                  <div
+                    key={`mobile-${car.id}`}
+                    className="w-[86vw] max-w-[360px] shrink-0 snap-start"
+                  >
                     <VehicleCard
                       listing={car}
                       isRefreshing={false}
@@ -415,6 +460,11 @@ export function HomePage() {
                       editImagesHref={
                         session?.user?.isAdmin
                           ? `/admin/images?listingId=${encodeURIComponent(car.id)}`
+                          : undefined
+                      }
+                      editMetadataHref={
+                        session?.user?.isAdmin
+                          ? `/admin/metadata?listingId=${encodeURIComponent(car.id)}`
                           : undefined
                       }
                     />
@@ -426,7 +476,7 @@ export function HomePage() {
         )}
       </section>
 
-      {/* Feature Cards (Flat white Lucide SVG icons + shadcn card hover) */}
+      {/* Feature Cards */}
       <section className="border-t border-border bg-zinc-950/70">
         <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
           <div className="grid gap-6 md:grid-cols-3">
@@ -479,13 +529,18 @@ export function HomePage() {
         </Card>
       </section>
 
-      {/* Detailed Vehicle Inspection Dialog Modal */}
-      <Dialog open={Boolean(selectedListing)} onOpenChange={(open) => !open && setSelectedListing(null)}>
-        {selectedListing && (
+      {/* Vehicle Inspection Modal */}
+      <Dialog
+        open={Boolean(selectedListing)}
+        onOpenChange={(open) => !open && setSelectedListing(null)}
+      >
+        {selectedListing && modalPresentation && (
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <div className="flex flex-wrap items-center justify-between gap-2 pr-8">
-                <DialogTitle className="text-xl font-bold text-white">{selectedListing.name}</DialogTitle>
+                <DialogTitle className="text-xl font-bold text-white">
+                  {modalPresentation.effective.name}
+                </DialogTitle>
                 <StockStatusPill isAvailable={selectedListing.isAvailable} />
               </div>
               <DialogDescription className="font-mono text-xs text-muted-foreground">
@@ -494,21 +549,28 @@ export function HomePage() {
                   type="button"
                   onClick={() => handleCopyId(selectedListing.id)}
                   title="Copy package ID"
-                  className="inline-flex items-center gap-1 text-zinc-300 underline decoration-zinc-600 hover:text-white"
+                  className="inline-flex items-center gap-1 text-zinc-300 underline decoration-zinc-600 hover:text-white cursor-pointer"
                 >
                   #{selectedListing.id}
-                  {copiedId ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                  {copiedId ? (
+                    <Check className="h-3 w-3 text-emerald-400" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
                 </button>
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4">
-              {/* Image Carousel */}
               {selectedListing.images.length > 0 && (
                 <div className="relative overflow-hidden rounded-lg border border-border bg-zinc-950">
                   <img
-                    src={selectedListing.images[Math.min(modalImgIdx, selectedListing.images.length - 1)]}
-                    alt={selectedListing.name}
+                    src={
+                      selectedListing.images[
+                        Math.min(modalImgIdx, selectedListing.images.length - 1)
+                      ]
+                    }
+                    alt={modalPresentation.effective.name}
                     referrerPolicy="no-referrer"
                     className="max-h-56 w-full object-cover sm:max-h-72"
                   />
@@ -519,7 +581,9 @@ export function HomePage() {
                         aria-label="Previous image"
                         onClick={() =>
                           setModalImgIdx(
-                            (prev) => (prev - 1 + selectedListing.images.length) % selectedListing.images.length
+                            (prev) =>
+                              (prev - 1 + selectedListing.images.length) %
+                              selectedListing.images.length
                           )
                         }
                         className="absolute left-2 top-1/2 -translate-y-1/2 rounded-lg border border-white/10 bg-black/65 p-1.5 text-white/85 transition hover:bg-black/85 hover:text-white cursor-pointer"
@@ -537,14 +601,16 @@ export function HomePage() {
                         <ChevronRight className="h-4 w-4" />
                       </button>
                       <div className="absolute bottom-2 right-2 rounded-md border border-white/10 bg-black/70 px-2 py-0.5 text-[11px] font-medium text-zinc-200 tabular-nums">
-                        {Math.min(modalImgIdx, selectedListing.images.length - 1) + 1} / {selectedListing.images.length}
+                        {Math.min(modalImgIdx, selectedListing.images.length - 1) + 1} /{" "}
+                        {selectedListing.images.length}
                       </div>
                     </>
                   )}
                 </div>
               )}
 
-              {/* Technical Metadata Table */}
+              <FeatureChipList features={modalFeatures} />
+
               <div className="grid gap-3 rounded-lg border border-border bg-zinc-950 p-3.5 text-xs sm:grid-cols-2 sm:p-4 tabular-nums">
                 <div>
                   <span className="text-muted-foreground">First Detected</span>
@@ -561,15 +627,34 @@ export function HomePage() {
                 <div>
                   <span className="text-muted-foreground">Store Response</span>
                   <p className="mt-0.5 font-mono font-medium text-zinc-200">
-                    {selectedListing.lastHttpStatus ? `HTTP ${selectedListing.lastHttpStatus}` : "200 OK (Verified)"}
+                    {selectedListing.lastHttpStatus
+                      ? `HTTP ${selectedListing.lastHttpStatus}`
+                      : "200 OK (Verified)"}
                   </p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Archived Views</span>
                   <p className="mt-0.5 font-medium text-zinc-200">
-                    {selectedListing.images.length} High-Res Angle{selectedListing.images.length === 1 ? "" : "s"}
+                    {selectedListing.images.length} High-Res Angle
+                    {selectedListing.images.length === 1 ? "" : "s"}
                   </p>
                 </div>
+                {modalPresentation.effective.tradingRestriction && (
+                  <div>
+                    <span className="text-muted-foreground">Trading Rule</span>
+                    <p className="mt-0.5 font-medium text-zinc-200">
+                      {modalPresentation.effective.tradingRestriction}
+                    </p>
+                  </div>
+                )}
+                {modalPresentation.effective.deliveryInfo && (
+                  <div>
+                    <span className="text-muted-foreground">Delivery</span>
+                    <p className="mt-0.5 font-medium text-zinc-200">
+                      {modalPresentation.effective.deliveryInfo}
+                    </p>
+                  </div>
+                )}
                 {selectedListing.soldOutAt && (
                   <div className="col-span-2">
                     <span className="text-muted-foreground">Confirmed Sold Out</span>
@@ -580,38 +665,48 @@ export function HomePage() {
                 )}
               </div>
 
-              {/* Description */}
               <div className="rounded-lg border border-border/70 bg-card/60 p-3.5">
-                <span className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Package Details
                 </span>
                 <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-300">
-                  {selectedListing.description}
+                  {modalPresentation.effective.fullDescription}
                 </p>
               </div>
 
-              {/* Action Buttons */}
               <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
                 {session?.user?.isAdmin && (
-                  <a
-                    href={`/admin/images?listingId=${encodeURIComponent(selectedListing.id)}`}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-secondary px-4 py-2.5 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-800 hover:text-white sm:w-auto sm:py-2"
-                  >
-                    <Images className="h-3.5 w-3.5" />
-                    Edit Image Set
-                  </a>
+                  <>
+                    <a
+                      href={`/admin/metadata?listingId=${encodeURIComponent(selectedListing.id)}`}
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-secondary px-4 py-2.5 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-800 hover:text-white sm:w-auto sm:py-2"
+                    >
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                      Edit Metadata
+                    </a>
+                    <a
+                      href={`/admin/images?listingId=${encodeURIComponent(selectedListing.id)}`}
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-secondary px-4 py-2.5 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-800 hover:text-white sm:w-auto sm:py-2"
+                    >
+                      <Images className="h-3.5 w-3.5" />
+                      Edit Image Set
+                    </a>
+                  </>
                 )}
                 <a
                   href={
                     selectedListing.isAvailable
-                      ? safeExternalUrl(selectedListing.url) || `https://store.everfallcommunity.com/package/${selectedListing.id}`
+                      ? safeExternalUrl(selectedListing.url) ||
+                        `https://store.everfallcommunity.com/package/${selectedListing.id}`
                       : "https://store.everfallcommunity.com/"
                   }
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2.5 text-xs font-semibold text-primary-foreground shadow transition hover:bg-zinc-200 sm:w-auto sm:py-2"
                 >
-                  {selectedListing.isAvailable ? "View Package on Everfall" : "Open Everfall Store"}
+                  {selectedListing.isAvailable
+                    ? "View Package on Everfall"
+                    : "Open Everfall Store"}
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>
               </div>

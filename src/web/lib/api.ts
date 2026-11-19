@@ -1,4 +1,54 @@
+import type {
+  EmojiReference,
+  ExtractedVehicleMetadata,
+  FeatureIconName,
+  FeatureSurface,
+  NormalizedListingPresentation,
+  VehicleFeature,
+  VehicleMetadataOverride,
+} from "../../shared/features";
+import type {
+  AnnouncementTemplate,
+  DiscordEmojiRef,
+  HeroAnimationStyle,
+  HeroConfig,
+  HeroMessageItem,
+  PresentationConfigBundle,
+  WidgetTemplateConfig,
+} from "../../shared/presentation";
+
+export type {
+  EmojiReference,
+  ExtractedVehicleMetadata,
+  FeatureIconName,
+  FeatureSurface,
+  NormalizedListingPresentation,
+  VehicleFeature,
+  VehicleMetadataOverride,
+  AnnouncementTemplate,
+  DiscordEmojiRef,
+  HeroAnimationStyle,
+  HeroConfig,
+  HeroMessageItem,
+  PresentationConfigBundle,
+  WidgetTemplateConfig,
+};
+
 export type BotStatus = "online" | "offline";
+
+export interface BotHealthSnapshot {
+  verified: boolean;
+  online: boolean;
+  checkedAt: number;
+  appId?: string;
+  botUsername?: string;
+  error?: string;
+}
+
+export interface MonitorHealth {
+  state: "verification_successful" | "verification_blocked" | "data_stale" | "monitoring_pending";
+  label: string;
+}
 
 export interface SessionUser {
   id: string;
@@ -74,7 +124,10 @@ export interface SessionResponse {
   inviteUrl: string;
   creatorProfile: CreatorProfile;
   botStatus: BotStatus;
+  botHealth?: BotHealthSnapshot;
   monitorStatus: MonitorStatus | null;
+  monitorHealth?: MonitorHealth;
+  scheduledIntervalMs?: number;
   publicOrigin: string;
 }
 
@@ -90,6 +143,7 @@ export interface ListingItem {
   soldOutAt: number | null;
   lastHttpStatus: number | null;
   readiness: "ready" | "incomplete";
+  presentation?: NormalizedListingPresentation;
 }
 
 export interface PublicListingsResponse {
@@ -100,15 +154,22 @@ export interface PublicListingsResponse {
   soldOutCount: number;
   hasMoreArchive: boolean;
   botStatus: BotStatus;
+  botHealth?: BotHealthSnapshot;
   monitorStatus: MonitorStatus | null;
+  monitorHealth?: MonitorHealth;
+  scheduledIntervalMs?: number;
   lastCheckedAt: number | null;
   lastSuccessAt: number | null;
+  hero?: HeroConfig;
 }
 
 export interface PublicStatusResponse {
   ok: boolean;
   botStatus: BotStatus;
+  botHealth?: BotHealthSnapshot;
   monitorStatus: MonitorStatus | null;
+  monitorHealth?: MonitorHealth;
+  scheduledIntervalMs?: number;
   lastCheckedAt: number | null;
   lastSuccessAt: number | null;
   authoritative: boolean | null;
@@ -116,6 +177,7 @@ export interface PublicStatusResponse {
   totalCount: number;
   availableCount: number;
   soldOutCount: number;
+  hero?: HeroConfig;
 }
 
 export interface HistoryResponse {
@@ -130,7 +192,9 @@ export interface HistoryResponse {
     soldOut: number;
   };
   botStatus: BotStatus;
+  botHealth?: BotHealthSnapshot;
   monitorStatus: MonitorStatus | null;
+  monitorHealth?: MonitorHealth;
 }
 
 export interface GuildChannelOption {
@@ -210,14 +274,33 @@ export interface SentListingMessageMeta {
   isSoldOutRendered?: boolean;
 }
 
+export interface WidgetSyncHistoryEntry {
+  timestamp: number;
+  status: "ok" | "error" | "skipped";
+  httpStatus?: number;
+  error?: string;
+  trigger: string;
+  contentHash?: string;
+}
+
 export interface WidgetDeployment {
+  id: string;
   guildId: string;
   channelId: string;
   messageId: string;
   deployedAt: number;
+  deployedBy?: string;
+  deployedByUsername?: string;
   lastSyncedAt?: number;
-  lastSyncStatus?: "ok" | "error";
+  lastAttemptedSyncAt?: number;
+  lastSyncStatus?: "ok" | "error" | "skipped";
   lastSyncError?: string;
+  templateId?: string;
+  customTemplate?: WidgetTemplateConfig | null;
+  configVersion?: number;
+  lastCatalogVersion?: number;
+  lastContentHash?: string;
+  history?: WidgetSyncHistoryEntry[];
 }
 
 export interface AdminConnectedGuild {
@@ -230,9 +313,11 @@ export interface AdminConnectedGuild {
   roleIds: string[];
   environment: "production" | "test";
   configured: boolean;
+  widgetTemplateId?: string;
   sentListingIds: Record<string, boolean>;
   sentMessages?: Record<string, SentListingMessageMeta>;
   widget?: WidgetDeployment | null;
+  widgets?: WidgetDeployment[];
 }
 
 export interface ListingImageSlot {
@@ -258,12 +343,17 @@ export interface ListingImagesResponse {
 
 export interface AdminOverviewResponse {
   botStatus: BotStatus;
+  botHealth?: BotHealthSnapshot;
   catalogVersion?: number;
   monitorStatus: MonitorStatus | null;
+  monitorHealth?: MonitorHealth;
+  scheduledIntervalMs?: number;
   monitorLogs: MonitorLogEntry[];
   embedConfig: EmbedConfig;
+  presentationConfig?: PresentationConfigBundle;
   deliveryLogs: DeliveryLogEntry[];
   connectedGuilds: AdminConnectedGuild[];
+  widgets?: WidgetDeployment[];
   listings: ListingItem[];
   stats: {
     totalListings: number;
@@ -272,6 +362,7 @@ export interface AdminOverviewResponse {
     connectedServers: number;
     configuredServers: number;
     testServers: number;
+    deployedWidgets?: number;
     recentFailures: number;
   };
 }
@@ -279,9 +370,11 @@ export interface AdminOverviewResponse {
 export interface AdminMonitorUpdatesResponse {
   changed: boolean;
   botStatus: BotStatus;
+  botHealth?: BotHealthSnapshot;
   checkedAt?: number | null;
   catalogVersion?: number;
   monitorStatus?: MonitorStatus | null;
+  monitorHealth?: MonitorHealth;
   monitorLogs?: MonitorLogEntry[];
   listings?: ListingItem[];
 }
@@ -305,7 +398,7 @@ export interface BotCommandComparison {
   diffReason: string | null;
 }
 
-export interface BotCommandSyncMeta {
+export interface BotCommandSyncRecord {
   syncedAt: number;
   syncedBy: string;
   scope: "global" | "guild";
@@ -317,12 +410,31 @@ export interface BotCommandSyncMeta {
   error?: string;
 }
 
+export type BotCommandSyncMeta = BotCommandSyncRecord & {
+  lastSuccess?: BotCommandSyncRecord | null;
+  lastFailure?: BotCommandSyncRecord | null;
+};
+
+export interface GuildCommandAvailabilityItem {
+  guildId: string;
+  guildName: string;
+  hasCommandsScope: boolean;
+  httpStatus: number;
+  guildCommandCount: number;
+  widgetStatus: "available_global" | "available_guild" | "missing_scope" | "missing_command" | "error";
+  detail: string;
+  guildCommandNames: string[];
+}
+
 export interface AdminBotStateResponse {
   ok: boolean;
   botStatus: BotStatus;
+  botHealth?: BotHealthSnapshot;
   identity: {
     ok: boolean;
     appId: string;
+    envAppId?: string;
+    appIdMismatch?: boolean;
     botUser: {
       id: string;
       username: string;
@@ -348,6 +460,12 @@ export interface AdminBotStateResponse {
   outdatedCount: number;
   allInSync: boolean;
   syncMeta: BotCommandSyncMeta | null;
+  availability?: GuildCommandAvailabilityItem[] | null;
+  guilds?: Array<{
+    id: string;
+    name: string;
+    inviteUrl: string;
+  }>;
   environment: {
     botTokenConfigured: boolean;
     publicKeyConfigured: boolean;
@@ -370,10 +488,64 @@ export interface BotRefreshResponse {
   steps: {
     commands: { ran: boolean; ok: boolean; count: number; error?: string };
     guilds: { ran: boolean; count: number };
-    widgets: { ran: boolean; refreshed: number; failed: number };
+    widgets: { ran: boolean; refreshed: number; skipped?: number; failed: number };
     caches: { ran: boolean };
   };
   botState: AdminBotStateResponse;
+}
+
+export interface AdminEmojisResponse {
+  ok: boolean;
+  botOnline: boolean;
+  appId: string;
+  applicationEmojis: DiscordEmojiRef[];
+  guildEmojis: DiscordEmojiRef[];
+  recentEmojis: DiscordEmojiRef[];
+  errors?: string[];
+}
+
+export interface PresentationBundleResponse {
+  ok: boolean;
+  bundle: PresentationConfigBundle;
+  widgetRefresh?: { refreshed: number; skipped: number; failed: number } | null;
+  savedAt?: number;
+}
+
+export interface AdminWidgetsResponse {
+  ok: boolean;
+  widgets: WidgetDeployment[];
+  guilds: Array<{
+    id: string;
+    name: string;
+    inBotGuilds: boolean;
+    alertChannelId: string;
+    widgetTemplateId: string;
+    channels: GuildChannelOption[];
+  }>;
+  widgetDefault: WidgetTemplateConfig;
+  widgetTemplates: WidgetTemplateConfig[];
+  configVersion: number;
+}
+
+export interface BulkEditResultItem {
+  guildId: string;
+  listingId: string;
+  listingName?: string;
+  ok: boolean;
+  skippedNotSent?: boolean;
+  messageId?: string;
+  channelId?: string;
+  error?: string;
+}
+
+export interface DispatchEditResponse {
+  ok: boolean;
+  scope: "listing" | "bulk";
+  results: BulkEditResultItem[];
+  updatedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  deliveryLogs: DeliveryLogEntry[];
 }
 
 export class ApiError extends Error {

@@ -6,12 +6,16 @@ import {
   CheckCircle2,
   Copy,
   Database,
+  ExternalLink,
   HardDrive,
+  LayoutPanelTop,
   Loader2,
   RefreshCw,
+  SearchCheck,
   Server,
   Shield,
   Terminal,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -58,6 +62,15 @@ const OPTION_TYPE_LABELS: Record<number, string> = {
   10: "Number",
 };
 
+const REQUIRED_PERMISSIONS = [
+  { name: "View Channel / Read Messages", reason: "Inspect target alert & widget channels." },
+  { name: "Send Messages", reason: "Post drop alerts and operator-confirmed /widget embeds." },
+  { name: "Embed Links", reason: "Render structured vehicle cards and live status widgets." },
+  { name: "Use External Emojis", reason: "Display custom application and server emojis inside alerts." },
+  { name: "Manage Messages (Optional)", reason: "Allow cleaning up or pinning deployed status widgets." },
+  { name: "applications.commands OAuth Scope", reason: "Required in invite link so /widget and slash commands register in server." },
+];
+
 export function AdminBotPage() {
   const queryClient = useQueryClient();
 
@@ -67,6 +80,7 @@ export function AdminBotPage() {
   const [purgeCaches, setPurgeCaches] = useState(true);
   const [lastRefreshSummary, setLastRefreshSummary] = useState<BotRefreshResponse | null>(null);
   const [selectedCommand, setSelectedCommand] = useState<BotCommandComparison | null>(null);
+  const [activeGuildId, setActiveGuildId] = useState<string | null>(null);
 
   const { data, isLoading, isFetching, refetch } = useQuery<AdminBotStateResponse>({
     queryKey: ADMIN_BOT_KEY,
@@ -129,7 +143,52 @@ export function AdminBotPage() {
       );
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to register slash commands.");
+      toast.error(err.message || "Failed to synchronize slash commands.");
+    },
+  });
+
+  const verifyAvailabilityMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<AdminBotStateResponse>("/api/admin/bot/verify-availability", {
+        method: "POST",
+      }),
+    onSuccess: (res) => {
+      queryClient.setQueryData(ADMIN_BOT_KEY, res);
+      toast.success(
+        `Checked command availability across ${res.availability?.length ?? 0} connected server(s).`
+      );
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to verify guild command availability.");
+    },
+  });
+
+  const guildCommandMutation = useMutation({
+    mutationFn: ({ guildId, action }: { guildId: string; action: "sync" | "clear" }) =>
+      apiFetch<{
+        ok: boolean;
+        action: string;
+        guildId: string;
+        registeredCount?: number;
+        botState?: AdminBotStateResponse;
+      }>("/api/admin/bot/guild-commands", {
+        method: "POST",
+        body: JSON.stringify({ guildId, action }),
+      }),
+    onSuccess: (res) => {
+      setActiveGuildId(null);
+      if (res.botState) {
+        queryClient.setQueryData(ADMIN_BOT_KEY, res.botState);
+      }
+      toast.success(
+        res.action === "clear"
+          ? "Cleared guild-specific command overrides."
+          : `Synchronized ${res.registeredCount ?? 0} commands directly to server.`
+      );
+    },
+    onError: (err: Error) => {
+      setActiveGuildId(null);
+      toast.error(err.message || "Failed to update guild commands.");
     },
   });
 
@@ -142,13 +201,19 @@ export function AdminBotPage() {
     }
   };
 
-  const anyMutating = refreshBotMutation.isPending || registerOnlyMutation.isPending;
+  const anyMutating =
+    refreshBotMutation.isPending ||
+    registerOnlyMutation.isPending ||
+    verifyAvailabilityMutation.isPending ||
+    guildCommandMutation.isPending;
+
+  const guildInviteMap = new Map((data?.guilds || []).map((g) => [g.id, g.inviteUrl]));
 
   return (
     <AppShell
       requireAdmin
       title="Bot Control"
-      description="Inspect live Discord bot identity, verify environment readiness, reload connected server caches, and register slash commands directly with Discord."
+      description="Inspect live Discord bot identity, verify command availability per server, reload caches, and manage global or per-guild slash commands."
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -159,6 +224,19 @@ export function AdminBotPage() {
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
             Check Live State
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => verifyAvailabilityMutation.mutate()}
+            disabled={anyMutating || isLoading}
+          >
+            {verifyAvailabilityMutation.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <SearchCheck className="h-3.5 w-3.5" />
+            )}
+            Verify Command Availability
           </Button>
           <Button
             size="sm"
@@ -194,6 +272,23 @@ export function AdminBotPage() {
         </div>
       ) : (
         <div className="space-y-6">
+          {/* App ID Mismatch Warning */}
+          {data.identity.appIdMismatch && (
+            <div className="flex items-start gap-3 rounded-xl border border-red-500/40 bg-red-950/35 p-4 text-xs text-red-200">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
+              <div>
+                <p className="text-sm font-semibold text-red-100">
+                  Application ID Mismatch Detected
+                </p>
+                <p className="mt-1">
+                  Configured environment ID (<code>{data.identity.envAppId}</code>) does not match
+                  the live Discord bot token application (<code>{data.identity.appId}</code>). Slash
+                  commands and widgets are registered under the authenticated token&apos;s App ID.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Status Summary Cards */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card className="p-5">
@@ -206,7 +301,7 @@ export function AdminBotPage() {
                   {data.syncedCount} / {data.totalLocalCommands}
                 </p>
                 <Badge variant={data.allInSync ? "success" : "warning"}>
-                  {data.allInSync ? "In Sync" : "Needs Refresh"}
+                  {data.allInSync ? "In Sync" : "Needs Sync"}
                 </Badge>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -253,28 +348,39 @@ export function AdminBotPage() {
                 {data.counts.connectedServers} Servers
               </p>
               <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                {data.counts.deployedWidgets} active /widget message
+                {data.counts.deployedWidgets} active /widget deployment
                 {data.counts.deployedWidgets === 1 ? "" : "s"}
               </p>
             </Card>
 
             <Card className="p-5">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Last Command Refresh</span>
+                <span>Command Sync History</span>
                 <Shield className="h-4 w-4 text-zinc-400" />
               </div>
               <p className="mt-2 text-lg font-bold text-white">
-                {data.syncMeta?.syncedAt ? formatLocalTime(data.syncMeta.syncedAt) : "Not synced yet"}
+                {data.syncMeta?.lastSuccess?.syncedAt
+                  ? formatLocalTime(data.syncMeta.lastSuccess.syncedAt)
+                  : data.syncMeta?.syncedAt
+                    ? formatLocalTime(data.syncMeta.syncedAt)
+                    : "Not synced yet"}
               </p>
               <p className="mt-1 truncate text-xs text-muted-foreground">
-                {data.syncMeta?.syncedAt
-                  ? `By ${data.syncMeta.syncedBy} (${data.syncMeta.scope})`
-                  : "Click Refresh Bot to register"}
+                {data.syncMeta?.lastFailure &&
+                (!data.syncMeta.lastSuccess ||
+                  data.syncMeta.lastFailure.syncedAt > data.syncMeta.lastSuccess.syncedAt) ? (
+                  <span className="text-red-300">
+                    Last failure: {data.syncMeta.lastFailure.error || "Sync rejected"}
+                  </span>
+                ) : data.syncMeta?.syncedAt ? (
+                  `By ${data.syncMeta.syncedBy} (${data.syncMeta.scope})`
+                ) : (
+                  "Click Synchronize Commands"
+                )}
               </p>
             </Card>
           </div>
 
-          {/* Pending Sync Notice */}
           {!data.allInSync && (
             <div className="flex flex-col items-start justify-between gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 p-4 sm:flex-row sm:items-center">
               <div className="flex items-start gap-3">
@@ -286,7 +392,7 @@ export function AdminBotPage() {
                   <p className="mt-0.5 text-xs text-amber-200/80">
                     {data.liveCommandsError
                       ? `Could not read live commands: ${data.liveCommandsError}`
-                      : "New or updated commands (such as /widget) will not appear in Discord until you refresh the bot."}
+                      : "New or updated commands (including /widget) will not appear in Discord until you synchronize commands."}
                   </p>
                 </div>
               </div>
@@ -301,20 +407,20 @@ export function AdminBotPage() {
                 ) : (
                   <Terminal className="h-3.5 w-3.5" />
                 )}
-                Load Commands Now
+                Synchronize Commands
               </Button>
             </div>
           )}
 
           {/* Main Control Grid */}
           <div className="grid gap-6 lg:grid-cols-12">
-            {/* Refresh Actions */}
+            {/* All 6 Bot Controls */}
             <Card className="lg:col-span-7">
               <CardHeader>
-                <CardTitle>Refresh Bot &amp; Load Slash Commands</CardTitle>
+                <CardTitle>Bot Operational Controls</CardTitle>
                 <CardDescription>
-                  Push updated global slash commands to Discord, clear cached server lists, synchronize
-                  deployed <code>/widget</code> embeds, and purge public API edge caches.
+                  Synchronize slash commands, purge stale server caches, update live status widgets,
+                  and verify per-server command registration.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
@@ -326,7 +432,7 @@ export function AdminBotPage() {
                       className="mt-0.5"
                     />
                     <div>
-                      <p className="text-sm font-medium text-white">Sync Slash Commands</p>
+                      <p className="text-sm font-medium text-white">Synchronize Commands</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         Registers all {data.totalLocalCommands} commands globally with Discord.
                       </p>
@@ -340,9 +446,9 @@ export function AdminBotPage() {
                       className="mt-0.5"
                     />
                     <div>
-                      <p className="text-sm font-medium text-white">Reload Server List Cache</p>
+                      <p className="text-sm font-medium text-white">Refresh Guild Cache</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        Clears <code>discord:bot_guilds</code> cache and pulls fresh guilds.
+                        Clears <code>bot:guilds:cache</code> &amp; stale cache, then pulls fresh guilds.
                       </p>
                     </div>
                   </label>
@@ -356,7 +462,7 @@ export function AdminBotPage() {
                     <div>
                       <p className="text-sm font-medium text-white">Refresh Live Widgets</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        Re-syncs all {data.counts.deployedWidgets} deployed status widget embed
+                        Re-syncs all {data.counts.deployedWidgets} active status widget embed
                         {data.counts.deployedWidgets === 1 ? "" : "s"}.
                       </p>
                     </div>
@@ -377,7 +483,8 @@ export function AdminBotPage() {
                   </label>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                {/* 6 Dedicated Action Triggers */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
                   <Button
                     onClick={() =>
                       refreshBotMutation.mutate({
@@ -397,7 +504,7 @@ export function AdminBotPage() {
                     ) : (
                       <RefreshCw className="h-4 w-4" />
                     )}
-                    Run Selected Refresh
+                    Refresh Bot &amp; Load Selected
                   </Button>
 
                   <Button
@@ -405,12 +512,8 @@ export function AdminBotPage() {
                     onClick={() => registerOnlyMutation.mutate()}
                     disabled={anyMutating}
                   >
-                    {registerOnlyMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Terminal className="h-4 w-4" />
-                    )}
-                    Sync Slash Commands Only
+                    <Terminal className="h-4 w-4" />
+                    Synchronize Commands
                   </Button>
 
                   <Button
@@ -426,7 +529,32 @@ export function AdminBotPage() {
                     disabled={anyMutating}
                   >
                     <Server className="h-4 w-4" />
-                    Reload Guild Cache Only
+                    Refresh Guild Cache
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      refreshBotMutation.mutate({
+                        syncCommands: false,
+                        refreshGuilds: false,
+                        refreshWidgets: true,
+                        purgeCaches: false,
+                      })
+                    }
+                    disabled={anyMutating}
+                  >
+                    <LayoutPanelTop className="h-4 w-4" />
+                    Refresh Live Widgets
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    onClick={() => verifyAvailabilityMutation.mutate()}
+                    disabled={anyMutating}
+                  >
+                    <SearchCheck className="h-4 w-4" />
+                    Verify Command Availability
                   </Button>
                 </div>
 
@@ -465,7 +593,7 @@ export function AdminBotPage() {
               <CardHeader>
                 <CardTitle>Bot Identity &amp; Bindings</CardTitle>
                 <CardDescription>
-                  Live Discord application metadata and Cloudflare Worker bindings.
+                  Live Discord application metadata, bindings, and required permissions.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -528,7 +656,7 @@ export function AdminBotPage() {
                             data.environment.interactionsUrl
                         )
                       }
-                      className="inline-flex items-center gap-1 font-mono text-zinc-200 hover:text-white cursor-pointer"
+                      className="inline-flex cursor-pointer items-center gap-1 font-mono text-zinc-200 hover:text-white"
                     >
                       <span className="max-w-[200px] truncate">
                         {data.identity.application?.interactionsEndpointUrl ||
@@ -574,9 +702,207 @@ export function AdminBotPage() {
                     </Badge>
                   </div>
                 </div>
+
+                {/* Sync Metadata History */}
+                {(data.syncMeta?.lastSuccess || data.syncMeta?.lastFailure) && (
+                  <div className="space-y-1.5 rounded-lg border border-border bg-zinc-950 p-3 text-xs">
+                    {data.syncMeta.lastSuccess && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-emerald-300">Last Success</span>
+                        <span className="text-muted-foreground tabular-nums">
+                          {formatLocalDateTime(data.syncMeta.lastSuccess.syncedAt)} (
+                          {data.syncMeta.lastSuccess.commandCount} cmds)
+                        </span>
+                      </div>
+                    )}
+                    {data.syncMeta.lastFailure && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-red-300">Last Failure</span>
+                        <span className="truncate text-red-200/80">
+                          {formatLocalTime(data.syncMeta.lastFailure.syncedAt)}:{" "}
+                          {data.syncMeta.lastFailure.error ||
+                            `HTTP ${data.syncMeta.lastFailure.httpStatus}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
+
+          {/* Per-Server Command Availability & Guild Override Diagnostics */}
+          <Card>
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>Per-Server /widget &amp; Slash Command Availability</CardTitle>
+                <CardDescription>
+                  Detects missing <code>applications.commands</code> OAuth scopes, global sync
+                  propagation status, or allows instant guild-scoped command sync for troubleshooting.
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => verifyAvailabilityMutation.mutate()}
+                disabled={anyMutating}
+              >
+                {verifyAvailabilityMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <SearchCheck className="h-3.5 w-3.5" />
+                )}
+                Run Live Availability Check
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {!data.availability ? (
+                <div className="rounded-lg border border-border bg-zinc-950/60 p-6 text-center text-xs text-muted-foreground">
+                  Click <strong>Run Live Availability Check</strong> to query Discord&apos;s command
+                  scope and registration status for every connected server ({data.guilds?.length ?? 0}{" "}
+                  servers).
+                </div>
+              ) : data.availability.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No connected Discord servers reported by bot token.
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Server</TableHead>
+                      <TableHead>/widget Availability</TableHead>
+                      <TableHead>Guild Scope</TableHead>
+                      <TableHead>Diagnostic Detail</TableHead>
+                      <TableHead className="text-right">Instant Controls</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.availability.map((row) => {
+                      const inviteUrl = guildInviteMap.get(row.guildId);
+                      const busy = activeGuildId === row.guildId && guildCommandMutation.isPending;
+                      return (
+                        <TableRow key={row.guildId}>
+                          <TableCell>
+                            <p className="font-medium text-white">{row.guildName}</p>
+                            <p className="select-text font-mono text-[11px] text-muted-foreground">
+                              {row.guildId}
+                            </p>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                row.widgetStatus === "available_global" ||
+                                row.widgetStatus === "available_guild"
+                                  ? "success"
+                                  : row.widgetStatus === "missing_scope"
+                                    ? "destructive"
+                                    : "warning"
+                              }
+                            >
+                              {row.widgetStatus === "available_global"
+                                ? "Available (Global)"
+                                : row.widgetStatus === "available_guild"
+                                  ? "Available (Guild)"
+                                  : row.widgetStatus === "missing_scope"
+                                    ? "Missing OAuth Scope"
+                                    : row.widgetStatus === "missing_command"
+                                      ? "Missing /widget"
+                                      : "Error"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-zinc-300 tabular-nums">
+                            {row.hasCommandsScope
+                              ? `${row.guildCommandCount} guild override(s)`
+                              : "No commands scope (403)"}
+                          </TableCell>
+                          <TableCell className="max-w-xs text-xs text-muted-foreground">
+                            {row.detail}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                              {inviteUrl && (
+                                <a
+                                  href={inviteUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-secondary px-2 text-[11px] font-medium text-zinc-200 transition hover:bg-zinc-800 hover:text-white"
+                                >
+                                  Re-invite
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={busy || anyMutating || !row.hasCommandsScope}
+                                onClick={() => {
+                                  setActiveGuildId(row.guildId);
+                                  guildCommandMutation.mutate({
+                                    guildId: row.guildId,
+                                    action: "sync",
+                                  });
+                                }}
+                                className="h-7 px-2 text-[11px]"
+                              >
+                                {busy ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Terminal className="h-3 w-3" />
+                                )}
+                                Sync Guild
+                              </Button>
+                              {row.guildCommandCount > 0 && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={busy || anyMutating}
+                                  onClick={() => {
+                                    setActiveGuildId(row.guildId);
+                                    guildCommandMutation.mutate({
+                                      guildId: row.guildId,
+                                      action: "clear",
+                                    });
+                                  }}
+                                  className="h-7 px-2 text-[11px] text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                  Clear
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Required Bot Permissions Reference */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Required Discord Bot Permissions &amp; Scopes</CardTitle>
+              <CardDescription>
+                Server administrators can always view alerts cleanly when these baseline permissions are present.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {REQUIRED_PERMISSIONS.map((perm) => (
+                  <div
+                    key={perm.name}
+                    className="rounded-lg border border-border bg-zinc-950/70 p-3 text-xs"
+                  >
+                    <p className="font-semibold text-white">{perm.name}</p>
+                    <p className="mt-1 text-muted-foreground">{perm.reason}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Registered Slash Commands Table */}
           <Card>
@@ -588,7 +914,10 @@ export function AdminBotPage() {
                   Click any command row to inspect its JSON schema.
                 </CardDescription>
               </div>
-              <Badge variant={data.allInSync ? "success" : "warning"} className="self-start sm:self-auto">
+              <Badge
+                variant={data.allInSync ? "success" : "warning"}
+                className="self-start sm:self-auto"
+              >
                 {data.allInSync ? "All Commands Synced" : "Sync Recommended"}
               </Badge>
             </CardHeader>
@@ -674,7 +1003,7 @@ export function AdminBotPage() {
                   </p>
                   <p className="mt-1 text-amber-200/80">
                     {data.extraRemoteCommands.map((c) => `/${c.name}`).join(", ")} — running{" "}
-                    <strong>Sync Slash Commands</strong> will replace these with the active list above.
+                    <strong>Synchronize Commands</strong> will replace these with the active list above.
                   </p>
                 </div>
               )}

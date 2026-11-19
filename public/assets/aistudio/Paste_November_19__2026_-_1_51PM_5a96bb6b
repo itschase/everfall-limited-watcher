@@ -1,0 +1,1254 @@
+#
+
+You are acting as the lead full-stack engineer, Discord application developer, UI/UX designer, and systems architect responsible for developing and improving **Everfall Limited Watcher**.
+
+You have permission to modify the project and its codebase using your available development environment.
+
+**THIS IS AN EXECUTION TASK, NOT A REQUEST FOR A DEVELOPMENT PLAN.**
+
+Inspect the repository, implement the changes described below, correct existing problems, integrate everything into the established architecture, run available tests, and produce working code.
+
+Do not stop after explaining how something could be implemented.
+
+Do not respond with a list of recommended changes while leaving the actual implementation unfinished.
+
+Work through the requirements systematically. Resolve ordinary implementation decisions independently using sensible, maintainable defaults.
+
+If an operation requires external credentials, Discord permissions, or production access that are unavailable, implement and test everything possible locally, then clearly identify the remaining external verification rather than claiming it succeeded.
+
+---
+
+# PART 1 — UNDERSTAND AND PRESERVE THE EXISTING APPLICATION
+
+Before modifying anything, inspect the current project.
+
+Review the existing architecture, including:
+
+- `src/register.ts`
+- `src/commands.ts`
+- `src/scraper.ts`
+- `src/kv.ts`
+- `src/api.ts`
+- `src/index.ts`
+- `src/web/features/admin/AdminBotPage.tsx`
+- `src/web/features/admin/AdminEmbedsPage.tsx`
+- `src/web/features/admin/AdminImagesPage.tsx`
+- `src/web/features/admin/AdminDispatchPage.tsx`
+- `src/web/features/homepage/HomePage.tsx`
+- `src/web/components/listings/VehicleCard.tsx`
+- `src/web/router.tsx`
+- Existing API client, shared types, configuration files, components, and other related modules.
+
+Also review the project's `AGENTS.md` and any existing design or architectural documentation.
+
+Do not assume that a previously implemented feature is missing simply because it is described here. Inspect its current implementation and improve or correct it.
+
+### Preserve these existing capabilities
+
+- Discord OAuth authentication and administrator permissions.
+- Server configuration and role notification settings.
+- Discord slash commands.
+- Store monitoring and historical vehicle records.
+- First-detected timestamps.
+- Stock availability and verified sold-out transitions.
+- Existing Discord notification tracking.
+- Editing previously deployed Discord messages.
+- Cloudflare R2 image management.
+- Historical image galleries.
+- Public homepage and historical archive.
+- Connected server management.
+- Dispatch and delivery logs.
+- Monitoring diagnostics and logging.
+- Existing React and shadcn/ui design system.
+
+Preserve production data, existing Cloudflare KV records, archived images, and all previously recorded Discord message IDs.
+
+Do not unnecessarily rebuild modules that are already functioning.
+
+Implement reusable solutions rather than duplicating logic.
+
+---
+
+# PART 2 — FIX DISCORD `/widget` COMMAND AVAILABILITY
+
+## CURRENT PROBLEM
+
+The application has a Bot Control page at:
+
+`/admin/bot`
+
+This page currently displays:
+
+- Six of six global Discord slash commands synchronized.
+- The Discord bot connected and authenticated.
+- Seven connected servers.
+- Zero deployed widgets.
+
+The codebase contains a `/widget` command.
+
+However, **the `/widget` command does not appear in Discord where it should be available**, despite Bot Control reporting synchronization.
+
+This needs to be investigated and resolved.
+
+## REQUIRED INVESTIGATION
+
+Inspect the entire Discord command lifecycle.
+
+Check:
+
+1. Command definitions in `src/register.ts`.
+2. Discord global command registration.
+3. Live command definitions returned by Discord's API.
+4. Application ID consistency between the deployed Worker, bot token, and installed Discord application.
+5. Guild and user installation contexts.
+6. Discord application integration permissions.
+7. Default member permissions, especially `MANAGE_GUILD`.
+8. Server-specific command restrictions.
+9. Guild-scoped versus globally registered commands.
+10. Any command schema or registration errors.
+11. Discord interaction endpoint handling.
+12. Existing Bot Control registration and refresh APIs.
+
+Determine whether the problem is a registration failure, command availability restriction, application configuration, guild installation problem, or another issue.
+
+**Do not solve this by simply adding another `/widget` declaration if one already exists.**
+
+Make the existing command genuinely available to authorized server administrators.
+
+## BOT CONTROL IMPROVEMENTS
+
+Upgrade the Bot Control page into a reliable operational management interface.
+
+It must accurately report:
+
+- Discord bot identity.
+- Discord application ID.
+- Connected servers.
+- Command registration status.
+- Global commands.
+- Missing commands.
+- Outdated commands.
+- Command permission requirements.
+- Guild-specific restrictions when available.
+- Last successful command registration.
+- Last registration failure.
+- Available bot permissions.
+- Deployed widget count.
+- Widget synchronization status.
+- Worker bindings and integration readiness.
+
+Provide these controls:
+
+**Check Live State**
+
+Retrieve current information from Discord rather than relying only on cached values.
+
+**Synchronize Commands**
+
+Register or update commands with Discord.
+
+**Refresh Bot and Load Commands**
+
+Run supported refresh operations, update command definitions, and refresh cached guild information.
+
+**Refresh Guild Cache**
+
+Refresh connected server information independently.
+
+**Refresh Live Widgets**
+
+Update existing deployed widget messages.
+
+**Verify Command Availability**
+
+Provide a useful diagnostic comparing registered commands with the requirements for use in connected servers.
+
+Show actual Discord API errors where possible.
+
+Do not display a successful synchronization state merely because a request was attempted.
+
+Distinguish successful registration from confirmed real-world command visibility.
+
+Avoid unnecessary command re-registration on every dashboard refresh.
+
+---
+
+# PART 3 — CORRECT `/widget` FUNCTIONALITY
+
+## INTENDED DESIGN
+
+The `/widget` command creates a permanent, publicly visible Discord status message that can be installed into a server channel.
+
+**The widget itself must not be ephemeral.**
+
+Only the initial administrative preview and confirmation interaction should be private.
+
+### Required workflow
+
+When an authorized administrator executes:
+
+`/widget`
+
+The application must:
+
+1. Verify that the user has Manage Server or Administrator permissions.
+2. Identify the server and channel.
+3. Generate a private, ephemeral preview of the widget.
+4. Display **Deploy Widget Here** and **Cancel** buttons.
+5. Allow the administrator to inspect the appearance before publishing.
+6. Publish nothing until deployment is explicitly confirmed.
+7. Revalidate the administrator's permissions when confirmation is submitted.
+8. Publish a persistent, publicly visible message into the selected channel.
+9. Record the resulting Discord message ID and deployment metadata.
+10. Return a private confirmation containing a link to the public message.
+
+The administrator must be able to deploy the widget without relying on a temporary interaction response remaining visible.
+
+Handle Discord's interaction acknowledgment and deferred response requirements correctly.
+
+Make confirmation actions user-bound and prevent another user from reusing the original administrator's confirmation button.
+
+### Widget deployment record
+
+Store information including:
+
+- Unique widget deployment ID
+- Guild ID
+- Channel ID
+- Discord message ID
+- Administrator who deployed it
+- Creation time
+- Last successful synchronization
+- Last attempted synchronization
+- Last synchronization error
+- Widget template ID
+- Applied configuration version
+- Last rendered catalog version or content hash
+
+Support the possibility of multiple widgets in separate channels within a guild.
+
+Do not overwrite an existing widget record merely because another widget is deployed in the same server.
+
+## WIDGET CONTENT
+
+The widget should be elegant, compact, and visually organized.
+
+It should display the **three most recent limited vehicle releases**, regardless of whether they are currently available or sold out.
+
+For each recent release, display appropriate information such as:
+
+- Vehicle name
+- Availability
+- Quantity Limited
+- Custom Sound
+- Number of Custom Options
+- Direct vehicle store link
+
+The widget should include:
+
+- Configurable title.
+- Optional subtitle.
+- Featured vehicle image.
+- Last successful store verification.
+- Latest three vehicle releases.
+- Clear In Stock and Sold Out indicators.
+- Configurable footer.
+- Appropriate links to the website and store.
+
+The default featured image should use **image slot 3**, falling back to slot 0 or the next valid image if needed.
+
+Do not use an image that has been deleted or is unavailable.
+
+If no listings exist, show a properly designed empty state.
+
+The widget should accurately distinguish verified stock information from stale information when a store check has failed.
+
+## WIDGET LIVE SYNCHRONIZATION
+
+This is essential.
+
+A deployed widget must automatically update when:
+
+- A new limited vehicle is discovered and verified.
+- A listing transitions to Sold Out after reliable verification.
+- A previously sold-out listing is verified as available again.
+- Vehicle metadata is edited by an administrator.
+- Relevant images change.
+- The widget's appearance configuration changes.
+- The administrator explicitly requests a refresh.
+
+Use the **existing Discord message ID** and edit the message through Discord's API.
+
+Do not delete and repost widgets merely to refresh them.
+
+Do not create new notifications when updating widgets.
+
+Do not mention or ping server roles when updating widgets.
+
+Use a rendered-content hash or equivalent change detection to avoid unnecessary Discord API calls.
+
+Handle deleted Discord messages, missing permissions, invalid channels, and rate limits.
+
+Report synchronization failures within the administrator dashboard.
+
+## WIDGET ADMINISTRATION
+
+Create a dedicated Widget Manager or clearly organized widget administration section.
+
+Administrators should be able to:
+
+- Inspect deployed widgets.
+- Identify their server and channel.
+- Preview their current appearance.
+- Deploy a widget to a selected channel.
+- Edit its template.
+- Force-refresh an existing message.
+- Move or replace a deployment with confirmation.
+- Remove a widget.
+- Inspect update history and errors.
+
+Each operation must clearly indicate whether it will affect a public Discord message.
+
+---
+
+# PART 4 — CREATE A COMPLETE WIDGET APPEARANCE CONTROLLER
+
+The existing widget should not remain hardcoded.
+
+I want substantial administrative control over its appearance.
+
+Build a fully integrated appearance editor using the established React and shadcn/ui components.
+
+### Editable properties
+
+Provide controls for:
+
+- Widget title
+- Subtitle
+- Introductory message
+- Accent color
+- In Stock color
+- Sold Out color
+- Status labels
+- Featured image
+- Vehicle count, defaulting to three
+- Vehicle ordering
+- Feature visibility
+- Feature ordering
+- Feature labels
+- Timestamps
+- Footer
+- Button labels
+- Store links
+- Emojis
+- Empty-state messaging
+- Optional active-stock summary
+
+Allow each deployed widget to use the global default configuration or a selected custom template.
+
+Provide a realistic live preview.
+
+Make configuration changes persist across deployments and Worker restarts.
+
+Respect Discord's actual embed, component, field, and character limits. Do not implement controls that have no effect on real Discord rendering.
+
+---
+
+# PART 5 — REBUILD THE EMBED MANAGER INTO AN ADVANCED EDITOR
+
+## CURRENT LIMITATION
+
+The existing `/admin/embeds` page primarily exposes a shared configuration.
+
+There are preview tabs for In Stock and Sold Out, but the administrator cannot independently customize every relevant aspect of each state.
+
+I want an advanced appearance management system.
+
+## THREE SEPARATE PRESENTATION TYPES
+
+Implement separate templates for:
+
+### 1. In Stock Announcements
+
+Used for newly verified available releases.
+
+### 2. Sold Out Announcements
+
+Used when an existing vehicle's availability is conclusively determined to be sold out.
+
+### 3. Live Status Widgets
+
+Used for persistent, continuously synchronized summary messages.
+
+Each presentation type must support independent configuration, while sharing reusable rendering infrastructure.
+
+## APPEARANCE CONTROLS
+
+Allow modification of:
+
+- Title and title prefix
+- Availability heading
+- Status label
+- Accent color
+- Description
+- Feature summary
+- Feature order
+- Metadata fields
+- Timestamps
+- Gallery presentation
+- Image placement
+- Footer
+- Store button label
+- Store button URL behavior
+- Emoji placement
+- Optional field visibility
+
+Provide a real-time Discord-style preview.
+
+The preview must be generated using the same configuration and rendering rules as the actual Discord payload.
+
+Avoid having a frontend-only preview that visually disagrees with the real posted message.
+
+### IMPORTANT: IN STOCK AND SOLD OUT
+
+I need to control the appearance of **both** states.
+
+For example, Sold Out should be able to use its own:
+
+- Color
+- Heading
+- Description
+- Status text
+- Footer
+- Button label
+- Field visibility
+- Feature presentation
+
+These settings should not be restricted to automatically inheriting the In Stock appearance.
+
+### EDITING PREVIOUSLY DEPLOYED MESSAGES
+
+The manager should allow:
+
+- Saving a template without publishing.
+- Previewing a template.
+- Updating one deployed message.
+- Updating one listing across selected Discord servers.
+- Updating all applicable deployed messages with explicit confirmation.
+
+The backend must edit the existing message rather than create a duplicate.
+
+Do not broadcast or ping members when saving presentation settings.
+
+Display detailed operation results, including successes, failures, and skipped messages.
+
+---
+
+# PART 6 — CREATE A DISCORD EMOJI PICKER
+
+The bot already has access to custom emojis.
+
+I want to select emojis visually from the administrator dashboard rather than manually entering their Discord codes.
+
+Create a reusable emoji picker integrated into the Embed Manager and Widget Manager.
+
+## REQUIREMENTS
+
+Support:
+
+- Standard Unicode emojis.
+- Custom application emojis accessible to the bot.
+- Eligible server emojis when Discord permissions permit their use.
+
+Retrieve eligible emoji information through supported Discord API endpoints.
+
+Provide:
+
+- Search by name
+- Thumbnail previews
+- Emoji selection
+- Clear selection
+- Recently used emojis
+- Animated emoji support where appropriate
+- Identification of unavailable emojis
+- Preview of the final output
+
+Store emoji identifiers and required metadata correctly.
+
+Support eligible placements such as:
+
+- Announcement title prefixes
+- Widget headings
+- Feature labels
+- Status descriptions
+- Footer-related text where supported
+- Discord buttons
+
+Respect Discord's different formatting requirements for text emojis and component button emojis.
+
+Do not inject raw HTML or unsupported emoji fields into Discord payloads.
+
+An invalid or deleted emoji should not prevent the entire message from being delivered.
+
+The emoji picker should use the application's established dropdown, dialog, tooltip, and form styling.
+
+---
+
+# PART 7 — CREATE A SHARED VEHICLE METADATA AND FEATURE ENGINE
+
+## CURRENT PROBLEM
+
+The vehicle cards currently infer features directly from description strings.
+
+This is too limited.
+
+Future vehicle releases may contain entirely different descriptive information.
+
+We need a reusable metadata extraction and presentation system.
+
+## REQUIRED ARCHITECTURE
+
+Create a central feature processing service that transforms storefront descriptions into normalized metadata.
+
+Do not continue implementing separate feature extraction logic independently inside vehicle cards, Discord announcements, and widgets.
+
+Use one shared feature representation consumed by every presentation surface.
+
+### Default features
+
+Support these existing examples:
+
+**Quantity Limited**
+
+**Custom Sound**
+
+**3 Custom Options**
+
+**17+ Custom Options**
+
+The default feature order must be:
+
+1. Quantity Limited
+2. Custom Sound
+3. Custom Options
+4. Additional detected features
+
+Replace the existing presentation label **Quantity-Limited** with **Quantity Limited**.
+
+### Parse descriptive content intelligently
+
+Consider the following existing description:
+
+"This vehicle is quantity-limited; get it while it is still available. It comes with a custom sound and can only be traded with other limiteds.
+
+This vehicle features 3 cosmetic customization options.
+
+Your vehicle will be automatically delivered to your garage. Please note that if you are not logged into the server at the time of purchase, it may take up to 15 minutes to receive it in your garage."
+
+Extract:
+
+- Quantity Limited: Yes
+- Custom Sound: Yes
+- Cosmetic Options: 3
+- Trading Restrictions: Limited-only trading
+- Delivery Information: Available in the full metadata
+
+The primary presentation should emphasize meaningful purchasing and vehicle features, not administrative delivery instructions.
+
+For descriptions stating **over 17 cosmetic customization options**, preserve that qualification and display **17+ Custom Options** or **Over 17 Custom Options**.
+
+Do not incorrectly present "over 17" as exactly 17.
+
+### Support future metadata
+
+The system should support future features such as:
+
+- Time Limited
+- Unique Vehicle Sound
+- Customization Count
+- Limited Quantity
+- Custom Handling
+- Special Effects
+- Exclusive Upgrades
+- Trading Restrictions
+- Unique Appearance
+- Other supported characteristics
+
+These are potential feature types, not attributes that should automatically be assigned to existing vehicles.
+
+Only display a feature if supported by verified source metadata or an explicit administrator override.
+
+Do not invent vehicle features.
+
+## ADMINISTRATIVE METADATA MANAGEMENT
+
+Build a listing-specific metadata editor.
+
+For every vehicle, administrators should be able to:
+
+- Edit the display name.
+- Edit the short description.
+- Edit the full description.
+- Add features.
+- Remove features.
+- Reorder features.
+- Edit feature labels.
+- Assign appropriate icons.
+- Assign custom emojis.
+- Change feature visibility by presentation type.
+- Override automatic feature extraction.
+- Restore automatically extracted values.
+
+Clearly distinguish:
+
+**Original Storefront Data**
+
+**Automatically Extracted Metadata**
+
+**Administrator Overrides**
+
+Store administrator overrides separately so that future storefront scans do not erase them.
+
+Provide a reusable, typed model that can accommodate new vehicle attributes without requiring hardcoded card changes.
+
+---
+
+# PART 8 — REWORK VEHICLE CARD INFORMATION HIERARCHY
+
+The current vehicle cards already have a useful design foundation.
+
+Do not replace them with generic dashboard cards.
+
+Refine the existing premium dark presentation.
+
+## REQUIRED FEATURE ORDER
+
+Display feature chips in this order:
+
+**Quantity Limited → Custom Sound → Custom Options**
+
+Use polished, consistent chip styling.
+
+Improve icon spacing, typography, background contrast, and feature readability.
+
+Do not unnecessarily crowd the card.
+
+### DESCRIPTION PRESENTATION
+
+Currently, long metadata descriptions can dominate the card.
+
+Instead, provide a concise feature-focused summary.
+
+For example:
+
+**Seraph GTS**
+
+Quantity Limited | Custom Sound | 17+ Custom Options
+
+"Over 17 cosmetic customization options, a custom sound profile, and limited-release availability."
+
+The full original description should remain accessible in the detailed inspection screen or expandable metadata.
+
+Do not discard or overwrite it.
+
+The short summary should be derived from actual metadata, with administrative override support.
+
+### CARD INTERACTION CHANGES
+
+Make the vehicle name clickable.
+
+Clicking the name should open the vehicle inspection view.
+
+Clicking an appropriate non-interactive area of the card should also open the inspection view.
+
+**Remove the redundant Inspect button from the card footer.**
+
+Preserve:
+
+- Gallery arrows
+- Image thumbnails
+- Store links
+- Copy package ID
+- Expandable metadata
+- Administrator image management
+- Other existing functional controls
+
+Clicking those individual controls must not accidentally open the inspection modal.
+
+Support keyboard interaction, proper focus states, and accessibility.
+
+Ensure the cards remain responsive on mobile.
+
+### CONSISTENCY
+
+These card improvements must also work in:
+
+- Homepage recent releases.
+- Full historical archive.
+- Authenticated dashboard, where applicable.
+- Listing inspection views.
+
+---
+
+# PART 9 — HOMEPAGE HERO ANIMATION SYSTEM
+
+## CURRENT HERO
+
+The homepage currently prominently displays:
+
+**Never Miss an Everfall Limited Drop**
+
+I want a configurable, animated heading that can automatically rotate through multiple administrator-defined messages.
+
+The visitor should not control this animation.
+
+**Do not add hero pagination, navigation arrows, or slideshow dots.**
+
+## ADMINISTRATIVE HERO CONTROLLER
+
+Build a dedicated Hero Controller accessible within the administrator dashboard.
+
+Allow editing of:
+
+- Hero messages
+- Message order
+- Enabled/disabled messages
+- Default message
+- Rotation interval
+- Animation style
+- Animation duration
+- Animation delay
+- Headline typography settings within the design system
+- Optional secondary description
+- Whether automatic rotation is enabled
+
+Provide controls to add, edit, reorder, disable, and remove hero messages.
+
+Provide preview, save, reset, and cancel functionality.
+
+Saving hero content should not modify Discord messages or dispatch notifications.
+
+### REQUIRED ANIMATION STYLES
+
+Implement a selectable set of animations:
+
+**Soft Reveal**
+
+Smooth opacity and subtle movement.
+
+**Float Down**
+
+Heading enters from slightly above and settles naturally.
+
+**Fade and Slide**
+
+Text enters or exits with smooth directional movement.
+
+**Character Reveal**
+
+Individual characters appear progressively.
+
+**Word Stagger**
+
+Words reveal in a coordinated sequence.
+
+**Decrypting Text**
+
+Characters briefly cycle through randomized symbols or letters before resolving to the actual heading.
+
+The decrypting animation must produce the exact administrator-defined final text.
+
+It must not randomly change words or leave incorrect characters.
+
+### ANIMATION QUALITY
+
+Animations should feel premium, polished, and deliberate.
+
+Avoid exaggerated movement.
+
+Avoid jarring visual shifts.
+
+Reserve enough vertical space so headings of different lengths do not cause the homepage to jump.
+
+Handle multi-line headings and responsive font sizing.
+
+Respect the user's reduced-motion accessibility preference.
+
+If reduced motion is requested, present a static or minimally transitioned headline.
+
+Pause or handle animation appropriately when the browser tab is inactive.
+
+Prevent timer leaks and unexpected animations after components unmount.
+
+### HOMEPAGE VISUAL IMPROVEMENT
+
+Refine:
+
+- Headline layout
+- Hero spacing
+- Typography
+- Subheading
+- Ambient background treatment
+- Add to Discord button appearance
+- Responsive presentation
+- Relationship between the hero and listing history
+
+Maintain the existing dark, professional, premium appearance.
+
+Do not introduce excessive gradients, decorative emojis, oversized floating graphics, or a completely different theme.
+
+---
+
+# PART 10 — FIX HOMEPAGE MONITORING METRICS
+
+The homepage currently displays hardcoded indicators such as:
+
+**Check Frequency: Every 7m**
+
+**Notification Latency: <15s Real-Time**
+
+These can be misleading.
+
+The project has previously experienced automatic store checks returning Cloudflare HTTP 403 challenges.
+
+Do not display unsupported claims of real-time verification or guaranteed notification latency.
+
+Replace hardcoded metrics with actual application data.
+
+Support:
+
+- Configured check interval
+- Last scheduled execution
+- Last successful store verification
+- Latest verified catalog update
+- Monitor health
+- Bot connectivity
+- Verification failures
+
+Clearly distinguish the following states:
+
+**Bot Online**
+
+The Discord bot is configured and its connectivity checks succeed.
+
+**Monitor Running**
+
+Scheduled monitoring executions are occurring.
+
+**Store Verification Successful**
+
+A trusted storefront response was actually verified.
+
+**Store Verification Blocked**
+
+The monitoring process ran but could not obtain authoritative stock information.
+
+**Data Stale**
+
+The last trustworthy verification is older than the configured freshness threshold.
+
+The website should not show a green operational indicator solely because a Discord token is present.
+
+Use appropriately restrained status indicators and accurate labels.
+
+Avoid excessive frontend polling or unnecessary Cloudflare KV reads.
+
+Preserve the existing optimized public status and catalog-version polling architecture.
+
+---
+
+# PART 11 — CENTRALIZED PRESENTATION CONFIGURATION
+
+Create a maintainable configuration architecture covering:
+
+1. Homepage hero
+2. Vehicle features
+3. Vehicle metadata overrides
+4. In Stock announcements
+5. Sold Out announcements
+6. Widget templates
+7. Deployed widget instances
+8. Emoji selections
+
+Use shared TypeScript types and validation.
+
+Avoid scattering independent copies of the same settings across components.
+
+### Configuration precedence
+
+Implement clear precedence where relevant:
+
+**Global Defaults → Server Configuration → Listing Overrides → Widget-Specific Overrides**
+
+Do not merge configurations in a way that unexpectedly erases administrator settings.
+
+Preserve backward compatibility with existing KV records and configuration formats.
+
+Create migrations where necessary.
+
+Keep presentation configuration separate from verified stock history.
+
+### Shared rendering
+
+Create reusable helpers for:
+
+- Feature extraction
+- Feature normalization
+- Feature ordering
+- Summary generation
+- Status formatting
+- Discord emoji formatting
+- Announcement payload building
+- Widget payload building
+- Discord payload validation
+
+The website and Discord messages should use compatible feature definitions.
+
+Do not rely on duplicated regexes and independently maintained formatting rules.
+
+---
+
+# PART 12 — LIVE MESSAGE UPDATES AND DATA INTEGRITY
+
+The application must continue to distinguish between:
+
+- A verified new listing
+- A verified restock
+- A verified sold-out transition
+- A failed storefront request
+- A metadata-only change
+- A presentation-only change
+- A normal scheduled check with no changes
+
+These are not interchangeable events.
+
+### Announcement behavior
+
+A newly verified vehicle may trigger a normal announcement according to existing dispatch rules.
+
+A verified sold-out transition must edit the previously deployed announcement.
+
+A presentation change must update an existing message only when an administrator explicitly requests it or when the relevant existing configuration provides for synchronization.
+
+A failed storefront check must never create a false stock transition.
+
+Do not create duplicate Discord messages during status or presentation updates.
+
+Do not send additional role mentions during an update.
+
+### Widget behavior
+
+Widgets are persistent summaries.
+
+They should update their existing messages after a meaningful change.
+
+No additional public message should be created during synchronization.
+
+### Historical data
+
+Preserve:
+
+- Original first-detected timestamps
+- Verified stock periods
+- Historical sold-out records
+- Listing IDs
+- Archived images
+- Original source descriptions
+- Discord delivery history
+- Existing message IDs
+
+Do not overwrite historical facts when modifying display metadata.
+
+---
+
+# PART 13 — SECURITY AND PERMISSION ENFORCEMENT
+
+Every administrator API must enforce server-side authorization.
+
+Do not rely solely on the frontend hiding buttons.
+
+All Discord component interactions must validate the actual invoking user and permissions.
+
+Ensure the widget confirmation workflow cannot be reused across servers, users, or channels.
+
+Protect against accidental deployment by unauthorized users.
+
+Validate all incoming configuration values.
+
+Use appropriate bounds for text length, colors, URLs, arrays, and Discord API fields.
+
+Use safe storage and rendering practices.
+
+Avoid HTML injection and unsafe URLs.
+
+Do not expose bot tokens or other secrets in API responses, logs, or browser-side code.
+
+Ensure test-server functionality cannot accidentally publish to production servers.
+
+Keep production and staging configuration, storage, and credentials isolated.
+
+---
+
+# PART 14 — UI/UX REQUIREMENTS
+
+All new administration interfaces should look like native extensions of the existing Everfall Limited Watcher dashboard.
+
+Use the project's established:
+
+- Dark mode
+- shadcn/ui controls
+- Typography
+- Cards
+- Tables
+- Tabs
+- Dialogs
+- Tooltips
+- Forms
+- Buttons
+- Icons
+- Status indicators
+- Toast notifications
+
+Avoid generic placeholder UI.
+
+Provide useful empty states and loading states.
+
+Display success and failure feedback for administrator actions.
+
+Use responsive layouts.
+
+Ensure controls are keyboard accessible.
+
+Use subtle transitions consistent with the rest of the application.
+
+The Widget Manager, Embed Manager, Vehicle Metadata Editor, Emoji Picker, and Hero Controller should feel like one coherent administration system.
+
+---
+
+# PART 15 — TESTING AND QUALITY ASSURANCE
+
+Do not consider the task completed merely because TypeScript compilation succeeds.
+
+## Discord command testing
+
+Verify that `/widget` is present in the command definitions and successfully registered with Discord.
+
+Where live access is available, confirm command visibility in an actual eligible Discord server.
+
+Test:
+
+- Administrator invocation
+- Non-administrator rejection
+- Private preview
+- Cancel
+- Deploy confirmation
+- Public message creation
+- Deployment persistence
+- Live updates
+- Message deletion handling
+- Permission failures
+
+## Discord embed testing
+
+Verify:
+
+- In Stock configuration
+- Sold Out configuration
+- Widget configuration
+- Realistic previews
+- Emoji picker values
+- Correct feature rendering
+- Message editing
+- Bulk update behavior
+- No duplicate messages
+- No unintended mentions
+
+## Metadata testing
+
+Test the existing historical vehicles:
+
+- Seraph GTS
+- 73C
+
+Test descriptions containing:
+
+- 3 cosmetic customization options
+- Over 17 cosmetic customization options
+- Custom sound
+- Quantity-limited wording
+- Unknown feature types
+- Missing feature information
+- Ambiguous metadata
+- Administrator overrides
+
+## Homepage testing
+
+Verify:
+
+- All hero animation types
+- Multiple rotating messages
+- Single-message mode
+- Animation disabled
+- Reduced motion
+- Long text
+- Mobile layouts
+- Persistent configuration
+- Actual monitoring status presentation
+
+## Vehicle card testing
+
+Verify:
+
+- Clickable vehicle names
+- Card-level inspection
+- Gallery controls
+- Metadata expansion
+- Store buttons
+- Copy ID controls
+- Administrator image editing
+- Keyboard accessibility
+
+## Build verification
+
+Run:
+
+`npm run lint`
+
+`npm run build`
+
+Run any existing automated test suites.
+
+Add relevant unit and integration tests for new shared logic.
+
+Ensure the deployed Worker bundle remains compatible with Cloudflare Workers.
+
+Do not introduce Node-only dependencies into unsupported Worker runtime paths.
+
+---
+
+# PART 16 — IMPLEMENTATION ORDER
+
+Execute the work in this order.
+
+### PHASE A — Discord Reliability
+
+Investigate and fix `/widget` availability.
+
+Correct Bot Control diagnostics.
+
+Ensure real Discord registration responses are accurately represented.
+
+Verify the complete widget deployment lifecycle.
+
+### PHASE B — Shared Metadata and Presentation Models
+
+Build the centralized metadata extraction and feature engine.
+
+Implement administrator metadata overrides.
+
+Create reusable presentation configuration types.
+
+### PHASE C — Discord Presentation
+
+Enhance In Stock and Sold Out Embed Manager controls.
+
+Build the emoji picker.
+
+Create the Widget Appearance Controller.
+
+Integrate all controls with deployed Discord messages.
+
+### PHASE D — Website Presentation
+
+Refine vehicle cards.
+
+Implement clickable inspection behavior.
+
+Improve feature labels and descriptions.
+
+Build the Hero Controller and animations.
+
+Improve homepage visual presentation.
+
+### PHASE E — Integration
+
+Ensure changes to metadata and presentation propagate appropriately.
+
+Update widgets and existing announcement messages without duplicates.
+
+Preserve data integrity.
+
+### PHASE F — Verification
+
+Run tests, fix failures, and inspect the final integration.
+
+Do not stop after implementing only the easiest phase.
+
+---
+
+# PART 17 — FINAL DELIVERY REQUIREMENTS
+
+When implementation is complete, provide a factual development report covering:
+
+### Implemented Features
+
+Identify each major feature and what was actually changed.
+
+### Files Modified
+
+List the relevant modules, components, routes, types, and configuration changes.
+
+### Data Migrations
+
+Describe any new persistent data structures and whether existing records require migration.
+
+### Verification
+
+Report which tests ran, their results, and any limitations.
+
+Separate local build verification from actual live Discord verification.
+
+### Deployment
+
+Identify any required Cloudflare bindings, migrations, secrets, Discord application settings, or deployment commands.
+
+Do not invent successful deployments or integrations.
+
+### Remaining Issues
+
+Report only legitimate remaining work, environmental blockers, or external dependencies.
+
+---
+
+# NON-NEGOTIABLE ACCEPTANCE CRITERIA
+
+The implementation is not complete unless:
+
+1. `/widget` is properly registered and the reason for any remaining Discord visibility problem is identified.
+2. A widget can be privately previewed and explicitly deployed as a permanent public Discord message.
+3. Widgets are stored persistently and update existing messages when relevant verified data changes.
+4. The administrator can configure widget appearance.
+5. In Stock and Sold Out announcements have independently configurable appearance settings.
+6. An emoji picker supports eligible Discord emojis.
+7. Vehicle features use a centralized, extensible metadata system.
+8. Quantity Limited appears before Custom Sound and customization options.
+9. Administrators can edit individual vehicle metadata without overwriting source records.
+10. The full vehicle card and vehicle title open inspection, with the redundant Inspect button removed.
+11. The homepage hero supports administrator-controlled animated rotating messages.
+12. No hero pagination or user-facing slideshow controls are introduced.
+13. Homepage monitoring metrics represent actual verified operational data rather than hardcoded claims.
+14. All new features maintain the established React/shadcn/ui visual system.
+15. Existing historical records, images, Discord message IDs, and user configuration are preserved.
+16. No unintended Discord announcements, repeated role mentions, or duplicate widget messages occur.
+17. TypeScript, build, and relevant automated tests pass.
+18. Live features are not claimed as verified unless they have actually been tested.
+
+## BEGIN IMPLEMENTATION
+
+Start by inspecting the latest repository state and identifying the existing modules responsible for the features above.
+
+Prioritize fixing the `/widget` command's actual Discord availability and persistent deployment behavior.
+
+Then continue through the remaining implementation phases.
+
+**Do not provide another planning-only response. Implement the changes directly in the available development environment, validate the results, and report precisely what has been completed.**

@@ -6,6 +6,9 @@ import {
   setGuildConfig,
   addGuildRole,
   removeGuildRole,
+  createPendingWidgetConfirmation,
+  getPendingWidgetConfirmation,
+  deletePendingWidgetConfirmation,
   GuildConfig,
 } from "./kv";
 import {
@@ -58,7 +61,7 @@ async function editOriginalInteractionResponse(
   }
 }
 
-function hasManageServerPermission(member: any): boolean {
+export function hasManageServerPermission(member: any): boolean {
   if (!member?.permissions) return false;
   try {
     const perms = BigInt(member.permissions);
@@ -402,7 +405,48 @@ export async function handleInteraction(
           content: "You need Manage Server or Administrator permissions to deploy status widgets.",
         });
       }
-      const targetChannelId = customId.split(":")[1] || body.channel_id;
+      const actorId = String(member?.user?.id || body?.user?.id || "").trim();
+      const actorName = String(member?.user?.username || body?.user?.username || "").trim();
+      const parts = customId.split(":");
+      const confirmToken = parts[1] || "";
+      const expectedChannelId = parts[2] || body.channel_id || "";
+      const expectedUserId = parts[3] || "";
+
+      const pending = confirmToken ? await getPendingWidgetConfirmation(env, confirmToken) : null;
+      if (pending) {
+        if (pending.guildId !== guild_id || pending.channelId !== expectedChannelId) {
+          return jsonResponse({
+            flags: EPHEMERAL_FLAG,
+            content: "Confirmation does not match this server or channel. Run `/widget` again.",
+          });
+        }
+        if (pending.userId && actorId && pending.userId !== actorId) {
+          return jsonResponse({
+            flags: EPHEMERAL_FLAG,
+            content: "Only the administrator who initiated `/widget` can confirm or cancel this preview.",
+          });
+        }
+      } else if (expectedUserId && actorId && expectedUserId !== actorId) {
+        return jsonResponse({
+          flags: EPHEMERAL_FLAG,
+          content: "Only the administrator who initiated `/widget` can confirm or cancel this preview.",
+        });
+      } else if (env.DISCORD_BOT) {
+        return jsonResponse(
+          {
+            flags: EPHEMERAL_FLAG,
+            content: "This widget preview confirmation has expired. Please run `/widget` again.",
+            embeds: [],
+            components: [],
+          },
+          7
+        );
+      }
+
+      if (confirmToken) {
+        await deletePendingWidgetConfirmation(env, confirmToken);
+      }
+
       if (customId.startsWith("widget_cancel:")) {
         return jsonResponse(
           {
@@ -415,6 +459,7 @@ export async function handleInteraction(
         );
       }
 
+      const targetChannelId = pending?.channelId || expectedChannelId;
       if (!targetChannelId) {
         return jsonResponse(
           {
@@ -434,7 +479,12 @@ export async function handleInteraction(
               env,
               guild_id,
               targetChannelId,
-              portalOrigin
+              portalOrigin,
+              {
+                deployedBy: actorId || undefined,
+                deployedByUsername: actorName || undefined,
+                templateId: pending?.templateId,
+              }
             );
             if (!res.ok) {
               await editOriginalInteractionResponse(appId, interactionToken, {
@@ -444,8 +494,12 @@ export async function handleInteraction(
               });
               return;
             }
+            const jumpUrl = `https://discord.com/channels/${guild_id}/${targetChannelId}/${res.messageId}`;
             await editOriginalInteractionResponse(appId, interactionToken, {
-              content: `✅ **Live Status Widget Deployed** in <#${targetChannelId}> (Message ID: \`${res.messageId}\`).\nIt will automatically refresh in-place within 1 minute of every store check.`,
+              content:
+                `✅ **Live Status Widget Deployed** in <#${targetChannelId}>.\n` +
+                `Message ID: \`${res.messageId}\` • [Jump to Widget Message](${jumpUrl})\n` +
+                `This widget will automatically update in-place within 1 minute of every store check without reposting.`,
               embeds: [],
               components: [],
             });
@@ -664,27 +718,41 @@ export async function handleInteraction(
           content: "Run `/widget` inside the text channel where you want the live status widget posted.",
         });
       }
-      const previewPayload = await buildWidgetMessagePayload(env, portalOrigin);
+      const actorId = String(member?.user?.id || body?.user?.id || "").trim();
+      const actorName = String(member?.user?.username || body?.user?.username || "").trim();
+      const [previewPayload, pending] = await Promise.all([
+        buildWidgetMessagePayload(env, portalOrigin, { guildId: guild_id }),
+        createPendingWidgetConfirmation(env, {
+          guildId: guild_id,
+          channelId: targetChannelId,
+          userId: actorId,
+          username: actorName,
+        }),
+      ]);
+      const actionRows = Array.isArray(previewPayload.components)
+        ? [...previewPayload.components]
+        : [];
       return jsonResponse({
         flags: EPHEMERAL_FLAG,
         content:
           `**Live Status Widget Preview** *(Private — Only visible to you)*\n` +
-          `Confirm to post this auto-updating widget in <#${targetChannelId}>. It will sync in-place within 1 minute of every store check.`,
+          `Confirm to post this auto-updating widget publicly in <#${targetChannelId}>. No roles will be mentioned, and it will update in-place within 1 minute of every store check.`,
         embeds: previewPayload.embeds,
         components: [
+          ...actionRows.slice(0, 1),
           {
             type: 1,
             components: [
               {
                 type: 2,
                 style: 3,
-                custom_id: `widget_confirm:${targetChannelId}`,
-                label: "Deploy Widget Here",
+                custom_id: `widget_confirm:${pending.token}:${targetChannelId}:${actorId}`,
+                label: "Post Widget in This Channel",
               },
               {
                 type: 2,
                 style: 4,
-                custom_id: `widget_cancel:${targetChannelId}`,
+                custom_id: `widget_cancel:${pending.token}:${targetChannelId}:${actorId}`,
                 label: "Cancel",
               },
             ],

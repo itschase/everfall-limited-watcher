@@ -5,6 +5,7 @@
   "scripts": {
     "build": "vite build && tsc",
     "lint": "tsc --noEmit",
+    "test": "tsx --test src/shared/__tests__/*.test.ts",
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts"
   },

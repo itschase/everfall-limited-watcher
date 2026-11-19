@@ -10,6 +10,7 @@ import {
   Images,
   Loader2,
   RefreshCw,
+  SlidersHorizontal,
   Sparkles,
   Star,
   Trash2,
@@ -209,6 +210,14 @@ export function AdminImagesPage() {
           <Button variant="outline" size="sm" asChild>
             <Link to="/admin">Overview</Link>
           </Button>
+          {selectedListingId && (
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/admin/metadata" search={{ listingId: selectedListingId } as any}>
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                Edit Metadata
+              </Link>
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="sm"

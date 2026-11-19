@@ -1,14 +1,16 @@
 import {
   getAllGuildIds,
-  getAllWidgetGuildIds,
+  getAllWidgetDeployments,
   getCatalogSnapshot,
   getDeliveryLogs,
   getGuildConfig,
   getGuildSentMessages,
   getEffectiveEmbedConfig,
   getListingHistory,
+  getListingOverridesMap,
   getMonitorStatus,
-  getWidgetDeployment,
+  getPresentationConfig,
+  getWidgetDeploymentById,
   purgePublicEdgeCaches,
   setListingAvailability,
   setMonitorStatus,
@@ -20,9 +22,19 @@ import {
   appendMonitorLog,
   MonitorLogAttempt,
   MonitorLogSource,
-  DEFAULT_EMBED_CONFIG,
+  WidgetDeployment,
+  WidgetSyncHistoryEntry,
 } from "./kv";
 import { fetchDiscordWithRetry } from "./discord";
+import {
+  AnnouncementTemplate,
+  buildCarDropPayload,
+  buildWidgetPayload,
+  computeStableHash,
+  resolveEffectiveWidgetTemplate,
+  WidgetTemplateConfig,
+} from "./shared/presentation";
+import { VehicleMetadataOverride } from "./shared/features";
 
 export interface CarListing {
   id: string; // Package ID, e.g. "7815813"
@@ -837,115 +849,86 @@ export function buildCarDropMessage(
   embedConfig?: any,
   roleIds?: string[],
   env?: any,
-  options: { isTest?: boolean; isUpdate?: boolean } = {}
+  options: {
+    isTest?: boolean;
+    isUpdate?: boolean;
+    template?: AnnouncementTemplate;
+    override?: VehicleMetadataOverride | null;
+    portalOrigin?: string;
+  } = {}
 ) {
-  const validImages = (car.images || []).filter(
-    (img) => typeof img === "string" && /^https?:\/\//i.test(img)
-  );
-  const totalImages = validImages.length;
   const isSoldOut = car.isAvailable === false;
-
-  const hexStr = isSoldOut
-    ? "DC2626"
-    : embedConfig?.color
-      ? embedConfig.color.replace("#", "")
-      : "F59E0B";
-  const color = parseInt(hexStr, 16) || 0xf59e0b;
-
-  const titlePrefix =
-    typeof embedConfig?.titlePrefix === "string"
-      ? embedConfig.titlePrefix.trim()
-      : DEFAULT_EMBED_CONFIG.titlePrefix;
-  const footerText =
-    typeof embedConfig?.footerText === "string"
-      ? embedConfig.footerText.trim()
-      : DEFAULT_EMBED_CONFIG.footerText;
-  const storeButtonLabel = isSoldOut
-    ? embedConfig?.soldOutButtonLabel?.trim() || DEFAULT_EMBED_CONFIG.soldOutButtonLabel
-    : embedConfig?.storeButtonLabel?.trim() || DEFAULT_EMBED_CONFIG.storeButtonLabel;
-  const showDetectionTime = embedConfig?.showDetectionTime !== false;
-  const showLastVerified = embedConfig?.showLastVerified !== false;
-
-  const storeEmojiId =
+  const fallbackStoreEmojiId =
     typeof env?.DISCORD_STORE_EMOJI_ID === "string"
       ? env.DISCORD_STORE_EMOJI_ID.trim()
       : "1571981507973746868";
 
-  const pings =
-    !options.isTest && !options.isUpdate && roleIds && roleIds.length > 0
-      ? roleIds.map((r) => `<@&${r}>`).join(" ")
-      : "";
-
-  const detected = Math.floor((car.detectedAt || Date.now()) / 1000);
-  const verified = Math.floor((car.lastVerifiedAt || car.detectedAt || Date.now()) / 1000);
-  const safeDescription = (car.description || "Limited-edition vehicle listing on Everfall Store.")
-    .slice(0, 2500);
-  const testBanner = options.isTest ? `**[TEST NOTIFICATION]**\n` : "";
-  const titleLine = titlePrefix ? `${titlePrefix} ${car.name}` : car.name;
-  const details = [
-    `${testBanner}# ${titleLine}`.slice(0, 256),
-    `**Availability:** ${isSoldOut ? "Sold Out" : "In Stock"}`,
-    safeDescription,
-  ];
-  if (showDetectionTime) details.push(`**First Detected:** <t:${detected}:f> (<t:${detected}:R>)`);
-  if (showLastVerified) details.push(`**Last Verified:** <t:${verified}:f>`);
-  if (isSoldOut && car.soldOutAt) {
-    const soldOutSec = Math.floor(car.soldOutAt / 1000);
-    details.push(`**Confirmed Sold Out:** <t:${soldOutSec}:f> (<t:${soldOutSec}:R>)`);
+  // Allow legacy EmbedConfig objects or rich AnnouncementTemplate objects
+  let resolvedTemplate = options.template;
+  if (!resolvedTemplate && embedConfig && typeof embedConfig === "object") {
+    if ("accentColor" in embedConfig || "descriptionMode" in embedConfig) {
+      resolvedTemplate = embedConfig as AnnouncementTemplate;
+    } else if (!isSoldOut) {
+      resolvedTemplate = {
+        ...({
+          accentColor: embedConfig.color || "#F59E0B",
+          titlePrefix:
+            typeof embedConfig.titlePrefix === "string"
+              ? embedConfig.titlePrefix.replace(/<a?:[a-zA-Z0-9_]+:\d+>\s*/g, "").trim()
+              : "Limited Edition Drop:",
+          titleEmoji: {
+            kind: "custom",
+            id: fallbackStoreEmojiId || "1571981507973746868",
+            name: "everfall",
+            source: "application",
+          },
+          availabilityHeading: "Availability",
+          statusLabel: "In Stock",
+          statusEmoji: { kind: "unicode", name: "🟢", source: "unicode" },
+          descriptionMode: "full_description",
+          customDescription: "{short_description}\n\n{features}",
+          showFeatures: true,
+          featureOrder: ["quantity_limited", "custom_sound", "custom_options"],
+          featureStyle: "inline_badges",
+          showTradingInfo: true,
+          showDeliveryInfo: true,
+          showDetectionTime: embedConfig.showDetectionTime !== false,
+          showLastVerified: embedConfig.showLastVerified !== false,
+          showSoldOutTime: false,
+          galleryMode: "all_gallery",
+          primaryImageSlot: 0,
+          footerText:
+            typeof embedConfig.footerText === "string"
+              ? embedConfig.footerText.trim()
+              : "Everfall Limited Watcher • Verified Drop Alert",
+          footerEmoji: null,
+          showStoreButton: true,
+          storeButtonLabel:
+            embedConfig.storeButtonLabel?.trim() || "View Package on Everfall",
+          storeButtonEmoji: fallbackStoreEmojiId
+            ? {
+                kind: "custom",
+                id: fallbackStoreEmojiId,
+                name: "everfall",
+                source: "application",
+              }
+            : null,
+          storeButtonUrlMode: "listing",
+        } satisfies AnnouncementTemplate),
+      };
+    }
   }
 
-  const containerComponents: any[] = [{ type: 10, content: details.join("\n\n") }];
-
-  if (totalImages > 0) {
-    containerComponents.push({
-      type: 12,
-      items: validImages.slice(0, 10).map((url, index) => ({
-        media: { url },
-        description: `${car.name} — gallery image ${index + 1} of ${totalImages}`,
-      })),
-    });
-  }
-
-  const storeButton: Record<string, any> = {
-    type: 2,
-    style: 5,
-    label: storeButtonLabel.slice(0, 80),
-    url: isSoldOut ? "https://store.everfallcommunity.com/" : car.url,
-  };
-  if (storeEmojiId && !isSoldOut) {
-    storeButton.emoji = { id: storeEmojiId, name: "everfall" };
-  }
-
-  containerComponents.push({
-    type: 1,
-    components: [storeButton],
+  return buildCarDropPayload({
+    car,
+    override: options.override,
+    template: resolvedTemplate,
+    roleIds,
+    portalOrigin: options.portalOrigin || resolvePublicOrigin(env),
+    isTest: options.isTest,
+    isUpdate: options.isUpdate,
+    fallbackStoreEmojiId,
   });
-  if (footerText || options.isTest || options.isUpdate) {
-    const combinedFooter = [
-      footerText,
-      options.isTest ? "Test Dispatch" : "",
-      options.isUpdate ? (isSoldOut ? "Updated: Sold Out" : "Embed Refreshed") : "",
-    ]
-      .filter(Boolean)
-      .join(" • ");
-    containerComponents.push({
-      type: 10,
-      content: `-# ${combinedFooter}`,
-    });
-  }
-
-  const components: any[] = [];
-  if (pings) components.push({ type: 10, content: pings });
-  components.push({ type: 17, accent_color: color, components: containerComponents });
-
-  return {
-    flags: 1 << 15,
-    allowed_mentions: {
-      parse: [],
-      roles: options.isTest || options.isUpdate ? [] : roleIds || [],
-    },
-    components,
-  };
 }
 
 export async function dispatchListingToGuild(
@@ -984,15 +967,26 @@ export async function dispatchListingToGuild(
   }
 
   await saveCarPackage(env, car);
-  const embedConfig = await getEffectiveEmbedConfig(env, guildId);
+  const [presentationBundle, overridesMap, legacyEmbedConfig] = await Promise.all([
+    getPresentationConfig(env),
+    getListingOverridesMap(env),
+    getEffectiveEmbedConfig(env, guildId),
+  ]);
+  const template =
+    car.isAvailable === false
+      ? presentationBundle.announcements.soldOut
+      : presentationBundle.announcements.inStock;
+
   const roles =
     options.includeRoleMentions === false
       ? []
       : options.method === "test"
         ? []
         : config?.roleIds || [];
-  const messagePayload = buildCarDropMessage(car, embedConfig, roles, env, {
+  const messagePayload = buildCarDropMessage(car, legacyEmbedConfig, roles, env, {
     isTest: options.method === "test",
+    template,
+    override: overridesMap[car.id] || null,
   });
 
   const result = await sendDiscordChannelMessage(token, channelId, messagePayload);
@@ -1076,10 +1070,21 @@ export async function updateSentListingEmbedForGuild(
   }
 
   await saveCarPackage(env, car);
-  const embedConfig = await getEffectiveEmbedConfig(env, guildId);
-  const messagePayload = buildCarDropMessage(car, embedConfig, [], env, {
+  const [presentationBundle, overridesMap, legacyEmbedConfig] = await Promise.all([
+    getPresentationConfig(env),
+    getListingOverridesMap(env),
+    getEffectiveEmbedConfig(env, guildId),
+  ]);
+  const template =
+    car.isAvailable === false
+      ? presentationBundle.announcements.soldOut
+      : presentationBundle.announcements.inStock;
+
+  const messagePayload = buildCarDropMessage(car, legacyEmbedConfig, [], env, {
     isTest: false,
     isUpdate: true,
+    template,
+    override: overridesMap[car.id] || null,
   });
 
   const res = await editDiscordChannelMessage(token, ref.channelId, ref.messageId, messagePayload);
@@ -1151,171 +1156,298 @@ export async function updateSoldOutListingEmbeds(
 
 export async function buildWidgetMessagePayload(
   env: any,
-  originHint?: string
+  originHint?: string,
+  options?: {
+    guildId?: string;
+    templateId?: string;
+    customTemplate?: WidgetTemplateConfig | null;
+  }
 ): Promise<any> {
   const origin = resolvePublicOrigin(env, originHint);
-  const [snapshot, monitorStatus] = await Promise.all([
+  const [snapshot, monitorStatus, bundle, overridesMap, guildCfg] = await Promise.all([
     getCatalogSnapshot(env),
     getMonitorStatus(env),
+    getPresentationConfig(env),
+    getListingOverridesMap(env),
+    options?.guildId ? getGuildConfig(env, options.guildId) : Promise.resolve(null),
   ]);
 
-  const sorted = [...snapshot.records].sort((a, b) => b.firstSeenAt - a.firstSeenAt);
-  const activeListings = sorted.filter((r) => r.isAvailable).slice(0, 3);
-  const recentListings = sorted.slice(0, 3);
+  const template =
+    options?.customTemplate ||
+    resolveEffectiveWidgetTemplate(bundle, options?.templateId, guildCfg?.widgetTemplateId);
 
-  const pickWidgetImage = (record?: any): string | undefined => {
-    if (!record) return undefined;
-    const imgs: string[] = Array.isArray(record.payload?.images)
-      ? record.payload.images.filter((u: unknown) => typeof u === "string" && /^https?:\/\//i.test(u))
-      : [];
-    // Prefer Slot 3 (4th photo) when available, falling back to Slot 0
-    const explicitSlot3 = imgs.find((u) => new RegExp(`/media/listings/${record.id}/3(?:\\?|$)`).test(u));
-    const chosen = explicitSlot3 || imgs[3] || imgs[0];
-    if (!chosen) return undefined;
-    if (origin && isDiscordSafeHttpsOrigin(origin) && chosen.includes(`/media/listings/${record.id}/`)) {
-      return `${chosen.split("?")[0]}?v=${snapshot.version || 1}`;
-    }
-    return chosen;
-  };
-
-  const checkedAt = monitorStatus?.checkedAt || Date.now();
-  const checkedSec = Math.floor(checkedAt / 1000);
-  const sourceLabel =
-    monitorStatus?.lastSource === "scrapling"
-      ? "Scrapling"
-      : monitorStatus?.lastSource === "cron-fetch"
-        ? "HTTP Cron"
-        : monitorStatus?.lastSource === "manual"
-          ? "Manual Scan"
-          : "Store Monitor";
-
-  const fields: Array<{ name: string; value: string; inline: boolean }> = [];
-
-  // Active Listings Columns (up to 3 smaller columns)
-  if (activeListings.length > 0) {
-    for (const car of activeListings) {
-      const carName = String(car.payload?.name || `Limited #${car.id}`).slice(0, 80);
-      const carUrl =
-        typeof car.payload?.url === "string" && /^https?:\/\//i.test(car.payload.url)
-          ? car.payload.url
-          : `https://store.everfallcommunity.com/package/${car.id}`;
-      fields.push({
-        name: `🟢 ${carName}`,
-        value: `In Stock • [View](${carUrl})`,
-        inline: true,
-      });
-    }
-  } else {
-    fields.push({
-      name: "Active Limiteds (0)",
-      value: "No active limited vehicles in stock.\n[View](https://store.everfallcommunity.com/category/limited-cars)",
-      inline: true,
-    });
-  }
-
-  // Dedicated History Column (up to 3 most recent vehicles)
-  const historyLines =
-    recentListings.length > 0
-      ? recentListings.map((r) => {
-          const name = String(r.payload?.name || `Limited #${r.id}`).slice(0, 60);
-          const url =
-            r.isAvailable && typeof r.payload?.url === "string" && /^https?:\/\//i.test(r.payload.url)
-              ? r.payload.url
-              : `https://store.everfallcommunity.com/package/${r.id}`;
-          const stateLabel = r.isAvailable ? "🟢 **In Stock**" : "🔴 **Sold Out**";
-          return `• **${name}** — ${stateLabel} • [View](${url})`;
-        })
-      : ["No vehicle releases recorded yet."];
-
-  fields.push({
-    name: "Recent Drop History (Last 3)",
-    value: historyLines.join("\n"),
-    inline: false,
+  return buildWidgetPayload({
+    records: snapshot.records.map((rec) => ({
+      id: rec.id,
+      firstSeenAt: rec.firstSeenAt,
+      lastVerifiedAt: rec.lastVerifiedAt,
+      soldOutAt: rec.soldOutAt,
+      isAvailable: rec.isAvailable,
+      payload: rec.payload || {},
+      override: overridesMap[rec.id] || null,
+    })),
+    monitorStatus,
+    template,
+    catalogVersion: snapshot.version || 1,
+    portalOrigin: origin || "https://everfall-limited-watcher.itschase.workers.dev",
+    safeOrigin: origin && isDiscordSafeHttpsOrigin(origin) ? origin : undefined,
   });
-
-  const featuredImageUrl = pickWidgetImage(activeListings[0] || recentListings[0]);
-
-  const embed: any = {
-    title: "Everfall Limited Watcher — Live Store Status",
-    description:
-      `**Last Store Check:** <t:${checkedSec}:f> (<t:${checkedSec}:R>)\n` +
-      `**Verification:** ${sourceLabel} • Updates within 1 minute of every check`,
-    color: activeListings.length > 0 ? 0x10b981 : 0x52525b,
-    fields,
-    footer: {
-      text: "Everfall Limited Watcher • Live Status Widget",
-    },
-    timestamp: new Date(checkedAt).toISOString(),
-  };
-
-  if (featuredImageUrl) {
-    embed.image = { url: featuredImageUrl };
-  }
-
-  return {
-    embeds: [embed],
-  };
 }
 
 export async function deployStatusWidgetToChannel(
   env: any,
   guildId: string,
   channelId: string,
-  originHint?: string
-): Promise<{ ok: boolean; messageId?: string; error?: string }> {
+  originHint?: string,
+  options?: {
+    deployedBy?: string;
+    deployedByUsername?: string;
+    templateId?: string;
+    customTemplate?: WidgetTemplateConfig | null;
+  }
+): Promise<{ ok: boolean; widget?: WidgetDeployment; messageId?: string; error?: string }> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return { ok: false, error: "DISCORD_BOT_TOKEN is not configured." };
 
-  const payload = await buildWidgetMessagePayload(env, originHint);
+  const [payload, bundle, snapshot] = await Promise.all([
+    buildWidgetMessagePayload(env, originHint, {
+      guildId,
+      templateId: options?.templateId,
+      customTemplate: options?.customTemplate,
+    }),
+    getPresentationConfig(env),
+    getCatalogSnapshot(env),
+  ]);
+
   const res = await sendDiscordChannelMessage(token, channelId, payload);
   if (!res.ok || !res.messageId) {
     return { ok: false, error: res.error || "Discord rejected the widget message." };
   }
 
   const now = Date.now();
-  await setWidgetDeployment(env, {
+  const contentHash = computeStableHash(payload);
+  const entry: WidgetSyncHistoryEntry = {
+    timestamp: now,
+    status: "ok",
+    httpStatus: res.httpStatus,
+    trigger: "deploy",
+    contentHash,
+  };
+  const widget = await setWidgetDeployment(env, {
+    id: `${guildId}:${channelId}`,
     guildId,
     channelId,
     messageId: res.messageId,
     deployedAt: now,
+    deployedBy: options?.deployedBy,
+    deployedByUsername: options?.deployedByUsername,
     lastSyncedAt: now,
+    lastAttemptedSyncAt: now,
     lastSyncStatus: "ok",
+    templateId: options?.templateId,
+    customTemplate: options?.customTemplate ?? null,
+    configVersion: bundle.version,
+    lastCatalogVersion: snapshot.version,
+    lastContentHash: contentHash,
+    history: [entry],
   });
 
-  return { ok: true, messageId: res.messageId };
+  return { ok: true, widget, messageId: res.messageId };
+}
+
+export async function refreshWidgetById(
+  env: any,
+  widgetId: string,
+  originHint?: string,
+  options?: { force?: boolean; trigger?: string }
+): Promise<{
+  ok: boolean;
+  skipped?: boolean;
+  widget?: WidgetDeployment | null;
+  error?: string;
+}> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return { ok: false, error: "DISCORD_BOT_TOKEN is not configured." };
+  const widget = await getWidgetDeploymentById(env, widgetId);
+  if (!widget?.channelId || !widget?.messageId) {
+    return { ok: false, error: "Widget deployment not found." };
+  }
+
+  const origin = resolvePublicOrigin(env, originHint);
+  const [snapshot, monitorStatus, bundle, overridesMap, guildCfg] = await Promise.all([
+    getCatalogSnapshot(env),
+    getMonitorStatus(env),
+    getPresentationConfig(env),
+    getListingOverridesMap(env),
+    getGuildConfig(env, widget.guildId),
+  ]);
+
+  const template =
+    widget.customTemplate ||
+    resolveEffectiveWidgetTemplate(bundle, widget.templateId, guildCfg?.widgetTemplateId);
+
+  const payload = buildWidgetPayload({
+    records: snapshot.records.map((rec) => ({
+      id: rec.id,
+      firstSeenAt: rec.firstSeenAt,
+      lastVerifiedAt: rec.lastVerifiedAt,
+      soldOutAt: rec.soldOutAt,
+      isAvailable: rec.isAvailable,
+      payload: rec.payload || {},
+      override: overridesMap[rec.id] || null,
+    })),
+    monitorStatus,
+    template,
+    catalogVersion: snapshot.version || 1,
+    portalOrigin: origin || "https://everfall-limited-watcher.itschase.workers.dev",
+    safeOrigin: origin && isDiscordSafeHttpsOrigin(origin) ? origin : undefined,
+  });
+
+  const contentHash = computeStableHash(payload);
+  const trigger = options?.trigger || "manual";
+
+  if (!options?.force && widget.lastContentHash === contentHash && widget.lastSyncStatus === "ok") {
+    return { ok: true, skipped: true, widget };
+  }
+
+  const res = await editDiscordChannelMessage(token, widget.channelId, widget.messageId, payload);
+  const now = Date.now();
+  const errorDetail = res.ok
+    ? undefined
+    : res.httpStatus === 404
+      ? "Discord message not found (404 — message may have been deleted). Remove or redeploy this widget."
+      : res.httpStatus === 403
+        ? "Missing Discord permissions (403) in target channel."
+        : res.error;
+
+  const entry: WidgetSyncHistoryEntry = {
+    timestamp: now,
+    status: res.ok ? "ok" : "error",
+    httpStatus: res.httpStatus,
+    ...(errorDetail ? { error: errorDetail } : {}),
+    trigger,
+    contentHash,
+  };
+
+  const updated = await setWidgetDeployment(env, {
+    ...widget,
+    lastAttemptedSyncAt: now,
+    lastSyncedAt: res.ok ? now : widget.lastSyncedAt,
+    lastSyncStatus: res.ok ? "ok" : "error",
+    lastSyncError: errorDetail,
+    configVersion: bundle.version,
+    lastCatalogVersion: snapshot.version,
+    lastContentHash: res.ok ? contentHash : widget.lastContentHash,
+    history: [entry, ...(widget.history || [])].slice(0, 15),
+  });
+
+  return {
+    ok: res.ok,
+    widget: updated,
+    error: errorDetail,
+  };
 }
 
 export async function refreshAllWidgets(
   env: any,
-  originHint?: string
-): Promise<{ refreshed: number; failed: number }> {
+  originHint?: string,
+  options?: { force?: boolean; widgetIds?: string[]; trigger?: string }
+): Promise<{ refreshed: number; skipped: number; failed: number }> {
   const token = env.DISCORD_BOT_TOKEN;
-  if (!token) return { refreshed: 0, failed: 0 };
+  if (!token) return { refreshed: 0, skipped: 0, failed: 0 };
 
-  const guildIds = await getAllWidgetGuildIds(env);
-  if (guildIds.length === 0) return { refreshed: 0, failed: 0 };
+  const allWidgets = await getAllWidgetDeployments(env);
+  const targetWidgets =
+    options?.widgetIds && options.widgetIds.length > 0
+      ? allWidgets.filter((w) => options.widgetIds!.includes(w.id))
+      : allWidgets;
+  if (targetWidgets.length === 0) return { refreshed: 0, skipped: 0, failed: 0 };
 
-  const payload = await buildWidgetMessagePayload(env, originHint);
+  const origin = resolvePublicOrigin(env, originHint);
+  const [snapshot, monitorStatus, bundle, overridesMap] = await Promise.all([
+    getCatalogSnapshot(env),
+    getMonitorStatus(env),
+    getPresentationConfig(env),
+    getListingOverridesMap(env),
+  ]);
+
+  const recordsForWidget = snapshot.records.map((rec) => ({
+    id: rec.id,
+    firstSeenAt: rec.firstSeenAt,
+    lastVerifiedAt: rec.lastVerifiedAt,
+    soldOutAt: rec.soldOutAt,
+    isAvailable: rec.isAvailable,
+    payload: rec.payload || {},
+    override: overridesMap[rec.id] || null,
+  }));
+
+  const guildCfgCache = new Map<string, any>();
   let refreshed = 0;
+  let skipped = 0;
   let failed = 0;
+  const trigger = options?.trigger || "store-sync";
 
-  for (const guildId of guildIds) {
-    const widget = await getWidgetDeployment(env, guildId);
+  for (const widget of targetWidgets) {
     if (!widget?.channelId || !widget?.messageId) continue;
+    if (!guildCfgCache.has(widget.guildId)) {
+      guildCfgCache.set(widget.guildId, await getGuildConfig(env, widget.guildId));
+    }
+    const guildCfg = guildCfgCache.get(widget.guildId);
+    const template =
+      widget.customTemplate ||
+      resolveEffectiveWidgetTemplate(bundle, widget.templateId, guildCfg?.widgetTemplateId);
+
+    const payload = buildWidgetPayload({
+      records: recordsForWidget,
+      monitorStatus,
+      template,
+      catalogVersion: snapshot.version || 1,
+      portalOrigin: origin || "https://everfall-limited-watcher.itschase.workers.dev",
+      safeOrigin: origin && isDiscordSafeHttpsOrigin(origin) ? origin : undefined,
+    });
+
+    const contentHash = computeStableHash(payload);
+    if (!options?.force && widget.lastContentHash === contentHash && widget.lastSyncStatus === "ok") {
+      skipped++;
+      continue;
+    }
 
     const res = await editDiscordChannelMessage(token, widget.channelId, widget.messageId, payload);
     const now = Date.now();
+    const errorDetail = res.ok
+      ? undefined
+      : res.httpStatus === 404
+        ? "Discord message not found (404 — deleted from channel)."
+        : res.httpStatus === 403
+          ? "Missing Discord channel permissions (403)."
+          : res.error;
+
+    const entry: WidgetSyncHistoryEntry = {
+      timestamp: now,
+      status: res.ok ? "ok" : "error",
+      httpStatus: res.httpStatus,
+      ...(errorDetail ? { error: errorDetail } : {}),
+      trigger,
+      contentHash,
+    };
+
     await setWidgetDeployment(env, {
       ...widget,
-      lastSyncedAt: now,
+      lastAttemptedSyncAt: now,
+      lastSyncedAt: res.ok ? now : widget.lastSyncedAt,
       lastSyncStatus: res.ok ? "ok" : "error",
-      lastSyncError: res.ok ? undefined : res.error,
+      lastSyncError: errorDetail,
+      configVersion: bundle.version,
+      lastCatalogVersion: snapshot.version,
+      lastContentHash: res.ok ? contentHash : widget.lastContentHash,
+      history: [entry, ...(widget.history || [])].slice(0, 15),
     });
+
     if (res.ok) refreshed++;
     else failed++;
   }
 
-  return { refreshed, failed };
+  return { refreshed, skipped, failed };
 }
 
 export async function broadcastListing(

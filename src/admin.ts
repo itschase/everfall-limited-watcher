@@ -460,6 +460,15 @@ async function readCachedBotGuilds(kv: KVNamespace | undefined, key: string): Pr
   return null;
 }
 
+export async function clearBotGuildsCache(env: any): Promise<void> {
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  if (!kv) return;
+  await Promise.all([
+    kv.delete(BOT_GUILDS_CACHE_KEY).catch(() => null),
+    kv.delete(BOT_GUILDS_STALE_KEY).catch(() => null),
+  ]);
+}
+
 export async function getBotGuilds(env: any, forceRefresh = false): Promise<BotGuild[]> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return [];
