@@ -122,6 +122,10 @@ export interface BotIdentityInfo {
     name: string;
     description: string;
     interactionsEndpointUrl: string | null;
+    botPublic: boolean | null;
+    installScopes: string[];
+    guildInstallScopes: string[];
+    hasGuildCommandsInstallScope: boolean | null;
   } | null;
   error?: string;
 }
@@ -132,9 +136,27 @@ export interface GuildCommandAvailabilityItem {
   hasCommandsScope: boolean;
   httpStatus: number;
   guildCommandCount: number;
-  widgetStatus: "available_global" | "available_guild" | "missing_scope" | "missing_command" | "error";
+  widgetStatus:
+    | "available_global"
+    | "available_guild"
+    | "duplicate_conflict"
+    | "missing_scope"
+    | "missing_command"
+    | "error";
   detail: string;
   guildCommandNames: string[];
+  hasDuplicateWidget?: boolean;
+  hasStaleGuildOverrides?: boolean;
+  guildWidgetOutdated?: boolean;
+}
+
+export interface BotReadinessCheck {
+  id: string;
+  label: string;
+  category: "registration" | "execution" | "availability";
+  status: "pass" | "warn" | "fail";
+  summary: string;
+  remediation?: string;
 }
 
 export function getDiscordApplicationId(env: any): string {
@@ -185,6 +207,18 @@ export async function fetchBotApplicationInfo(env: any): Promise<BotIdentityInfo
     let application: BotIdentityInfo["application"] = null;
     if (appRes.ok) {
       const appData: any = await appRes.json();
+      const installScopes: string[] = Array.isArray(appData?.install_params?.scopes)
+        ? appData.install_params.scopes.map(String)
+        : [];
+      const guildInstallParams = appData?.integration_types_config?.["0"]?.oauth2_install_params;
+      const guildInstallScopes: string[] = Array.isArray(guildInstallParams?.scopes)
+        ? guildInstallParams.scopes.map(String)
+        : installScopes;
+      const hasGuildCommandsInstallScope =
+        guildInstallScopes.length > 0
+          ? guildInstallScopes.includes("applications.commands") && guildInstallScopes.includes("bot")
+          : null;
+
       application = {
         id: String(appData?.id || envAppId),
         name: String(appData?.name || "Everfall Limited Watcher"),
@@ -192,6 +226,10 @@ export async function fetchBotApplicationInfo(env: any): Promise<BotIdentityInfo
         interactionsEndpointUrl: appData?.interactions_endpoint_url
           ? String(appData.interactions_endpoint_url)
           : null,
+        botPublic: typeof appData?.bot_public === "boolean" ? appData.bot_public : null,
+        installScopes,
+        guildInstallScopes,
+        hasGuildCommandsInstallScope,
       };
     }
 
@@ -437,6 +475,39 @@ export async function clearGuildCommands(
   return { ok: true, status: res.status };
 }
 
+export async function clearAllGuildCommands(
+  env: any,
+  guildIds: string[],
+  appIdOverride?: string
+): Promise<{ clearedCount: number; failedCount: number; errors: string[] }> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) {
+    return {
+      clearedCount: 0,
+      failedCount: guildIds.length,
+      errors: ["DISCORD_BOT_TOKEN is not configured."],
+    };
+  }
+  const appId = appIdOverride || (await resolveAuthoritativeAppId(env));
+  let clearedCount = 0;
+  let failedCount = 0;
+  const errors: string[] = [];
+
+  await Promise.all(
+    guildIds.slice(0, 25).map(async (gid) => {
+      const res = await clearGuildCommands(env, gid, appId);
+      if (res.ok) {
+        clearedCount++;
+      } else {
+        failedCount++;
+        if (res.error) errors.push(`${gid}: ${res.error}`);
+      }
+    })
+  );
+
+  return { clearedCount, failedCount, errors };
+}
+
 export async function inspectGuildCommandAvailability(
   env: any,
   guilds: Array<{ id: string; name: string }>,
@@ -467,18 +538,34 @@ export async function inspectGuildCommandAvailability(
 
       const guildNames = guildRes.commands.map((c) => c.name);
       const hasGuildWidget = guildNames.includes("widget");
+      const guildWidgetComparison = hasGuildWidget
+        ? compareDiscordCommands(guildRes.commands).comparisons.find((c) => c.name === "widget")
+        : null;
+      const guildWidgetOutdated = Boolean(
+        guildWidgetComparison && guildWidgetComparison.syncState === "outdated"
+      );
+      const hasDuplicateWidget = hasGuildWidget && hasGlobalWidget;
+      const hasStaleGuildOverrides = guildNames.length > 0 && (!hasGuildWidget || guildWidgetOutdated);
+
       let widgetStatus: GuildCommandAvailabilityItem["widgetStatus"] = "missing_command";
       let detail = "/widget is not registered globally or in this server yet.";
 
-      if (hasGuildWidget) {
+      if (hasDuplicateWidget) {
+        widgetStatus = "duplicate_conflict";
+        detail = guildWidgetOutdated
+          ? "Duplicate & outdated guild /widget shadows global /widget. Clear guild overrides so Discord shows the current global /widget."
+          : "Duplicate /widget registered both globally and per-guild. Clear guild overrides to avoid duplicate slash entries.";
+      } else if (hasGuildWidget) {
         widgetStatus = "available_guild";
-        detail = `Active via instant guild registration (${guildNames.length} guild commands).`;
+        detail = guildWidgetOutdated
+          ? `Active via guild override, but schema differs from code (${guildWidgetComparison?.diffReason || "outdated"}). Sync Guild or Clear Overrides.`
+          : `Active via instant guild registration (${guildNames.length} guild command${guildNames.length === 1 ? "" : "s"}).`;
       } else if (hasGlobalWidget) {
         widgetStatus = "available_global";
         detail =
           guildNames.length > 0
-            ? `/widget is active globally; ${guildNames.length} guild-specific command(s) also exist (may override globals).`
-            : "Active globally. Use Sync Guild Commands for immediate client refresh if Discord caches old menu.";
+            ? `/widget is active globally, alongside ${guildNames.length} guild-specific command override(s) (${guildNames.join(", ")}). Consider clearing overrides if unneeded.`
+            : "Active globally. Use Sync Guild only if testing instant client refresh; clear afterwards to avoid duplicates.";
       }
 
       return {
@@ -490,6 +577,9 @@ export async function inspectGuildCommandAvailability(
         widgetStatus,
         detail,
         guildCommandNames: guildNames,
+        hasDuplicateWidget,
+        hasStaleGuildOverrides,
+        guildWidgetOutdated,
       } satisfies GuildCommandAvailabilityItem;
     })
   );
@@ -577,17 +667,28 @@ export async function fetchBotEmojis(
   return { applicationEmojis, guildEmojis, errors };
 }
 
+function normalizeIntArray(input: unknown, fallback: number[]): number[] {
+  const arr = Array.isArray(input) ? input.map((v) => Number(v)).filter(Number.isFinite) : fallback;
+  return [...new Set(arr)].sort((a, b) => a - b);
+}
+
 export function compareDiscordCommands(liveCommands: LiveDiscordCommand[]) {
   const liveByName = new Map(liveCommands.map((cmd) => [cmd.name, cmd]));
   const localNames = new Set(COMMANDS.map((c) => c.name));
 
   const comparisons = (COMMANDS as DiscordCommandDef[]).map((local) => {
+    const localType = local.type ?? 1;
+    const localIntegrationTypes = normalizeIntArray(local.integration_types, [0]);
+    const localContexts = normalizeIntArray(local.contexts, [0]);
     const remote = liveByName.get(local.name);
     if (!remote) {
       return {
         name: local.name,
+        type: localType,
         description: local.description,
         defaultMemberPermissions: local.default_member_permissions || null,
+        integrationTypes: localIntegrationTypes,
+        contexts: localContexts,
         options: local.options || [],
         syncState: "missing" as const,
         liveId: null as string | null,
@@ -616,16 +717,36 @@ export function compareDiscordCommands(liveCommands: LiveDiscordCommand[]) {
 
     const localPerm = local.default_member_permissions || null;
     const remotePerm = remote.default_member_permissions || null;
+    const remoteType = remote.type ?? 1;
+    const remoteIntegrationTypes = Array.isArray(remote.integration_types)
+      ? normalizeIntArray(remote.integration_types, [])
+      : null;
+    const remoteContexts = Array.isArray(remote.contexts)
+      ? normalizeIntArray(remote.contexts, [])
+      : null;
 
     const reasons: string[] = [];
+    if (localType !== remoteType) reasons.push("command type updated");
     if (local.description !== remote.description) reasons.push("description updated");
     if (localPerm !== remotePerm) reasons.push("permissions updated");
+    if (
+      remoteIntegrationTypes &&
+      JSON.stringify(localIntegrationTypes) !== JSON.stringify(remoteIntegrationTypes)
+    ) {
+      reasons.push("integration_types updated");
+    }
+    if (remoteContexts && JSON.stringify(localContexts) !== JSON.stringify(remoteContexts)) {
+      reasons.push("contexts updated");
+    }
     if (localOpts !== remoteOpts) reasons.push("options updated");
 
     return {
       name: local.name,
+      type: localType,
       description: local.description,
       defaultMemberPermissions: localPerm,
+      integrationTypes: localIntegrationTypes,
+      contexts: localContexts,
       options: local.options || [],
       syncState: reasons.length > 0 ? ("outdated" as const) : ("synced" as const),
       liveId: remote.id,
@@ -655,6 +776,196 @@ export function compareDiscordCommands(liveCommands: LiveDiscordCommand[]) {
     outdatedCount,
     allInSync: missingCount === 0 && outdatedCount === 0 && extraRemoteCommands.length === 0,
   };
+}
+
+function normalizeEndpointUrl(raw?: string | null): string {
+  return String(raw || "").trim().replace(/\/+$/, "");
+}
+
+export function buildBotReadinessChecks(params: {
+  identity: BotIdentityInfo;
+  comparisons: ReturnType<typeof compareDiscordCommands>["comparisons"];
+  availability: GuildCommandAvailabilityItem[] | null;
+  expectedInteractionsUrl: string;
+  botTokenConfigured: boolean;
+  publicKeyConfigured: boolean;
+  kvBound: boolean;
+}): BotReadinessCheck[] {
+  const {
+    identity,
+    comparisons,
+    availability,
+    expectedInteractionsUrl,
+    botTokenConfigured,
+    publicKeyConfigured,
+    kvBound,
+  } = params;
+  const checks: BotReadinessCheck[] = [];
+
+  if (!botTokenConfigured || !identity.ok) {
+    checks.push({
+      id: "app_auth",
+      label: "Bot Token & Application Identity",
+      category: "registration",
+      status: "fail",
+      summary: identity.error || "DISCORD_BOT_TOKEN is not configured.",
+      remediation: "Configure DISCORD_BOT_TOKEN and DISCORD_APPLICATION_ID matching the Discord Developer Portal.",
+    });
+  } else if (identity.appIdMismatch) {
+    checks.push({
+      id: "app_auth",
+      label: "Bot Token & Application Identity",
+      category: "registration",
+      status: "fail",
+      summary: `Configured DISCORD_APPLICATION_ID (${identity.envAppId}) does not match live token App ID (${identity.appId}).`,
+      remediation: "Update DISCORD_APPLICATION_ID in wrangler secrets/vars to match the authenticated bot token.",
+    });
+  } else {
+    checks.push({
+      id: "app_auth",
+      label: "Bot Token & Application Identity",
+      category: "registration",
+      status: "pass",
+      summary: `Authenticated as ${identity.botUser?.username || identity.appId} (App ID ${identity.appId}).`,
+    });
+  }
+
+  const widgetComparison = comparisons.find((c) => c.name === "widget");
+  if (!widgetComparison || widgetComparison.syncState === "missing") {
+    checks.push({
+      id: "widget_registry",
+      label: "/widget Global Command Registration",
+      category: "registration",
+      status: "fail",
+      summary: "/widget is missing from Discord's live global command registry.",
+      remediation: "Click Synchronize Commands to register /widget globally with Manage Server permissions & guild context.",
+    });
+  } else if (widgetComparison.syncState === "outdated") {
+    checks.push({
+      id: "widget_registry",
+      label: "/widget Global Command Registration",
+      category: "registration",
+      status: "warn",
+      summary: `/widget is registered (ID ${widgetComparison.liveId}) but differs (${widgetComparison.diffReason}).`,
+      remediation: "Click Synchronize Commands to update schema, integration_types, and contexts.",
+    });
+  } else {
+    checks.push({
+      id: "widget_registry",
+      label: "/widget Global Command Registration",
+      category: "registration",
+      status: "pass",
+      summary: `/widget synced globally (ID ${widgetComparison.liveId}, Manage Guild / Admin, Guild Context).`,
+    });
+  }
+
+  const actualEndpoint = normalizeEndpointUrl(identity.application?.interactionsEndpointUrl);
+  const expectedEndpoint = normalizeEndpointUrl(expectedInteractionsUrl);
+  if (!identity.ok) {
+    checks.push({
+      id: "interactions_url",
+      label: "Interactions Endpoint URL",
+      category: "execution",
+      status: "warn",
+      summary: `Cannot verify live Discord Portal Interactions URL without a valid bot token. Expected: ${expectedInteractionsUrl}`,
+      remediation: `Verify Developer Portal -> General Information -> Interactions Endpoint URL equals ${expectedInteractionsUrl}`,
+    });
+  } else if (!actualEndpoint) {
+    checks.push({
+      id: "interactions_url",
+      label: "Interactions Endpoint URL",
+      category: "execution",
+      status: "fail",
+      summary: "Discord Developer Portal has no Interactions Endpoint URL saved. Slash commands cannot execute without it.",
+      remediation: `Set Interactions Endpoint URL in Discord Developer Portal to: ${expectedInteractionsUrl}`,
+    });
+  } else if (actualEndpoint !== expectedEndpoint) {
+    checks.push({
+      id: "interactions_url",
+      label: "Interactions Endpoint URL",
+      category: "execution",
+      status: "fail",
+      summary: `Portal points to "${actualEndpoint}" instead of "${expectedEndpoint}".`,
+      remediation: `Update Developer Portal -> General Information -> Interactions Endpoint URL to ${expectedInteractionsUrl}`,
+    });
+  } else {
+    checks.push({
+      id: "interactions_url",
+      label: "Interactions Endpoint URL",
+      category: "execution",
+      status: "pass",
+      summary: `Portal verified pointing to ${actualEndpoint}.`,
+    });
+  }
+
+  checks.push({
+    id: "runtime_bindings",
+    label: "Signature Verification & Storage",
+    category: "execution",
+    status: publicKeyConfigured && kvBound ? "pass" : "fail",
+    summary:
+      publicKeyConfigured && kvBound
+        ? "DISCORD_PUBLIC_KEY Ed25519 verification and DISCORD_BOT Workers KV are ready."
+        : `${!publicKeyConfigured ? "DISCORD_PUBLIC_KEY missing. " : ""}${!kvBound ? "DISCORD_BOT KV unbound." : ""}`.trim(),
+    ...(publicKeyConfigured && kvBound
+      ? {}
+      : { remediation: "Bind DISCORD_BOT KV and set DISCORD_PUBLIC_KEY secret matching the Developer Portal." }),
+  });
+
+  if (identity.application?.hasGuildCommandsInstallScope === false) {
+    checks.push({
+      id: "portal_install_scope",
+      label: "Developer Portal Default Install Scopes",
+      category: "availability",
+      status: "warn",
+      summary: `Portal Guild Install scopes (${identity.application.guildInstallScopes.join(", ") || "none"}) omit "applications.commands" or "bot".`,
+      remediation: "Developer Portal -> Installation -> Guild Install must include both bot and applications.commands scopes.",
+    });
+  } else if (identity.application?.hasGuildCommandsInstallScope === true) {
+    checks.push({
+      id: "portal_install_scope",
+      label: "Developer Portal Default Install Scopes",
+      category: "availability",
+      status: "pass",
+      summary: `Guild Install includes bot + applications.commands scopes.`,
+    });
+  }
+
+  if (availability && availability.length > 0) {
+    const missingScopeCount = availability.filter((g) => !g.hasCommandsScope).length;
+    const duplicateCount = availability.filter((g) => g.widgetStatus === "duplicate_conflict").length;
+    const missingCmdCount = availability.filter((g) => g.widgetStatus === "missing_command").length;
+    const outdatedGuildCount = availability.filter((g) => g.guildWidgetOutdated).length;
+    if (missingScopeCount > 0 || missingCmdCount > 0) {
+      checks.push({
+        id: "server_availability",
+        label: "Connected Server /widget Availability",
+        category: "availability",
+        status: "fail",
+        summary: `${missingScopeCount} server(s) lack applications.commands scope; ${missingCmdCount} server(s) missing /widget.`,
+        remediation: "Re-authorize flagged servers with bot+applications.commands invite link and sync commands.",
+      });
+    } else if (duplicateCount > 0 || outdatedGuildCount > 0) {
+      checks.push({
+        id: "server_availability",
+        label: "Connected Server /widget Availability",
+        category: "availability",
+        status: "warn",
+        summary: `${duplicateCount} server(s) have duplicate global+guild /widget entries${outdatedGuildCount > 0 ? ` (${outdatedGuildCount} outdated)` : ""}.`,
+        remediation: "Clear redundant guild command overrides below once global sync is active.",
+      });
+    } else {
+      checks.push({
+        id: "server_availability",
+        label: "Connected Server /widget Availability",
+        category: "availability",
+        status: "pass",
+        summary: `/widget is accessible in all ${availability.length} checked server(s).`,
+      });
+    }
+  }
+
+  return checks;
 }
 
 export async function registerCommands(env: any): Promise<Response> {

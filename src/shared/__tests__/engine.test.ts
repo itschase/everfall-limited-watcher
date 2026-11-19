@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import {
   extractVehicleMetadata,
   resolveListingPresentation,
@@ -14,7 +15,15 @@ import {
   DEFAULT_WIDGET_TEMPLATE,
   validateDiscordPayloadLimits,
 } from "../presentation";
-import { hasManageServerPermission } from "../../commands";
+import { handleInteraction, hasManageServerPermission } from "../../commands";
+import {
+  buildBotReadinessChecks,
+  COMMANDS,
+  compareDiscordCommands,
+} from "../../register";
+import { createSessionToken } from "../../admin";
+import { handleApiRequest } from "../../api";
+import { setWidgetDeployment } from "../../kv";
 
 test("extractVehicleMetadata normalizes Seraph GTS features without hyphen and isolates terms", () => {
   const desc =
@@ -230,4 +239,300 @@ test("hasManageServerPermission accurately authorizes Manage Guild (0x20) and Ad
   assert.equal(hasManageServerPermission({ permissions: "0" }), false);
   assert.equal(hasManageServerPermission({ permissions: "not-a-bigint" }), false);
   assert.equal(hasManageServerPermission(null), false);
+});
+
+test("compareDiscordCommands checks integration_types, contexts, permissions, and detects /widget drift", () => {
+  const fullLive = COMMANDS.map((cmd, idx) => ({
+    id: `9000000000000000${idx}`,
+    application_id: "1571958001928245378",
+    version: "1",
+    type: cmd.type,
+    name: cmd.name,
+    description: cmd.description,
+    default_member_permissions: cmd.default_member_permissions || null,
+    integration_types: cmd.integration_types,
+    contexts: cmd.contexts,
+    options: cmd.options,
+  }));
+
+  const clean = compareDiscordCommands(fullLive);
+  assert.equal(clean.allInSync, true);
+  assert.equal(clean.syncedCount, COMMANDS.length);
+
+  // Simulate drifted /widget with wrong contexts and missing DM restriction
+  const drifted = fullLive.map((c) =>
+    c.name === "widget" ? { ...c, contexts: [0, 1, 2], default_member_permissions: null } : c
+  );
+  const driftedResult = compareDiscordCommands(drifted);
+  const widgetDiff = driftedResult.comparisons.find((c) => c.name === "widget");
+  assert.equal(driftedResult.allInSync, false);
+  assert.equal(widgetDiff?.syncState, "outdated");
+  assert.match(widgetDiff?.diffReason || "", /permissions updated/);
+  assert.match(widgetDiff?.diffReason || "", /contexts updated/);
+});
+
+test("buildBotReadinessChecks separates command sync, Portal interactions endpoint, and guild duplicate/scope diagnostics", () => {
+  const syncedComparisons = compareDiscordCommands(
+    COMMANDS.map((cmd, idx) => ({
+      id: `9100000000000000${idx}`,
+      application_id: "1571958001928245378",
+      type: cmd.type,
+      name: cmd.name,
+      description: cmd.description,
+      default_member_permissions: cmd.default_member_permissions || null,
+      integration_types: cmd.integration_types,
+      contexts: cmd.contexts,
+      options: cmd.options,
+    }))
+  ).comparisons;
+
+  const checks = buildBotReadinessChecks({
+    identity: {
+      ok: true,
+      appId: "1571958001928245378",
+      envAppId: "1571958001928245378",
+      appIdMismatch: false,
+      botUser: { id: "1571958001928245378", username: "Everfall", globalName: null, avatarUrl: null },
+      application: {
+        id: "1571958001928245378",
+        name: "Everfall",
+        description: "",
+        interactionsEndpointUrl: "https://wrong.example.com/interactions",
+        botPublic: true,
+        installScopes: ["bot", "applications.commands"],
+        guildInstallScopes: ["bot", "applications.commands"],
+        hasGuildCommandsInstallScope: true,
+      },
+    },
+    comparisons: syncedComparisons,
+    availability: [
+      {
+        guildId: "111111111111111111",
+        guildName: "Alpha",
+        hasCommandsScope: true,
+        httpStatus: 200,
+        guildCommandCount: 1,
+        widgetStatus: "duplicate_conflict",
+        detail: "Duplicate /widget",
+        guildCommandNames: ["widget"],
+      },
+    ],
+    expectedInteractionsUrl: "https://everfall-limited-watcher.itschase.workers.dev/interactions",
+    botTokenConfigured: true,
+    publicKeyConfigured: true,
+    kvBound: true,
+  });
+
+  const endpointCheck = checks.find((c) => c.id === "interactions_url");
+  const availCheck = checks.find((c) => c.id === "server_availability");
+  const regCheck = checks.find((c) => c.id === "widget_registry");
+  assert.equal(regCheck?.status, "pass");
+  assert.equal(endpointCheck?.status, "fail");
+  assert.equal(availCheck?.status, "warn");
+});
+
+function createMemoryKv() {
+  const store = new Map<string, string>();
+  return {
+    async get(key: string, type?: string) {
+      const val = store.get(key);
+      if (val === undefined) return null;
+      if (type === "json") return JSON.parse(val);
+      return val;
+    },
+    async getWithMetadata(key: string) {
+      const val = store.get(key);
+      return { value: val ?? null, metadata: null };
+    },
+    async put(key: string, value: string | ArrayBuffer) {
+      store.set(key, typeof value === "string" ? value : "");
+    },
+    async delete(key: string) {
+      store.delete(key);
+    },
+    async list(opts?: { prefix?: string }) {
+      const prefix = opts?.prefix || "";
+      const keys = [...store.keys()]
+        .filter((name) => name.startsWith(prefix))
+        .map((name) => ({ name }));
+      return { keys, list_complete: true };
+    },
+  };
+}
+
+test("handleInteraction verifies Ed25519 signature, immediately defers /widget, and patches private preview confirmation", async () => {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const spki = publicKey.export({ type: "spki", format: "der" });
+  const rawPubHex = Buffer.from(spki.subarray(-32)).toString("hex");
+
+  const kv = createMemoryKv();
+  const env = {
+    DISCORD_PUBLIC_KEY: rawPubHex,
+    DISCORD_APPLICATION_ID: "1571958001928245378",
+    DISCORD_BOT: kv,
+    PUBLIC_ORIGIN: "https://portal.example.com",
+  };
+
+  const payload = JSON.stringify({
+    type: 2,
+    application_id: "1571958001928245378",
+    token: "mock_interaction_token_123",
+    guild_id: "111111111111111111",
+    channel_id: "222222222222222222",
+    member: { permissions: "32", user: { id: "333333333333333333", username: "serveradmin" } },
+    data: { name: "widget", type: 1 },
+  });
+  const ts = String(Math.floor(Date.now() / 1000));
+  const sig = crypto.sign(null, Buffer.from(ts + payload), privateKey).toString("hex");
+
+  const patchedUpdates: any[] = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const urlStr = String(input);
+    if (urlStr.includes("/messages/@original")) {
+      patchedUpdates.push(JSON.parse(String(init?.body || "{}")));
+      return new Response(JSON.stringify({ id: "preview_msg" }), { status: 200 });
+    }
+    return new Response("not found", { status: 404 });
+  }) as any;
+
+  const waitPromises: Promise<unknown>[] = [];
+  try {
+    const req = new Request("https://portal.example.com/interactions", {
+      method: "POST",
+      headers: {
+        "x-signature-ed25519": sig,
+        "x-signature-timestamp": ts,
+        "content-type": "application/json",
+      },
+      body: payload,
+    });
+    const ctx = {
+      waitUntil(p: Promise<unknown>) {
+        waitPromises.push(p);
+      },
+    } as any;
+    const res = await handleInteraction(req, env, ctx, "https://portal.example.com");
+    assert.equal(res.status, 200);
+    const ackJson: any = await res.json();
+    assert.equal(ackJson.type, 5);
+    assert.equal(ackJson.data?.flags, 64);
+
+    await Promise.all(waitPromises);
+    assert.equal(patchedUpdates.length, 1);
+    assert.match(patchedUpdates[0].content, /Live Status Widget Preview/);
+    assert.ok(Array.isArray(patchedUpdates[0].embeds) && patchedUpdates[0].embeds.length === 1);
+    const btnRow = patchedUpdates[0].components.at(-1);
+    assert.ok(btnRow.components.some((b: any) => String(b.custom_id).startsWith("widget_confirm:")));
+    assert.ok(btnRow.components.some((b: any) => String(b.custom_id).startsWith("widget_cancel:")));
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test("Server dashboard widget routes enforce auth, per-guild ownership, and cross-server widget isolation", async () => {
+  const kv = createMemoryKv();
+  const secret = "test_session_secret_0123456789abcdef";
+  const env = {
+    DISCORD_CLIENT_SECRET: secret,
+    DISCORD_BOT_TOKEN: "mock_bot_token",
+    DISCORD_BOT: kv,
+    PUBLIC_ORIGIN: "https://portal.example.com",
+  };
+
+  // User manages guild A (111...) only, NOT guild B (222...)
+  await kv.put(
+    "user_guilds:555555555555555555",
+    JSON.stringify([
+      { id: "111111111111111111", name: "Guild A", permissions: "32", owner: false },
+      { id: "222222222222222222", name: "Guild B (Viewer Only)", permissions: "1024", owner: false },
+    ])
+  );
+  // Seed accessible channels cache for Guild A & Guild B
+  await kv.put(
+    "guild_controls:111111111111111111",
+    JSON.stringify({
+      channels: [
+        { id: "333333333333333333", name: "widget-updates", type: 0 },
+        { id: "444444444444444444", name: "second-channel", type: 0 },
+      ],
+      roles: [],
+    })
+  );
+  await setWidgetDeployment(env, {
+    id: "222222222222222222:999999999999999999",
+    guildId: "222222222222222222",
+    channelId: "999999999999999999",
+    messageId: "888888888888888888",
+    deployedAt: Date.now(),
+  });
+
+  const token = await createSessionToken("555555555555555555", "guildmod", "", secret);
+  const cookieHeader = `everfall_session=${token}`;
+
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const urlStr = String(input);
+    const method = (init?.method || "GET").toUpperCase();
+    if (urlStr.includes("/channels/333333333333333333/messages") && method === "POST") {
+      return new Response(JSON.stringify({ id: "777777777777777777" }), { status: 200 });
+    }
+    if (urlStr.includes("/channels/333333333333333333/messages/777777777777777777") && method === "DELETE") {
+      return new Response(null, { status: 204 });
+    }
+    return new Response(JSON.stringify({ message: "mock ok" }), { status: 200 });
+  }) as any;
+
+  try {
+    // 1. Unauthenticated request blocked
+    const unauthReq = new Request("https://portal.example.com/api/dashboard/servers/111111111111111111/widgets/deploy", {
+      method: "POST",
+      body: JSON.stringify({ channelId: "333333333333333333" }),
+    });
+    const unauthRes = await handleApiRequest(unauthReq, env, new URL(unauthReq.url));
+    assert.equal(unauthRes?.status, 401);
+
+    // 2. Non-managed Guild B rejected with 403
+    const forbiddenReq = new Request("https://portal.example.com/api/dashboard/servers/222222222222222222/widgets/deploy", {
+      method: "POST",
+      headers: { Cookie: cookieHeader, "Content-Type": "application/json" },
+      body: JSON.stringify({ channelId: "999999999999999999" }),
+    });
+    const forbiddenRes = await handleApiRequest(forbiddenReq, env, new URL(forbiddenReq.url));
+    assert.equal(forbiddenRes?.status, 403);
+
+    // 3. Cross-tenant widget ID via Guild A's URL rejected with 404
+    const crossTenantReq = new Request(
+      `https://portal.example.com/api/dashboard/servers/111111111111111111/widgets/${encodeURIComponent(
+        "222222222222222222:999999999999999999"
+      )}/refresh`,
+      { method: "POST", headers: { Cookie: cookieHeader } }
+    );
+    const crossTenantRes = await handleApiRequest(crossTenantReq, env, new URL(crossTenantReq.url));
+    assert.equal(crossTenantRes?.status, 404);
+
+    // 4. Managed Guild A deploy & delete succeed and synchronize KV
+    const deployReq = new Request("https://portal.example.com/api/dashboard/servers/111111111111111111/widgets/deploy", {
+      method: "POST",
+      headers: { Cookie: cookieHeader, "Content-Type": "application/json" },
+      body: JSON.stringify({ channelId: "333333333333333333", templateId: "default" }),
+    });
+    const deployRes = await handleApiRequest(deployReq, env, new URL(deployReq.url));
+    assert.equal(deployRes?.status, 200);
+    const deployJson: any = await deployRes!.json();
+    assert.equal(deployJson.ok, true);
+    assert.equal(deployJson.widget.id, "111111111111111111:333333333333333333");
+    assert.equal(deployJson.widget.messageId, "777777777777777777");
+
+    const delReq = new Request(
+      `https://portal.example.com/api/dashboard/servers/111111111111111111/widgets/${encodeURIComponent(
+        "111111111111111111:333333333333333333"
+      )}`,
+      { method: "DELETE", headers: { Cookie: cookieHeader } }
+    );
+    const delRes = await handleApiRequest(delReq, env, new URL(delReq.url));
+    assert.equal(delRes?.status, 200);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
 });

@@ -2,32 +2,58 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowRightLeft,
   ChevronDown,
   ChevronUp,
   ExternalLink,
   Hash,
+  LayoutPanelTop,
   Loader2,
+  Plus,
   RefreshCw,
   Search,
   Send,
   Shield,
+  Trash2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   apiFetch,
   DashboardServersResponse,
+  ListingItem,
   ManagedServer,
+  MonitorStatus,
   ServerStatus,
+  WidgetDeployment,
+  WidgetTemplateConfig,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, formatLocalDateTime } from "@/lib/utils";
+import { DEFAULT_WIDGET_TEMPLATE } from "../../../shared/presentation";
 import { useAuthActions } from "@/features/auth/useAuthActions";
 import { AppShell } from "@/components/layout/AppShell";
+import { WidgetPreviewCard } from "@/components/discord/DiscordMessagePreview";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -64,11 +90,504 @@ function ServerStatusIndicator({ status }: { status: ServerStatus }) {
   );
 }
 
+function ServerWidgetsSection({
+  server,
+  widgetDefault,
+  widgetTemplates,
+  previewListings,
+  monitorStatus,
+  publicOrigin,
+  onMutated,
+}: {
+  server: ManagedServer;
+  widgetDefault: WidgetTemplateConfig;
+  widgetTemplates: WidgetTemplateConfig[];
+  previewListings: ListingItem[];
+  monitorStatus: MonitorStatus | null;
+  publicOrigin?: string;
+  onMutated: () => void;
+}) {
+  const [deployOpen, setDeployOpen] = useState(false);
+  const [deployChannelId, setDeployChannelId] = useState(
+    server.config.channelId || server.channels[0]?.id || ""
+  );
+  const [deployTemplateId, setDeployTemplateId] = useState(
+    server.config.widgetTemplateId || "default"
+  );
+  const [deployConfirmed, setDeployConfirmed] = useState(false);
+  const [moveTarget, setMoveTarget] = useState<WidgetDeployment | null>(null);
+  const [moveChannelId, setMoveChannelId] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<WidgetDeployment | null>(null);
+  const [busyWidgetId, setBusyWidgetId] = useState<string | null>(null);
+
+  const widgets = server.widgets || [];
+  const templateOptions = useMemo(() => {
+    const out = [{ id: "default", name: widgetDefault.name || "Default Global Widget", template: widgetDefault }];
+    for (const tpl of widgetTemplates) {
+      out.push({ id: tpl.id, name: tpl.name, template: tpl });
+    }
+    return out;
+  }, [widgetDefault, widgetTemplates]);
+
+  const selectedDeployTemplate = useMemo(
+    () =>
+      templateOptions.find((t) => t.id === deployTemplateId)?.template || widgetDefault,
+    [deployTemplateId, templateOptions, widgetDefault]
+  );
+
+  const selectedDeployChannel = server.channels.find((c) => c.id === deployChannelId);
+
+  const deployMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ ok: boolean; jumpUrl?: string }>(
+        `/api/dashboard/servers/${server.id}/widgets/deploy`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            channelId: deployChannelId,
+            templateId: deployTemplateId,
+          }),
+        }
+      ),
+    onSuccess: () => {
+      setDeployOpen(false);
+      setDeployConfirmed(false);
+      onMutated();
+      toast.success(`Live status widget deployed to #${selectedDeployChannel?.name || "channel"}.`);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to deploy status widget.");
+    },
+  });
+
+  const refreshMutation = useMutation({
+    mutationFn: (widgetId: string) =>
+      apiFetch<{ ok: boolean }>(
+        `/api/dashboard/servers/${server.id}/widgets/${encodeURIComponent(widgetId)}/refresh`,
+        { method: "POST" }
+      ),
+    onSuccess: () => {
+      setBusyWidgetId(null);
+      onMutated();
+      toast.success("Status widget updated on Discord.");
+    },
+    onError: (err: Error) => {
+      setBusyWidgetId(null);
+      toast.error(err.message || "Failed to refresh widget.");
+    },
+  });
+
+  const templateMutation = useMutation({
+    mutationFn: ({ widgetId, templateId }: { widgetId: string; templateId: string }) =>
+      apiFetch<{ ok: boolean; error?: string | null }>(
+        `/api/dashboard/servers/${server.id}/widgets/${encodeURIComponent(widgetId)}/template`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ templateId }),
+        }
+      ),
+    onSuccess: (res) => {
+      setBusyWidgetId(null);
+      onMutated();
+      if (res.ok) {
+        toast.success("Widget preset saved and synced on Discord.");
+      } else {
+        toast.warning(res.error || "Preset saved, but Discord sync returned a warning.");
+      }
+    },
+    onError: (err: Error) => {
+      setBusyWidgetId(null);
+      toast.error(err.message || "Failed to switch widget template.");
+    },
+  });
+
+  const moveMutation = useMutation({
+    mutationFn: ({ widgetId, channelId }: { widgetId: string; channelId: string }) =>
+      apiFetch<{ ok: boolean }>(
+        `/api/dashboard/servers/${server.id}/widgets/${encodeURIComponent(widgetId)}/move`,
+        {
+          method: "POST",
+          body: JSON.stringify({ channelId }),
+        }
+      ),
+    onSuccess: () => {
+      setMoveTarget(null);
+      setMoveChannelId("");
+      onMutated();
+      toast.success("Moved live status widget to destination channel.");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to move widget.");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (widgetId: string) =>
+      apiFetch<{ ok: boolean }>(
+        `/api/dashboard/servers/${server.id}/widgets/${encodeURIComponent(widgetId)}`,
+        { method: "DELETE" }
+      ),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      onMutated();
+      toast.success("Removed status widget from Discord & server registry.");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to remove widget.");
+    },
+  });
+
+  return (
+    <div className="space-y-4 border-t border-border pt-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <LayoutPanelTop className="h-4 w-4 text-zinc-400" />
+            <h4 className="text-sm font-semibold text-white">
+              Live Status Widget ({widgets.length})
+            </h4>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Deploy or manage auto-updating stock &amp; recent drops embeds in this server. Updates in-place
+            within 1 minute of each store check without mentioning roles.
+          </p>
+        </div>
+
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={server.channels.length === 0}
+          onClick={() => {
+            setDeployChannelId(
+              (curr) => curr || server.config.channelId || server.channels[0]?.id || ""
+            );
+            setDeployConfirmed(false);
+            setDeployOpen(true);
+          }}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Deploy Live Widget
+        </Button>
+      </div>
+
+      {widgets.length === 0 ? (
+        <div className="rounded-lg border border-border bg-zinc-950/70 p-4 text-xs text-muted-foreground">
+          No live status widget is deployed in <strong>{server.name}</strong> yet. Click{" "}
+          <strong className="text-zinc-200">Deploy Live Widget</strong> above to preview and post one, or
+          run <code>/widget</code> inside any writable Discord channel.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {widgets.map((w) => {
+            const channelObj = server.channels.find((c) => c.id === w.channelId);
+            const busy = busyWidgetId === w.id;
+            const jumpUrl = `https://discord.com/channels/${w.guildId}/${w.channelId}/${w.messageId}`;
+            return (
+              <div
+                key={w.id}
+                className="flex flex-col gap-3 rounded-lg border border-border bg-zinc-950/85 p-3.5 lg:flex-row lg:items-center lg:justify-between"
+              >
+                <div className="min-w-0 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1 font-mono text-xs font-semibold text-white">
+                      <Hash className="h-3.5 w-3.5 text-muted-foreground" />
+                      {channelObj ? channelObj.name : w.channelId}
+                    </span>
+                    <Badge
+                      variant={
+                        w.lastSyncStatus === "error"
+                          ? "destructive"
+                          : w.lastSyncStatus === "skipped"
+                            ? "secondary"
+                            : "success"
+                      }
+                    >
+                      {w.lastSyncStatus === "error"
+                        ? "Sync Error"
+                        : w.lastSyncStatus === "skipped"
+                          ? "Up to Date"
+                          : "Synced"}
+                    </Badge>
+                    {!channelObj && !server.controlsError && (
+                      <Badge variant="warning">Channel Missing</Badge>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground tabular-nums">
+                    Last synced:{" "}
+                    {w.lastSyncedAt
+                      ? formatLocalDateTime(w.lastSyncedAt)
+                      : formatLocalDateTime(w.deployedAt)}
+                    {w.deployedByUsername ? ` • Deployed by ${w.deployedByUsername}` : ""}
+                  </p>
+                  {w.lastSyncError && (
+                    <p className="text-[11px] text-red-300">{w.lastSyncError}</p>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    value={w.templateId || "default"}
+                    disabled={busy || templateMutation.isPending}
+                    onValueChange={(tplId) => {
+                      setBusyWidgetId(w.id);
+                      templateMutation.mutate({ widgetId: w.id, templateId: tplId });
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-44 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templateOptions.map((tpl) => (
+                        <SelectItem key={tpl.id} value={tpl.id}>
+                          {tpl.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <a
+                    href={jumpUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-secondary px-2.5 text-xs font-medium text-zinc-200 transition hover:bg-zinc-800 hover:text-white"
+                  >
+                    Open
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy || refreshMutation.isPending}
+                    onClick={() => {
+                      setBusyWidgetId(w.id);
+                      refreshMutation.mutate(w.id);
+                    }}
+                    className="h-8 px-2.5 text-xs"
+                  >
+                    {busy && refreshMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    Refresh
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={server.channels.length < 2}
+                    onClick={() => {
+                      setMoveTarget(w);
+                      setMoveChannelId(w.channelId);
+                    }}
+                    className="h-8 px-2.5 text-xs"
+                  >
+                    <ArrowRightLeft className="h-3.5 w-3.5" />
+                    Move
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setDeleteTarget(w)}
+                    className="h-8 px-2.5 text-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Preview & Confirm Deploy Modal */}
+      <Dialog open={deployOpen} onOpenChange={setDeployOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto thin-scrollbar">
+          <DialogHeader>
+            <DialogTitle>Preview &amp; Deploy Live Status Widget — {server.name}</DialogTitle>
+            <DialogDescription>
+              Choose the destination channel and template preset. Nothing will be posted publicly until
+              you confirm deployment.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Destination Channel</Label>
+                <Select value={deployChannelId} onValueChange={setDeployChannelId}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Choose writable channel" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {server.channels.map((ch) => (
+                      <SelectItem key={ch.id} value={ch.id}>
+                        #{ch.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Widget Template Preset</Label>
+                <Select value={deployTemplateId} onValueChange={setDeployTemplateId}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templateOptions.map((tpl) => (
+                      <SelectItem key={tpl.id} value={tpl.id}>
+                        {tpl.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Live Widget Embed Preview</Label>
+              <WidgetPreviewCard
+                template={selectedDeployTemplate}
+                listings={previewListings}
+                monitorStatus={monitorStatus}
+                portalOrigin={publicOrigin}
+              />
+            </div>
+
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-border bg-zinc-950 p-3 text-xs text-zinc-200">
+              <Checkbox
+                checked={deployConfirmed}
+                onCheckedChange={(v) => setDeployConfirmed(Boolean(v))}
+              />
+              <span>
+                Confirm posting this public auto-updating widget into{" "}
+                <strong>#{selectedDeployChannel?.name || "selected channel"}</strong> (no role
+                mentions).
+              </span>
+            </label>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeployOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!deployChannelId || !deployConfirmed || deployMutation.isPending}
+              onClick={() => deployMutation.mutate()}
+            >
+              {deployMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Deploying...
+                </>
+              ) : (
+                "Post Status Widget"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move Widget Channel Modal */}
+      <Dialog open={Boolean(moveTarget)} onOpenChange={(open) => !open && setMoveTarget(null)}>
+        {moveTarget && (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Move Status Widget Channel</DialogTitle>
+              <DialogDescription>
+                Posts a fresh live widget in the destination channel inside <strong>{server.name}</strong>{" "}
+                and cleanly deletes the previous widget message.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1.5">
+              <Label>Destination Channel</Label>
+              <Select value={moveChannelId} onValueChange={setMoveChannelId}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Choose channel" />
+                </SelectTrigger>
+                <SelectContent>
+                  {server.channels.map((ch) => (
+                    <SelectItem key={ch.id} value={ch.id}>
+                      #{ch.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setMoveTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={
+                  !moveChannelId ||
+                  moveChannelId === moveTarget.channelId ||
+                  moveMutation.isPending
+                }
+                onClick={() =>
+                  moveMutation.mutate({ widgetId: moveTarget.id, channelId: moveChannelId })
+                }
+              >
+                {moveMutation.isPending ? "Moving..." : "Move Widget"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        {deleteTarget && (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Remove Live Status Widget</DialogTitle>
+              <DialogDescription>
+                Deletes the Discord widget message (if still present) and stops automatic updates for
+                that channel in <strong>{server.name}</strong>.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={deleteMutation.isPending}
+                onClick={() => deleteMutation.mutate(deleteTarget.id)}
+              >
+                {deleteMutation.isPending ? "Removing..." : "Confirm Remove"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+    </div>
+  );
+}
+
 function ServerConfigPanel({
   server,
+  widgetDefault,
+  widgetTemplates,
+  previewListings,
+  monitorStatus,
+  publicOrigin,
   onSaved,
 }: {
   server: ManagedServer;
+  widgetDefault: WidgetTemplateConfig;
+  widgetTemplates: WidgetTemplateConfig[];
+  previewListings: ListingItem[];
+  monitorStatus: MonitorStatus | null;
+  publicOrigin?: string;
   onSaved: () => void;
 }) {
   const [channelId, setChannelId] = useState(server.config.channelId || "");
@@ -344,6 +863,16 @@ function ServerConfigPanel({
           </a>
         </div>
       </div>
+
+      <ServerWidgetsSection
+        server={server}
+        widgetDefault={widgetDefault}
+        widgetTemplates={widgetTemplates}
+        previewListings={previewListings}
+        monitorStatus={monitorStatus}
+        publicOrigin={publicOrigin}
+        onMutated={onSaved}
+      />
     </div>
   );
 }
@@ -524,6 +1053,14 @@ export function DashboardPage() {
                                   : "None"}
                               </strong>
                             </span>
+                            <span>
+                              Live Widgets:{" "}
+                              <strong className="font-medium text-zinc-200">
+                                {(server.widgets?.length || 0) > 0
+                                  ? `${server.widgets.length} active`
+                                  : "None"}
+                              </strong>
+                            </span>
                           </>
                         ) : (
                           <span>{server.statusReason}</span>
@@ -561,6 +1098,11 @@ export function DashboardPage() {
                 {server.isInstalled && isExpanded && (
                   <ServerConfigPanel
                     server={server}
+                    widgetDefault={data?.widgetDefault || DEFAULT_WIDGET_TEMPLATE}
+                    widgetTemplates={data?.widgetTemplates || []}
+                    previewListings={data?.previewListings || []}
+                    monitorStatus={data?.monitorStatus || null}
+                    publicOrigin={data?.publicOrigin}
                     onSaved={() => void queryClient.invalidateQueries({ queryKey: ["dashboard-servers"] })}
                   />
                 )}
@@ -573,11 +1115,15 @@ export function DashboardPage() {
       {/* Subtle Quick Setup Guidance */}
       <div className="mt-6 rounded-xl border border-border bg-card/60 p-4 text-xs text-muted-foreground">
         <span className="font-semibold text-zinc-200">Quick Setup:</span> After adding the bot to a
-        Discord server, you can also run{" "}
+        Discord server, you can run{" "}
         <code className="select-all cursor-text rounded border border-border bg-zinc-950 px-1.5 py-0.5 font-mono text-zinc-200">
           /setup #your-channel
         </code>{" "}
-        inside Discord to set the notification channel.
+        or{" "}
+        <code className="select-all cursor-text rounded border border-border bg-zinc-950 px-1.5 py-0.5 font-mono text-zinc-200">
+          /widget
+        </code>{" "}
+        inside Discord, or deploy widgets directly from any server panel above.
       </div>
     </AppShell>
   );

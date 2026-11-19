@@ -790,6 +790,36 @@ export async function sendDiscordChannelMessage(
   };
 }
 
+export async function deleteDiscordChannelMessage(
+  token: string,
+  channelId: string,
+  messageId: string
+): Promise<{ ok: boolean; httpStatus?: number; error?: string }> {
+  if (!token || !channelId || !messageId) {
+    return { ok: false, error: "Missing token, channelId, or messageId." };
+  }
+  try {
+    const res = await fetchDiscordWithRetry(
+      `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bot ${token}` },
+      }
+    );
+    if (res.ok || res.status === 404) {
+      return { ok: true, httpStatus: res.status };
+    }
+    const errText = await res.text().catch(() => "");
+    return {
+      ok: false,
+      httpStatus: res.status,
+      error: `Discord API ${res.status}: ${errText.slice(0, 160)}`,
+    };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || "Network error deleting message." };
+  }
+}
+
 export async function editDiscordChannelMessage(
   token: string,
   channelId: string,
@@ -1204,12 +1234,15 @@ export async function deployStatusWidgetToChannel(
     deployedByUsername?: string;
     templateId?: string;
     customTemplate?: WidgetTemplateConfig | null;
+    keepExistingMessage?: boolean;
   }
 ): Promise<{ ok: boolean; widget?: WidgetDeployment; messageId?: string; error?: string }> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return { ok: false, error: "DISCORD_BOT_TOKEN is not configured." };
 
-  const [payload, bundle, snapshot] = await Promise.all([
+  const widgetId = `${guildId}:${channelId}`;
+  const [existingSameChannel, payload, bundle, snapshot] = await Promise.all([
+    getWidgetDeploymentById(env, widgetId),
     buildWidgetMessagePayload(env, originHint, {
       guildId,
       templateId: options?.templateId,
@@ -1219,13 +1252,32 @@ export async function deployStatusWidgetToChannel(
     getCatalogSnapshot(env),
   ]);
 
-  const res = await sendDiscordChannelMessage(token, channelId, payload);
+  const publicPayload = {
+    ...payload,
+    allowed_mentions: { parse: [], roles: [], users: [] },
+  };
+
+  const res = await sendDiscordChannelMessage(token, channelId, publicPayload);
   if (!res.ok || !res.messageId) {
-    return { ok: false, error: res.error || "Discord rejected the widget message." };
+    const friendlyError =
+      res.httpStatus === 403
+        ? "Missing Discord channel permissions (HTTP 403). Ensure bot has View Channel, Send Messages, and Embed Links in that channel."
+        : res.httpStatus === 404
+          ? "Target Discord channel not found or bot lacks View Channel access (HTTP 404)."
+          : res.error || "Discord rejected the widget message.";
+    return { ok: false, error: friendlyError };
+  }
+
+  if (
+    !options?.keepExistingMessage &&
+    existingSameChannel?.messageId &&
+    existingSameChannel.messageId !== res.messageId
+  ) {
+    await deleteDiscordChannelMessage(token, channelId, existingSameChannel.messageId).catch(() => null);
   }
 
   const now = Date.now();
-  const contentHash = computeStableHash(payload);
+  const contentHash = computeStableHash(publicPayload);
   const entry: WidgetSyncHistoryEntry = {
     timestamp: now,
     status: "ok",
@@ -1234,7 +1286,7 @@ export async function deployStatusWidgetToChannel(
     contentHash,
   };
   const widget = await setWidgetDeployment(env, {
-    id: `${guildId}:${channelId}`,
+    id: widgetId,
     guildId,
     channelId,
     messageId: res.messageId,

@@ -46,6 +46,7 @@ async function editOriginalInteractionResponse(
   interactionToken: string,
   data: any
 ): Promise<void> {
+  if (!appId || !interactionToken) return;
   const url = `https://discord.com/api/v10/webhooks/${appId}/${interactionToken}/messages/@original`;
   try {
     const res = await fetchDiscordWithRetry(url, {
@@ -720,45 +721,58 @@ export async function handleInteraction(
       }
       const actorId = String(member?.user?.id || body?.user?.id || "").trim();
       const actorName = String(member?.user?.username || body?.user?.username || "").trim();
-      const [previewPayload, pending] = await Promise.all([
-        buildWidgetMessagePayload(env, portalOrigin, { guildId: guild_id }),
-        createPendingWidgetConfirmation(env, {
-          guildId: guild_id,
-          channelId: targetChannelId,
-          userId: actorId,
-          username: actorName,
-        }),
-      ]);
-      const actionRows = Array.isArray(previewPayload.components)
-        ? [...previewPayload.components]
-        : [];
-      return jsonResponse({
-        flags: EPHEMERAL_FLAG,
-        content:
-          `**Live Status Widget Preview** *(Private — Only visible to you)*\n` +
-          `Confirm to post this auto-updating widget publicly in <#${targetChannelId}>. No roles will be mentioned, and it will update in-place within 1 minute of every store check.`,
-        embeds: previewPayload.embeds,
-        components: [
-          ...actionRows.slice(0, 1),
-          {
-            type: 1,
-            components: [
-              {
-                type: 2,
-                style: 3,
-                custom_id: `widget_confirm:${pending.token}:${targetChannelId}:${actorId}`,
-                label: "Post Widget in This Channel",
-              },
-              {
-                type: 2,
-                style: 4,
-                custom_id: `widget_cancel:${pending.token}:${targetChannelId}:${actorId}`,
-                label: "Cancel",
-              },
-            ],
-          },
-        ],
-      });
+
+      runAsync(
+        (async () => {
+          try {
+            const [previewPayload, pending] = await Promise.all([
+              buildWidgetMessagePayload(env, portalOrigin, { guildId: guild_id }),
+              createPendingWidgetConfirmation(env, {
+                guildId: guild_id,
+                channelId: targetChannelId,
+                userId: actorId,
+                username: actorName,
+              }),
+            ]);
+            const actionRows = Array.isArray(previewPayload.components)
+              ? [...previewPayload.components]
+              : [];
+            await editOriginalInteractionResponse(appId, interactionToken, {
+              content:
+                `**Live Status Widget Preview** *(Private — Only visible to you)*\n` +
+                `Confirm to post this auto-updating widget publicly in <#${targetChannelId}>. No roles will be mentioned, and it will update in-place within 1 minute of every store check.`,
+              embeds: previewPayload.embeds,
+              components: [
+                ...actionRows.slice(0, 1),
+                {
+                  type: 1,
+                  components: [
+                    {
+                      type: 2,
+                      style: 3,
+                      custom_id: `widget_confirm:${pending.token}:${targetChannelId}:${actorId}`,
+                      label: "Post Widget in This Channel",
+                    },
+                    {
+                      type: 2,
+                      style: 4,
+                      custom_id: `widget_cancel:${pending.token}:${targetChannelId}:${actorId}`,
+                      label: "Cancel",
+                    },
+                  ],
+                },
+              ],
+            });
+          } catch (err: any) {
+            await editOriginalInteractionResponse(appId, interactionToken, {
+              content: `⚠️ Failed to generate status widget preview: ${err?.message || "Unexpected error."}`,
+              embeds: [],
+              components: [],
+            });
+          }
+        })()
+      );
+      return deferredResponse(true, false);
     }
 
     default:

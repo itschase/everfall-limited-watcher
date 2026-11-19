@@ -164,27 +164,38 @@ export function AdminBotPage() {
   });
 
   const guildCommandMutation = useMutation({
-    mutationFn: ({ guildId, action }: { guildId: string; action: "sync" | "clear" }) =>
+    mutationFn: ({
+      guildId,
+      action,
+    }: {
+      guildId?: string;
+      action: "sync" | "clear" | "clear-all";
+    }) =>
       apiFetch<{
         ok: boolean;
         action: string;
-        guildId: string;
+        guildId?: string;
+        clearedCount?: number;
         registeredCount?: number;
         botState?: AdminBotStateResponse;
       }>("/api/admin/bot/guild-commands", {
         method: "POST",
-        body: JSON.stringify({ guildId, action }),
+        body: JSON.stringify(guildId ? { guildId, action } : { action }),
       }),
     onSuccess: (res) => {
       setActiveGuildId(null);
       if (res.botState) {
         queryClient.setQueryData(ADMIN_BOT_KEY, res.botState);
       }
-      toast.success(
-        res.action === "clear"
-          ? "Cleared guild-specific command overrides."
-          : `Synchronized ${res.registeredCount ?? 0} commands directly to server.`
-      );
+      if (res.action === "clear-all") {
+        toast.success(`Cleared guild command overrides across ${res.clearedCount ?? 0} server(s).`);
+      } else {
+        toast.success(
+          res.action === "clear"
+            ? "Cleared guild-specific command overrides."
+            : `Synchronized ${res.registeredCount ?? 0} commands directly to server.`
+        );
+      }
     },
     onError: (err: Error) => {
       setActiveGuildId(null);
@@ -731,29 +742,120 @@ export function AdminBotPage() {
             </Card>
           </div>
 
+          {/* 3-Layer /widget Registration, Execution & Portal Readiness Diagnostics */}
+          {data.readinessChecks && data.readinessChecks.length > 0 && (
+            <Card>
+              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle>/widget Registration, Execution &amp; Portal Readiness</CardTitle>
+                  <CardDescription>
+                    Distinguishes global/guild command registration from Discord Interactions execution
+                    readiness and OAuth install scopes.
+                  </CardDescription>
+                </div>
+                <Badge
+                  variant={
+                    data.readinessChecks.some((c) => c.status === "fail")
+                      ? "destructive"
+                      : data.readinessChecks.some((c) => c.status === "warn")
+                        ? "warning"
+                        : "success"
+                  }
+                  className="self-start sm:self-auto"
+                >
+                  {data.readinessChecks.some((c) => c.status === "fail")
+                    ? "Action Needed"
+                    : data.readinessChecks.some((c) => c.status === "warn")
+                      ? "Review Warnings"
+                      : "All Ready"}
+                </Badge>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  {data.readinessChecks.map((check) => (
+                    <div
+                      key={check.id}
+                      className="rounded-lg border border-border bg-zinc-950/80 p-3.5 text-xs space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-white">{check.label}</span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Badge variant="outline" className="text-[10px] uppercase">
+                            {check.category}
+                          </Badge>
+                          <Badge
+                            variant={
+                              check.status === "pass"
+                                ? "success"
+                                : check.status === "warn"
+                                  ? "warning"
+                                  : "destructive"
+                            }
+                          >
+                            {check.status === "pass"
+                              ? "Pass"
+                              : check.status === "warn"
+                                ? "Warn"
+                                : "Fail"}
+                          </Badge>
+                        </div>
+                      </div>
+                      <p className="text-zinc-300 leading-relaxed">{check.summary}</p>
+                      {check.remediation && (
+                        <p className="text-[11px] text-amber-300/90">Fix: {check.remediation}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-lg border border-border bg-zinc-950/60 p-3 text-xs text-muted-foreground">
+                  <strong className="text-zinc-200">Discord Server Permissions Reminder:</strong>{" "}
+                  <code>/widget</code> requires <code>Manage Server</code> or <code>Administrator</code>{" "}
+                  by default. If a registered command is still hidden inside a specific server, check{" "}
+                  <strong className="text-zinc-200">
+                    Server Settings &rarr; Integrations &rarr; Everfall Limited Watcher
+                  </strong>{" "}
+                  for per-role or per-channel overrides.
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Per-Server Command Availability & Guild Override Diagnostics */}
           <Card>
             <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle>Per-Server /widget &amp; Slash Command Availability</CardTitle>
                 <CardDescription>
-                  Detects missing <code>applications.commands</code> OAuth scopes, global sync
-                  propagation status, or allows instant guild-scoped command sync for troubleshooting.
+                  Detects missing <code>applications.commands</code> OAuth scopes, duplicate global +
+                  guild overrides, or allows instant guild-scoped command sync for troubleshooting.
                 </CardDescription>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => verifyAvailabilityMutation.mutate()}
-                disabled={anyMutating}
-              >
-                {verifyAvailabilityMutation.isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <SearchCheck className="h-3.5 w-3.5" />
+              <div className="flex flex-wrap items-center gap-2">
+                {Boolean(data.availability?.some((r) => r.guildCommandCount > 0)) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => guildCommandMutation.mutate({ action: "clear-all" })}
+                    disabled={anyMutating}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                    Clear All Guild Overrides
+                  </Button>
                 )}
-                Run Live Availability Check
-              </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => verifyAvailabilityMutation.mutate()}
+                  disabled={anyMutating}
+                >
+                  {verifyAvailabilityMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <SearchCheck className="h-3.5 w-3.5" />
+                  )}
+                  Run Live Availability Check
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {!data.availability ? (
@@ -793,7 +895,7 @@ export function AdminBotPage() {
                             <Badge
                               variant={
                                 row.widgetStatus === "available_global" ||
-                                row.widgetStatus === "available_guild"
+                                (row.widgetStatus === "available_guild" && !row.guildWidgetOutdated)
                                   ? "success"
                                   : row.widgetStatus === "missing_scope"
                                     ? "destructive"
@@ -803,12 +905,16 @@ export function AdminBotPage() {
                               {row.widgetStatus === "available_global"
                                 ? "Available (Global)"
                                 : row.widgetStatus === "available_guild"
-                                  ? "Available (Guild)"
-                                  : row.widgetStatus === "missing_scope"
-                                    ? "Missing OAuth Scope"
-                                    : row.widgetStatus === "missing_command"
-                                      ? "Missing /widget"
-                                      : "Error"}
+                                  ? row.guildWidgetOutdated
+                                    ? "Guild Override (Outdated)"
+                                    : "Available (Guild)"
+                                  : row.widgetStatus === "duplicate_conflict"
+                                    ? "Duplicate (Global + Guild)"
+                                    : row.widgetStatus === "missing_scope"
+                                      ? "Missing OAuth Scope"
+                                      : row.widgetStatus === "missing_command"
+                                        ? "Missing /widget"
+                                        : "Error"}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-xs text-zinc-300 tabular-nums">
@@ -1054,10 +1160,13 @@ export function AdminBotPage() {
                     {JSON.stringify(
                       {
                         name: selectedCommand.name,
+                        type: selectedCommand.type ?? 1,
                         description: selectedCommand.description,
                         ...(selectedCommand.defaultMemberPermissions
                           ? { default_member_permissions: selectedCommand.defaultMemberPermissions }
                           : {}),
+                        integration_types: selectedCommand.integrationTypes ?? [0],
+                        contexts: selectedCommand.contexts ?? [0],
                         ...(selectedCommand.options.length > 0
                           ? { options: selectedCommand.options }
                           : {}),

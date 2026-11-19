@@ -225,7 +225,9 @@ export interface ManagedServer {
     channelMissing: boolean;
     roleIds: string[];
     environment: "production" | "test";
+    widgetTemplateId?: string;
   };
+  widgets: WidgetDeployment[];
   channels: GuildChannelOption[];
   roles: GuildRoleOption[];
   controlsError: string | null;
@@ -235,6 +237,11 @@ export interface ManagedServer {
 export interface DashboardServersResponse {
   servers: ManagedServer[];
   appId: string;
+  publicOrigin?: string;
+  widgetDefault?: WidgetTemplateConfig;
+  widgetTemplates?: WidgetTemplateConfig[];
+  previewListings?: ListingItem[];
+  monitorStatus?: MonitorStatus | null;
   refreshedAt: number;
 }
 
@@ -388,8 +395,11 @@ export interface BotCommandOptionDef {
 
 export interface BotCommandComparison {
   name: string;
+  type?: number;
   description: string;
   defaultMemberPermissions: string | null;
+  integrationTypes?: number[];
+  contexts?: number[];
   options: BotCommandOptionDef[];
   syncState: "synced" | "outdated" | "missing";
   liveId: string | null;
@@ -421,9 +431,27 @@ export interface GuildCommandAvailabilityItem {
   hasCommandsScope: boolean;
   httpStatus: number;
   guildCommandCount: number;
-  widgetStatus: "available_global" | "available_guild" | "missing_scope" | "missing_command" | "error";
+  widgetStatus:
+    | "available_global"
+    | "available_guild"
+    | "duplicate_conflict"
+    | "missing_scope"
+    | "missing_command"
+    | "error";
   detail: string;
   guildCommandNames: string[];
+  hasDuplicateWidget?: boolean;
+  hasStaleGuildOverrides?: boolean;
+  guildWidgetOutdated?: boolean;
+}
+
+export interface BotReadinessCheck {
+  id: string;
+  label: string;
+  category: "registration" | "execution" | "availability";
+  status: "pass" | "warn" | "fail";
+  summary: string;
+  remediation?: string;
 }
 
 export interface AdminBotStateResponse {
@@ -446,6 +474,10 @@ export interface AdminBotStateResponse {
       name: string;
       description: string;
       interactionsEndpointUrl: string | null;
+      botPublic?: boolean | null;
+      installScopes?: string[];
+      guildInstallScopes?: string[];
+      hasGuildCommandsInstallScope?: boolean | null;
     } | null;
     error?: string;
   };
@@ -461,6 +493,7 @@ export interface AdminBotStateResponse {
   allInSync: boolean;
   syncMeta: BotCommandSyncMeta | null;
   availability?: GuildCommandAvailabilityItem[] | null;
+  readinessChecks?: BotReadinessCheck[];
   guilds?: Array<{
     id: string;
     name: string;

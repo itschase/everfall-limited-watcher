@@ -49,6 +49,7 @@ import {
 } from "./admin";
 import {
   CarListing,
+  deleteDiscordChannelMessage,
   deployStatusWidgetToChannel,
   dispatchListingToGuild,
   ensureHistoricalKnownListingsPreserved,
@@ -61,7 +62,9 @@ import {
 } from "./scraper";
 import { fetchDiscordWithRetry } from "./discord";
 import {
+  buildBotReadinessChecks,
   checkBotHealthSnapshot,
+  clearAllGuildCommands,
   clearGuildCommands,
   COMMANDS,
   compareDiscordCommands,
@@ -233,6 +236,25 @@ async function getCurrentSessionUser(request: Request, env: any): Promise<Sessio
     getSessionSecret(env),
     env.DISCORD_PRIMARY_ADMINISTRATOR
   );
+}
+
+async function requireManagedGuild(env: any, user: SessionUser | null, guildId: string) {
+  if (!user) {
+    return { error: json({ error: "Authentication required." }, 401), managedGuilds: [], guild: null };
+  }
+  const managedGuilds = await getManagedGuildsForUser(env, user.id);
+  const guild = managedGuilds.find((g) => g.id === guildId) || null;
+  if (!guild) {
+    return {
+      error: json(
+        { error: "You do not have Manage Server permission for this Discord server." },
+        403
+      ),
+      managedGuilds,
+      guild: null,
+    };
+  }
+  return { error: null, managedGuilds, guild };
 }
 
 export async function handleApiRequest(
@@ -477,18 +499,35 @@ export async function handleApiRequest(
     });
   }
 
-  // 4. User Managed Servers List
+  // 4. User Managed Servers List (includes per-server widget state & safe preview context)
   if (method === "GET" && url.pathname === "/api/dashboard/servers") {
     if (!user) return json({ error: "Authentication required." }, 401);
 
     const forceRefresh = url.searchParams.get("refresh") === "1";
     const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
-    const [managedGuilds, botGuilds] = await Promise.all([
-      getManagedGuildsForUser(env, user.id),
-      getBotGuilds(env, forceRefresh),
-    ]);
+    const [managedGuilds, botGuilds, allWidgets, bundle, snapshot, overridesMap, monitorStatus] =
+      await Promise.all([
+        getManagedGuildsForUser(env, user.id),
+        getBotGuilds(env, forceRefresh),
+        getAllWidgetDeployments(env),
+        getPresentationConfig(env),
+        getCatalogSnapshot(env),
+        getListingOverridesMap(env),
+        getMonitorStatus(env),
+      ]);
     const botGuildIds = new Set(botGuilds.map((g) => g.id));
     const botOnline = Boolean(env.DISCORD_BOT_TOKEN);
+    const widgetsByGuild = new Map<string, typeof allWidgets>();
+    for (const w of allWidgets) {
+      const list = widgetsByGuild.get(w.guildId) || [];
+      list.push(w);
+      widgetsByGuild.set(w.guildId, list);
+    }
+
+    const previewListings = [...snapshot.records]
+      .sort((a, b) => b.firstSeenAt - a.firstSeenAt)
+      .slice(0, 8)
+      .map((rec) => serializeListing(rec, overridesMap[rec.id] || null));
 
     const servers = await Promise.all(
       managedGuilds.map(async (g) => {
@@ -501,7 +540,8 @@ export async function handleApiRequest(
         const configuredChannel = config?.channelId
           ? controls.channels.find((c) => c.id === config.channelId) || null
           : null;
-        const channelMissing = Boolean(config?.channelId) && isInstalled && !controls.error && !configuredChannel;
+        const channelMissing =
+          Boolean(config?.channelId) && isInstalled && !controls.error && !configuredChannel;
 
         let status: "active" | "setup_required" | "not_installed" | "offline" = "not_installed";
         let statusReason = "Bot has not joined this server yet.";
@@ -543,7 +583,9 @@ export async function handleApiRequest(
             channelMissing,
             roleIds: Array.isArray(config?.roleIds) ? config.roleIds : [],
             environment: config?.environment === "test" ? "test" : "production",
+            widgetTemplateId: config?.widgetTemplateId || "default",
           },
+          widgets: widgetsByGuild.get(g.id) || [],
           channels: controls.channels,
           roles: controls.roles,
           controlsError: controls.error || null,
@@ -566,6 +608,11 @@ export async function handleApiRequest(
     return json({
       servers,
       appId,
+      publicOrigin: resolvePublicOrigin(env, origin),
+      widgetDefault: bundle.widgetDefault,
+      widgetTemplates: bundle.widgetTemplates,
+      previewListings,
+      monitorStatus,
       refreshedAt: Date.now(),
     });
   }
@@ -714,6 +761,245 @@ export async function handleApiRequest(
       channelId: cfg.channelId,
       sentAt: Date.now(),
     });
+  }
+
+  // 6b. Server Admin Live Status Widget Controls (/api/dashboard/servers/:guildId/widgets*)
+  const serverWidgetDeployMatch = url.pathname.match(
+    /^\/api\/dashboard\/servers\/(\d{17,20})\/widgets\/deploy$/
+  );
+  if (serverWidgetDeployMatch && method === "POST") {
+    const guildId = serverWidgetDeployMatch[1];
+    const authCheck = await requireManagedGuild(env, user, guildId);
+    if (authCheck.error) return authCheck.error;
+
+    if (!env.DISCORD_BOT_TOKEN) {
+      return json({ error: "DISCORD_BOT_TOKEN is not configured." }, 503);
+    }
+
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: "Invalid JSON payload." }, 400);
+    }
+
+    const channelId = String(body?.channelId || "").trim();
+    if (!/^\d{17,20}$/.test(channelId)) {
+      return json({ error: "Select a valid Discord channel before deploying a widget." }, 400);
+    }
+
+    let controls = await getGuildControlOptions(env, guildId);
+    if (!controls.channels.some((c) => c.id === channelId)) {
+      controls = await getGuildControlOptions(env, guildId, true);
+    }
+    if (!controls.channels.some((c) => c.id === channelId)) {
+      return json(
+        {
+          error:
+            "The bot cannot send embeds in this channel or cannot view it. Verify View Channel, Send Messages, and Embed Links permissions.",
+        },
+        400
+      );
+    }
+
+    const bundle = await getPresentationConfig(env);
+    const requestedTpl = typeof body?.templateId === "string" ? body.templateId.trim() : "default";
+    const validTemplateIds = new Set(["default", ...bundle.widgetTemplates.map((t) => t.id)]);
+    const templateId = validTemplateIds.has(requestedTpl) ? requestedTpl : "default";
+
+    const res = await deployStatusWidgetToChannel(
+      env,
+      guildId,
+      channelId,
+      resolvePublicOrigin(env, origin),
+      {
+        deployedBy: user!.id,
+        deployedByUsername: user!.username,
+        templateId,
+      }
+    );
+    if (!res.ok) {
+      return json({ ok: false, error: res.error || "Failed to deploy widget." }, 502);
+    }
+
+    return json({
+      ok: true,
+      widget: res.widget,
+      messageId: res.messageId,
+      jumpUrl: `https://discord.com/channels/${guildId}/${channelId}/${res.messageId}`,
+    });
+  }
+
+  const serverWidgetRefreshMatch = url.pathname.match(
+    /^\/api\/dashboard\/servers\/(\d{17,20})\/widgets\/([^/]+)\/refresh$/
+  );
+  if (serverWidgetRefreshMatch && method === "POST") {
+    const guildId = serverWidgetRefreshMatch[1];
+    const widgetId = decodeURIComponent(serverWidgetRefreshMatch[2]);
+    const authCheck = await requireManagedGuild(env, user, guildId);
+    if (authCheck.error) return authCheck.error;
+
+    const existing = await getWidgetDeploymentById(env, widgetId);
+    if (!existing || existing.guildId !== guildId) {
+      return json({ error: "Widget deployment not found for this server." }, 404);
+    }
+
+    const res = await refreshWidgetById(env, widgetId, resolvePublicOrigin(env, origin), {
+      force: true,
+      trigger: "server-dashboard",
+    });
+    if (!res.ok) {
+      return json(
+        { ok: false, error: res.error || "Failed to refresh widget.", widget: res.widget },
+        502
+      );
+    }
+    return json({ ...res, ok: true, refreshedAt: Date.now() });
+  }
+
+  const serverWidgetTemplateMatch = url.pathname.match(
+    /^\/api\/dashboard\/servers\/(\d{17,20})\/widgets\/([^/]+)\/template$/
+  );
+  if (serverWidgetTemplateMatch && method === "PUT") {
+    const guildId = serverWidgetTemplateMatch[1];
+    const widgetId = decodeURIComponent(serverWidgetTemplateMatch[2]);
+    const authCheck = await requireManagedGuild(env, user, guildId);
+    if (authCheck.error) return authCheck.error;
+
+    const existing = await getWidgetDeploymentById(env, widgetId);
+    if (!existing || existing.guildId !== guildId) {
+      return json({ error: "Widget deployment not found for this server." }, 404);
+    }
+
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: "Invalid JSON payload." }, 400);
+    }
+
+    const bundle = await getPresentationConfig(env);
+    const requestedTpl = typeof body?.templateId === "string" ? body.templateId.trim() : "default";
+    const validTemplateIds = new Set(["default", ...bundle.widgetTemplates.map((t) => t.id)]);
+    if (!validTemplateIds.has(requestedTpl)) {
+      return json({ error: "Unknown widget template preset." }, 400);
+    }
+
+    const updated = await setWidgetDeployment(env, {
+      ...existing,
+      templateId: requestedTpl,
+      customTemplate: null,
+    });
+    const refreshRes = await refreshWidgetById(env, updated.id, resolvePublicOrigin(env, origin), {
+      force: true,
+      trigger: "server-template",
+    });
+    return json({
+      ok: refreshRes.ok,
+      widget: refreshRes.widget || updated,
+      error: refreshRes.error || null,
+    });
+  }
+
+  const serverWidgetMoveMatch = url.pathname.match(
+    /^\/api\/dashboard\/servers\/(\d{17,20})\/widgets\/([^/]+)\/move$/
+  );
+  if (serverWidgetMoveMatch && method === "POST") {
+    const guildId = serverWidgetMoveMatch[1];
+    const widgetId = decodeURIComponent(serverWidgetMoveMatch[2]);
+    const authCheck = await requireManagedGuild(env, user, guildId);
+    if (authCheck.error) return authCheck.error;
+
+    const existing = await getWidgetDeploymentById(env, widgetId);
+    if (!existing || existing.guildId !== guildId) {
+      return json({ error: "Widget deployment not found for this server." }, 404);
+    }
+
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: "Invalid JSON payload." }, 400);
+    }
+    const targetChannelId = String(body?.channelId || "").trim();
+    if (!/^\d{17,20}$/.test(targetChannelId)) {
+      return json({ error: "Valid target channel ID is required." }, 400);
+    }
+
+    let controls = await getGuildControlOptions(env, guildId);
+    if (!controls.channels.some((c) => c.id === targetChannelId)) {
+      controls = await getGuildControlOptions(env, guildId, true);
+    }
+    if (!controls.channels.some((c) => c.id === targetChannelId)) {
+      return json(
+        {
+          error:
+            "Bot lacks View Channel / Send Messages / Embed Links permission in the destination channel.",
+        },
+        400
+      );
+    }
+
+    const deployRes = await deployStatusWidgetToChannel(
+      env,
+      guildId,
+      targetChannelId,
+      resolvePublicOrigin(env, origin),
+      {
+        deployedBy: user!.id,
+        deployedByUsername: user!.username,
+        templateId: existing.templateId,
+        customTemplate: existing.customTemplate ?? null,
+      }
+    );
+    if (!deployRes.ok) {
+      return json(
+        { ok: false, error: deployRes.error || "Failed to post widget in destination channel." },
+        502
+      );
+    }
+
+    if (existing.channelId !== targetChannelId) {
+      if (existing.messageId && env.DISCORD_BOT_TOKEN) {
+        await deleteDiscordChannelMessage(
+          env.DISCORD_BOT_TOKEN,
+          existing.channelId,
+          existing.messageId
+        ).catch(() => null);
+      }
+      await deleteWidgetDeploymentById(env, existing.id);
+    }
+
+    return json({
+      ok: true,
+      widget: deployRes.widget,
+      jumpUrl: `https://discord.com/channels/${guildId}/${targetChannelId}/${deployRes.messageId}`,
+    });
+  }
+
+  const serverWidgetDeleteMatch = url.pathname.match(
+    /^\/api\/dashboard\/servers\/(\d{17,20})\/widgets\/([^/]+)$/
+  );
+  if (serverWidgetDeleteMatch && method === "DELETE") {
+    const guildId = serverWidgetDeleteMatch[1];
+    const widgetId = decodeURIComponent(serverWidgetDeleteMatch[2]);
+    const authCheck = await requireManagedGuild(env, user, guildId);
+    if (authCheck.error) return authCheck.error;
+
+    const existing = await getWidgetDeploymentById(env, widgetId);
+    if (!existing || existing.guildId !== guildId) {
+      return json({ error: "Widget deployment not found for this server." }, 404);
+    }
+
+    if (existing.channelId && existing.messageId && env.DISCORD_BOT_TOKEN) {
+      await deleteDiscordChannelMessage(
+        env.DISCORD_BOT_TOKEN,
+        existing.channelId,
+        existing.messageId
+      ).catch(() => null);
+    }
+    await deleteWidgetDeploymentById(env, existing.id);
+    return json({ ok: true, id: existing.id, guildId });
   }
 
   // Administrator-only endpoints below
@@ -2183,7 +2469,7 @@ export async function handleApiRequest(
     }
 
     // 16. Bot Control Center (Inspect Bot, Slash Command Sync, Availability Diagnostics, Guild Cache & Widget Refresh)
-    const buildBotStatePayload = async (forceRefreshGuilds = false, checkAvailability = false) => {
+    const buildBotStatePayload = async (forceRefreshGuilds = false, checkAvailability = true) => {
       const [identity, syncMeta, botGuilds, allWidgets, monitorStatus, botHealth] =
         await Promise.all([
           fetchBotApplicationInfo(env),
@@ -2206,6 +2492,22 @@ export async function handleApiRequest(
             )
           : null;
 
+      const publicOrigin = resolvePublicOrigin(env, origin);
+      const interactionsUrl = `${publicOrigin}/interactions`;
+      const botTokenConfigured = Boolean(env.DISCORD_BOT_TOKEN);
+      const publicKeyConfigured = Boolean(env.DISCORD_PUBLIC_KEY);
+      const kvBound = Boolean(env.DISCORD_BOT);
+
+      const readinessChecks = buildBotReadinessChecks({
+        identity,
+        comparisons: comparison.comparisons,
+        availability,
+        expectedInteractionsUrl: interactionsUrl,
+        botTokenConfigured,
+        publicKeyConfigured,
+        kvBound,
+      });
+
       return {
         ok: true,
         botStatus: getBotStatus(env, monitorStatus, botHealth),
@@ -2218,19 +2520,20 @@ export async function handleApiRequest(
         ...comparison,
         syncMeta,
         availability,
+        readinessChecks,
         guilds: botGuilds.map((g) => ({
           id: g.id,
           name: g.name,
           inviteUrl: `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(identity.appId)}&guild_id=${encodeURIComponent(g.id)}&permissions=${BOT_PERMISSIONS}&integration_type=0&scope=bot+applications.commands`,
         })),
         environment: {
-          botTokenConfigured: Boolean(env.DISCORD_BOT_TOKEN),
-          publicKeyConfigured: Boolean(env.DISCORD_PUBLIC_KEY),
+          botTokenConfigured,
+          publicKeyConfigured,
           clientSecretConfigured: Boolean(env.DISCORD_CLIENT_SECRET),
-          kvBound: Boolean(env.DISCORD_BOT),
+          kvBound,
           r2Bound: Boolean(env.MEDIA_BUCKET),
-          publicOrigin: resolvePublicOrigin(env, origin),
-          interactionsUrl: `${resolvePublicOrigin(env, origin)}/interactions`,
+          publicOrigin,
+          interactionsUrl,
         },
         counts: {
           connectedServers: botGuilds.length,
@@ -2240,7 +2543,7 @@ export async function handleApiRequest(
     };
 
     if (method === "GET" && url.pathname === "/api/admin/bot") {
-      const checkAvailability = url.searchParams.get("checkAvailability") === "1";
+      const checkAvailability = url.searchParams.get("checkAvailability") !== "0";
       const payload = await buildBotStatePayload(false, checkAvailability);
       return json(payload);
     }
@@ -2257,8 +2560,31 @@ export async function handleApiRequest(
       } catch {
         return json({ error: "Invalid JSON payload." }, 400);
       }
+      const action =
+        body?.action === "clear-all"
+          ? "clear-all"
+          : body?.action === "clear"
+            ? "clear"
+            : "sync";
+
+      if (action === "clear-all") {
+        const botGuilds = env.DISCORD_BOT_TOKEN ? await getBotGuilds(env, false) : [];
+        const clearRes = await clearAllGuildCommands(
+          env,
+          botGuilds.map((g) => g.id)
+        );
+        const botState = await buildBotStatePayload(false, true);
+        return json({
+          ok: clearRes.failedCount === 0,
+          action: "clear-all",
+          clearedCount: clearRes.clearedCount,
+          failedCount: clearRes.failedCount,
+          errors: clearRes.errors,
+          botState,
+        });
+      }
+
       const guildId = String(body?.guildId || "").trim();
-      const action = body?.action === "clear" ? "clear" : "sync";
       if (!/^\d{17,20}$/.test(guildId)) {
         return json({ error: "Valid Discord guildId is required." }, 400);
       }
