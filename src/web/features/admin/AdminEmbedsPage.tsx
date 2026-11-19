@@ -10,6 +10,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -100,7 +108,10 @@ export function AdminEmbedsPage() {
       description="Configure global Discord drop announcement styling and verify In Stock vs. Sold Out previews before saving."
     >
       {isLoading ? (
-        <div className="h-96 animate-pulse rounded-xl border border-border bg-card" />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Skeleton className="h-96 w-full rounded-xl" />
+          <Skeleton className="h-96 w-full rounded-xl" />
+        </div>
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Controls Form */}
@@ -235,17 +246,18 @@ export function AdminEmbedsPage() {
               {data?.listings && data.listings.length > 0 && (
                 <div className="flex items-center gap-2">
                   <Label className="shrink-0">Preview Vehicle:</Label>
-                  <select
-                    value={sampleCar.id}
-                    onChange={(e) => setSelectedCarId(e.target.value)}
-                    className="h-9 flex-1 rounded-lg border border-border bg-zinc-950 px-2.5 text-xs text-white"
-                  >
-                    {data.listings.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name} (#{item.id})
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={sampleCar.id} onValueChange={setSelectedCarId}>
+                    <SelectTrigger className="h-9 flex-1 text-xs">
+                      <SelectValue placeholder="Choose preview vehicle" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {data.listings.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name} (#{item.id})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </CardHeader>

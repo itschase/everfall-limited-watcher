@@ -200,6 +200,26 @@ export interface DeliveryLogEntry {
   timestamp: number;
 }
 
+export interface SentListingMessageMeta {
+  listingId: string;
+  channelId: string;
+  messageId?: string;
+  sentAt: number;
+  updatedAt?: number;
+  updatedSoldOutAt?: number;
+  isSoldOutRendered?: boolean;
+}
+
+export interface WidgetDeployment {
+  guildId: string;
+  channelId: string;
+  messageId: string;
+  deployedAt: number;
+  lastSyncedAt?: number;
+  lastSyncStatus?: "ok" | "error";
+  lastSyncError?: string;
+}
+
 export interface AdminConnectedGuild {
   id: string;
   name: string;
@@ -211,6 +231,29 @@ export interface AdminConnectedGuild {
   environment: "production" | "test";
   configured: boolean;
   sentListingIds: Record<string, boolean>;
+  sentMessages?: Record<string, SentListingMessageMeta>;
+  widget?: WidgetDeployment | null;
+}
+
+export interface ListingImageSlot {
+  index: number;
+  exists: boolean;
+  storage: "r2" | "kv" | "external" | "empty";
+  size: number;
+  contentType: string;
+  etag: string | null;
+  url: string | null;
+  sourceUrl: string | null;
+}
+
+export interface ListingImagesResponse {
+  ok: boolean;
+  listingId: string;
+  listingName: string;
+  isAvailable: boolean;
+  slots: ListingImageSlot[];
+  payloadUrls: string[];
+  r2Bound: boolean;
 }
 
 export interface AdminOverviewResponse {

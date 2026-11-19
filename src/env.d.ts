@@ -46,3 +46,37 @@ interface ExecutionContext {
 interface Fetcher {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
+
+interface R2HTTPMetadata {
+  contentType?: string;
+}
+
+interface R2PutOptions {
+  httpMetadata?: R2HTTPMetadata;
+}
+
+interface R2Object {
+  key: string;
+  size: number;
+  etag: string;
+  httpEtag?: string;
+  uploaded: Date;
+  httpMetadata?: R2HTTPMetadata;
+}
+
+interface R2ObjectBody extends R2Object {
+  body: ReadableStream;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+interface R2Bucket {
+  head(key: string): Promise<R2Object | null>;
+  get(key: string): Promise<R2ObjectBody | null>;
+  put(
+    key: string,
+    value: ArrayBuffer | ArrayBufferView | string | ReadableStream,
+    options?: R2PutOptions
+  ): Promise<R2Object | void | null>;
+  delete(key: string): Promise<void>;
+}
+

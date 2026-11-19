@@ -1,9 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
-  AlertCircle,
-  CheckCircle2,
   FlaskConical,
+  Images,
   Palette,
   RefreshCw,
   Send,
@@ -15,6 +14,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -44,10 +44,13 @@ export function AdminOverviewPage() {
       }
     >
       {isLoading || !data ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-28 animate-pulse rounded-xl border border-border bg-card" />
-          ))}
+        <div className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-28 w-full rounded-xl" />
+            ))}
+          </div>
+          <Skeleton className="h-64 w-full rounded-xl" />
         </div>
       ) : (
         <div className="space-y-6">
@@ -120,32 +123,42 @@ export function AdminOverviewPage() {
           </div>
 
           {/* Quick Operational Shortcuts */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <Link
               to="/admin/monitor"
               className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-white/20"
             >
-              <Activity className="h-5 w-5 text-white" />
+              <Activity className="h-5 w-5 shrink-0 text-white" />
               <div>
                 <p className="text-sm font-semibold text-white">Store Monitoring</p>
-                <p className="text-xs text-muted-foreground">Run read-only storefront scan</p>
+                <p className="text-xs text-muted-foreground">Live telemetry &amp; scans</p>
               </div>
             </Link>
             <Link
               to="/admin/dispatch"
               className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-white/20"
             >
-              <Send className="h-5 w-5 text-white" />
+              <Send className="h-5 w-5 shrink-0 text-white" />
               <div>
-                <p className="text-sm font-semibold text-white">Dispatch &amp; Deliveries</p>
-                <p className="text-xs text-muted-foreground">Confirmed manual publishing</p>
+                <p className="text-sm font-semibold text-white">Dispatch &amp; Edits</p>
+                <p className="text-xs text-muted-foreground">Publish or update embeds</p>
+              </div>
+            </Link>
+            <Link
+              to="/admin/images"
+              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-white/20"
+            >
+              <Images className="h-5 w-5 shrink-0 text-white" />
+              <div>
+                <p className="text-sm font-semibold text-white">Image Manager</p>
+                <p className="text-xs text-muted-foreground">Manage R2 assets &amp; slots</p>
               </div>
             </Link>
             <Link
               to="/admin/embeds"
               className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-white/20"
             >
-              <Palette className="h-5 w-5 text-white" />
+              <Palette className="h-5 w-5 shrink-0 text-white" />
               <div>
                 <p className="text-sm font-semibold text-white">Embed Manager</p>
                 <p className="text-xs text-muted-foreground">Edit Discord message layout</p>
@@ -155,7 +168,7 @@ export function AdminOverviewPage() {
               to="/admin/testing"
               className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-white/20"
             >
-              <FlaskConical className="h-5 w-5 text-white" />
+              <FlaskConical className="h-5 w-5 shrink-0 text-white" />
               <div>
                 <p className="text-sm font-semibold text-white">Test Environment</p>
                 <p className="text-xs text-muted-foreground">Isolated test server alerts</p>

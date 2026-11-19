@@ -5,6 +5,7 @@ import {
   FlaskConical,
   History,
   Home,
+  Images,
   LayoutDashboard,
   Menu,
   Palette,
@@ -18,6 +19,7 @@ import { useAuthActions, useSession, useSessionSync } from "@/features/auth/useA
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { UserAccountMenu } from "./UserAccountMenu";
 
 interface NavItem {
@@ -35,6 +37,7 @@ const GENERAL_NAV: NavItem[] = [
 const ADMIN_NAV: NavItem[] = [
   { label: "Overview", to: "/admin", icon: Shield, exact: true },
   { label: "Connected Servers", to: "/admin/servers", icon: Server },
+  { label: "Image Manager", to: "/admin/images", icon: Images },
   { label: "Embed Manager", to: "/admin/embeds", icon: Palette },
   { label: "Store Monitoring", to: "/admin/monitor", icon: Activity },
   { label: "Dispatch & Deliveries", to: "/admin/dispatch", icon: Send },
@@ -236,26 +239,36 @@ export function AppShell({
             {!collapsed && <span className="truncate text-xs font-bold tracking-tight">Everfall Limited Watcher</span>}
           </Link>
           {!collapsed && (
-            <button
-              type="button"
-              onClick={() => setCollapsed(true)}
-              aria-label="Collapse sidebar"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-white cursor-pointer"
-            >
-              <PanelLeftClose className="h-4 w-4" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setCollapsed(true)}
+                  aria-label="Collapse sidebar"
+                  className="rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-white cursor-pointer"
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Collapse sidebar</TooltipContent>
+            </Tooltip>
           )}
         </div>
         {collapsed && (
           <div className="flex justify-center border-b border-sidebar-border py-2">
-            <button
-              type="button"
-              onClick={() => setCollapsed(false)}
-              aria-label="Expand sidebar"
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-white cursor-pointer"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setCollapsed(false)}
+                  aria-label="Expand sidebar"
+                  className="rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-white cursor-pointer"
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Expand sidebar</TooltipContent>
+            </Tooltip>
           </div>
         )}
         {renderNavLinks()}

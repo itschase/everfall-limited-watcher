@@ -8,6 +8,14 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function AdminTestingPage() {
   const queryClient = useQueryClient();
@@ -70,7 +78,10 @@ export function AdminTestingPage() {
       description="Designate dedicated test Discord servers and send verified preview notifications without pinging roles or touching production servers."
     >
       {isLoading ? (
-        <div className="h-96 animate-pulse rounded-xl border border-border bg-card" />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Skeleton className="h-96 w-full rounded-xl" />
+          <Skeleton className="h-96 w-full rounded-xl" />
+        </div>
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Server Environment Designations */}
@@ -144,34 +155,36 @@ export function AdminTestingPage() {
                     <label className="text-xs font-semibold text-muted-foreground">
                       Designated Test Server
                     </label>
-                    <select
-                      value={selectedTestGuildId}
-                      onChange={(e) => setSelectedTestGuildId(e.target.value)}
-                      className="h-10 w-full rounded-lg border border-border bg-zinc-950 px-3 text-sm text-white"
-                    >
-                      {testGuilds.map((guild) => (
-                        <option key={guild.id} value={guild.id}>
-                          {guild.name} (Channel #{guild.channelId})
-                        </option>
-                      ))}
-                    </select>
+                    <Select value={selectedTestGuildId} onValueChange={setSelectedTestGuildId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose test server" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {testGuilds.map((guild) => (
+                          <SelectItem key={guild.id} value={guild.id}>
+                            {guild.name} (Channel #{guild.channelId})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-muted-foreground">
                       Sample Listing Payload
                     </label>
-                    <select
-                      value={selectedListingId}
-                      onChange={(e) => setSelectedListingId(e.target.value)}
-                      className="h-10 w-full rounded-lg border border-border bg-zinc-950 px-3 text-sm text-white"
-                    >
-                      {listings.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name} (#{item.id}) — {item.isAvailable ? "In Stock" : "Sold Out"}
-                        </option>
-                      ))}
-                    </select>
+                    <Select value={selectedListingId} onValueChange={setSelectedListingId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose listing payload" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {listings.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            {item.name} (#{item.id}) — {item.isAvailable ? "In Stock" : "Sold Out"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <p className="text-xs text-muted-foreground">

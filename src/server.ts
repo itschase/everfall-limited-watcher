@@ -154,6 +154,83 @@ function createMemoryKV(): KVNamespace {
   };
 }
 
+function createMemoryR2(kv: KVNamespace) {
+  const prefix = "__r2__:";
+  return {
+    async head(key: string) {
+      const res = await kv.getWithMetadata<{ contentType?: string; size?: number; uploadedAt?: number }>(
+        prefix + key,
+        "arrayBuffer"
+      );
+      if (!res.value) return null;
+      const uploaded = res.metadata?.uploadedAt ? new Date(res.metadata.uploadedAt) : new Date();
+      return {
+        key,
+        size: res.value.byteLength,
+        etag: `dev-${res.value.byteLength}-${uploaded.getTime()}`,
+        httpEtag: `"dev-${res.value.byteLength}-${uploaded.getTime()}"`,
+        uploaded,
+        httpMetadata: {
+          contentType: res.metadata?.contentType || "image/webp",
+        },
+      };
+    },
+    async get(key: string) {
+      const res = await kv.getWithMetadata<{ contentType?: string; uploadedAt?: number }>(
+        prefix + key,
+        "arrayBuffer"
+      );
+      if (!res.value) return null;
+      const bytes = new Uint8Array(res.value);
+      const uploaded = res.metadata?.uploadedAt ? new Date(res.metadata.uploadedAt) : new Date();
+      return {
+        key,
+        size: bytes.byteLength,
+        etag: `dev-${bytes.byteLength}-${uploaded.getTime()}`,
+        httpEtag: `"dev-${bytes.byteLength}-${uploaded.getTime()}"`,
+        uploaded,
+        httpMetadata: {
+          contentType: res.metadata?.contentType || "image/webp",
+        },
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          },
+        }),
+        async arrayBuffer() {
+          return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+        },
+      };
+    },
+    async put(
+      key: string,
+      value: ArrayBuffer | ArrayBufferView | string | ReadableStream,
+      options?: { httpMetadata?: { contentType?: string } }
+    ) {
+      let buf: ArrayBuffer;
+      if (typeof value === "string") {
+        buf = new TextEncoder().encode(value).buffer;
+      } else if (value instanceof ArrayBuffer) {
+        buf = value;
+      } else if (ArrayBuffer.isView(value)) {
+        buf = value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer;
+      } else {
+        buf = await new Response(value).arrayBuffer();
+      }
+      await kv.put(prefix + key, buf, {
+        metadata: {
+          contentType: options?.httpMetadata?.contentType || "image/webp",
+          uploadedAt: Date.now(),
+        },
+      });
+    },
+    async delete(key: string) {
+      await kv.delete(prefix + key);
+    },
+  };
+}
+
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
@@ -273,8 +350,10 @@ function createAssetsFetcher(vite: ViteDevServer | null): Fetcher {
   };
 }
 
+const localKv = createMemoryKV();
 const env: Record<string, any> = {
-  DISCORD_BOT: createMemoryKV(),
+  DISCORD_BOT: localKv,
+  MEDIA_BUCKET: createMemoryR2(localKv),
   DISCORD_APPLICATION_ID: process.env.DISCORD_APPLICATION_ID || "1571958001928245378",
   DISCORD_CLIENT_ID: process.env.DISCORD_CLIENT_ID || "1571958001928245378",
   DISCORD_PUBLIC_KEY:

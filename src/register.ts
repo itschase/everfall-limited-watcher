@@ -45,6 +45,12 @@ export const COMMANDS = [
     description: "Manually check the Everfall store for limited car stock",
   },
   {
+    name: "widget",
+    description:
+      "Preview & deploy an auto-updating live Everfall stock & recent drops widget embed here",
+    default_member_permissions: "32", // MANAGE_GUILD
+  },
+  {
     name: "help",
     description: "View Everfall Limited Watcher setup and commands",
   },

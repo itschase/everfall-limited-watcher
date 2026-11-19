@@ -27,6 +27,10 @@ crons = []
 binding = "DISCORD_BOT"
 id = "41d8c9dce7f34af28156a5a0d3233bfb"
 
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "everfall-media"
+
 [observability.logs]
 enabled = true
 invocation_logs = true
@@ -49,3 +53,7 @@ crons = []
 [[env.staging.kv_namespaces]]
 binding = "DISCORD_BOT"
 id = "41d8c9dce7f34af28156a5a0d3233bfb"
+
+[[env.staging.r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "everfall-media"

@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   Bell,
@@ -12,17 +12,19 @@ import {
   ExternalLink,
   History,
   Images,
-  Layers,
   Loader2,
   Plus,
-  Radio,
-  Shield,
-  ShieldCheck,
   Terminal,
   Users,
   Zap,
 } from "lucide-react";
-import { apiFetch, BotStatus, ListingItem, PublicListingsResponse } from "@/lib/api";
+import {
+  apiFetch,
+  BotStatus,
+  ListingItem,
+  PublicListingsResponse,
+  PublicStatusResponse,
+} from "@/lib/api";
 import { cn, formatLocalDateTime, formatLocalTime, safeExternalUrl } from "@/lib/utils";
 import { useAuthActions, useSession } from "@/features/auth/useAuthActions";
 import { PublicLayout } from "@/components/layout/PublicLayout";
@@ -36,6 +38,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function BotHealthBadge({ status }: { status: BotStatus }) {
@@ -82,6 +85,7 @@ const FEATURES = [
 
 const SLASH_COMMANDS = [
   { command: "/setup <#channel>", summary: "Set the destination channel for new limited vehicle alerts." },
+  { command: "/widget", summary: "Preview privately and deploy an auto-updating live stock & recent drops widget." },
   { command: "/add-role <@role>", summary: "Add a Discord role to mention when a limited drop is published." },
   { command: "/remove-role <@role>", summary: "Remove a role from server notification mentions." },
   { command: "/check", summary: "Run an on-demand store scan for unsent active drops." },
@@ -90,6 +94,7 @@ const SLASH_COMMANDS = [
 
 export function HomePage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const carouselRef = useRef<HTMLDivElement | null>(null);
   const [desktopVisibleCount, setDesktopVisibleCount] = useState(3);
   const [statusFilter, setStatusFilter] = useState<"all" | "in_stock" | "sold_out">("all");
@@ -102,14 +107,33 @@ export function HomePage() {
     if (dest) void navigate({ to: dest as any });
   });
 
+  // Full listings payload fetched once and cached; re-pulled ONLY when catalogVersion advances
   const { data: listingsData, isLoading, isFetching } = useQuery({
     queryKey: ["public-listings"],
     queryFn: () => apiFetch<PublicListingsResponse>("/api/public/listings"),
-    staleTime: 120_000,
-    refetchInterval: 300_000,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  // Lightweight 1-KV-read / edge-cached status heartbeat to fast-refresh Last Checked timestamp
+  const { data: statusHeartbeat, isFetching: isStatusFetching } = useQuery({
+    queryKey: ["public-status"],
+    queryFn: () => apiFetch<PublicStatusResponse>("/api/public/status"),
+    staleTime: 30_000,
+    refetchInterval: 45_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
   });
+
+  useEffect(() => {
+    if (!statusHeartbeat || !listingsData) return;
+    const nextVersion = statusHeartbeat.catalogVersion || 0;
+    const prevVersion = listingsData.catalogVersion || 0;
+    if (nextVersion > 0 && prevVersion > 0 && nextVersion !== prevVersion) {
+      void queryClient.invalidateQueries({ queryKey: ["public-listings"] });
+    }
+  }, [statusHeartbeat, listingsData, queryClient]);
 
   const allListings = listingsData?.listings || [];
 
@@ -123,8 +147,13 @@ export function HomePage() {
   const soldOutCount = allListings.filter((c) => !c.isAvailable).length;
 
   const desktopListings = filteredListings.slice(0, Math.min(desktopVisibleCount, 10));
-  const botStatus: BotStatus = listingsData?.botStatus || session?.botStatus || "online";
-  const lastCheckedAt = listingsData?.lastCheckedAt || listingsData?.lastSuccessAt;
+  const botStatus: BotStatus =
+    statusHeartbeat?.botStatus || listingsData?.botStatus || session?.botStatus || "online";
+  const lastCheckedAt =
+    statusHeartbeat?.lastCheckedAt ||
+    listingsData?.lastCheckedAt ||
+    statusHeartbeat?.lastSuccessAt ||
+    listingsData?.lastSuccessAt;
   const inviteUrl =
     session?.inviteUrl ||
     "https://discord.com/oauth2/authorize?client_id=1571958001928245378&permissions=8462935362366544&integration_type=0&scope=bot+applications.commands";
@@ -232,7 +261,7 @@ export function HomePage() {
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2.5">
               <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-zinc-300 tabular-nums">
-                {isFetching && listingsData ? (
+                {(isFetching || isStatusFetching) && listingsData ? (
                   <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
                 ) : null}
                 Last Checked:{" "}
@@ -281,10 +310,7 @@ export function HomePage() {
         {isLoading ? (
           <div className="mt-8 grid gap-6 md:grid-cols-3">
             {[0, 1, 2].map((skeleton) => (
-              <div
-                key={skeleton}
-                className="h-[420px] animate-pulse rounded-xl border border-border bg-card"
-              />
+              <Skeleton key={skeleton} className="h-[420px] w-full rounded-xl" />
             ))}
           </div>
         ) : filteredListings.length === 0 ? (
@@ -305,6 +331,11 @@ export function HomePage() {
                   listing={car}
                   isRefreshing={false}
                   onInspect={openInspect}
+                  editImagesHref={
+                    session?.user?.isAdmin
+                      ? `/admin/images?listingId=${encodeURIComponent(car.id)}`
+                      : undefined
+                  }
                 />
               ))}
             </div>
@@ -381,6 +412,11 @@ export function HomePage() {
                       listing={car}
                       isRefreshing={false}
                       onInspect={openInspect}
+                      editImagesHref={
+                        session?.user?.isAdmin
+                          ? `/admin/images?listingId=${encodeURIComponent(car.id)}`
+                          : undefined
+                      }
                     />
                   </div>
                 ))}
@@ -555,7 +591,16 @@ export function HomePage() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                {session?.user?.isAdmin && (
+                  <a
+                    href={`/admin/images?listingId=${encodeURIComponent(selectedListing.id)}`}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-secondary px-4 py-2.5 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-800 hover:text-white sm:w-auto sm:py-2"
+                  >
+                    <Images className="h-3.5 w-3.5" />
+                    Edit Image Set
+                  </a>
+                )}
                 <a
                   href={
                     selectedListing.isAvailable

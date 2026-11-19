@@ -9,7 +9,7 @@ import {
   Clock,
   Copy,
   ExternalLink,
-  Layers,
+  Images,
   Loader2,
   Maximize2,
   ShieldCheck,
@@ -20,12 +20,13 @@ import {
 import { ListingItem } from "@/lib/api";
 import { cn, formatLocalDateTime, safeExternalUrl } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface VehicleCardProps {
   listing: ListingItem;
   isRefreshing?: boolean;
   onInspect?: (listing: ListingItem) => void;
+  editImagesHref?: string;
   className?: string;
 }
 
@@ -93,7 +94,13 @@ function extractListingPerks(description: string) {
   return perks;
 }
 
-export function VehicleCard({ listing, isRefreshing, onInspect, className }: VehicleCardProps) {
+export function VehicleCard({
+  listing,
+  isRefreshing,
+  onInspect,
+  editImagesHref,
+  className,
+}: VehicleCardProps) {
   const images = Array.isArray(listing.images) ? listing.images : [];
   const [activeIdx, setActiveIdx] = useState(0);
   const [failedUrls, setFailedUrls] = useState<Record<string, boolean>>({});
@@ -257,24 +264,28 @@ export function VehicleCard({ listing, isRefreshing, onInspect, className }: Veh
         <div>
           <div className="flex items-start justify-between gap-3">
             <h3 className="text-lg font-bold tracking-tight text-white">{listing.name}</h3>
-            <button
-              type="button"
-              onClick={handleCopyId}
-              title="Click to copy package ID"
-              className="inline-flex items-center gap-1 rounded-md border border-border/80 bg-zinc-900/80 px-2 py-0.5 font-mono text-[11px] text-muted-foreground transition hover:border-zinc-600 hover:text-white cursor-pointer"
-            >
-              {copiedId ? (
-                <>
-                  <Check className="h-3 w-3 text-emerald-400" />
-                  <span className="text-emerald-400">Copied</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="h-3 w-3 text-zinc-500" />
-                  <span>#{listing.id}</span>
-                </>
-              )}
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleCopyId}
+                  className="inline-flex items-center gap-1 rounded-md border border-border/80 bg-zinc-900/80 px-2 py-0.5 font-mono text-[11px] text-muted-foreground transition hover:border-zinc-600 hover:text-white cursor-pointer"
+                >
+                  {copiedId ? (
+                    <>
+                      <Check className="h-3 w-3 text-emerald-400" />
+                      <span className="text-emerald-400">Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3 w-3 text-zinc-500" />
+                      <span>#{listing.id}</span>
+                    </>
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Copy package ID #{listing.id}</TooltipContent>
+            </Tooltip>
           </div>
 
           {/* Quick Perks / Feature Tags */}
@@ -390,6 +401,16 @@ export function VehicleCard({ listing, isRefreshing, onInspect, className }: Veh
                 View on Everfall
                 <ArrowRight className="h-4 w-4" />
               </a>
+              {editImagesHref && (
+                <a
+                  href={editImagesHref}
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary px-2.5 py-2.5 text-xs font-medium text-zinc-200 transition hover:bg-zinc-800 hover:text-white"
+                  title="Manage & reorder listing images in R2"
+                >
+                  <Images className="h-3.5 w-3.5" />
+                </a>
+              )}
               {onInspect && (
                 <button
                   type="button"
@@ -405,6 +426,17 @@ export function VehicleCard({ listing, isRefreshing, onInspect, className }: Veh
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm font-semibold text-red-400">Sold Out</span>
               <div className="flex items-center gap-2">
+                {editImagesHref && (
+                  <a
+                    href={editImagesHref}
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary px-2.5 py-2 text-xs font-medium text-zinc-200 transition hover:bg-zinc-800 hover:text-white"
+                    title="Edit Image Set in R2"
+                  >
+                    <Images className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Images</span>
+                  </a>
+                )}
                 {onInspect && (
                   <button
                     type="button"

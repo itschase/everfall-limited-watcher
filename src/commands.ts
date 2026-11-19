@@ -9,6 +9,8 @@ import {
   GuildConfig,
 } from "./kv";
 import {
+  buildWidgetMessagePayload,
+  deployStatusWidgetToChannel,
   getCarPackage,
   postAllListingsToGuild,
   resolvePublicOrigin,
@@ -116,6 +118,7 @@ function buildHelpEmbed(guildConfig: GuildConfig | null) {
           "`/add-role <@role>` — Adds a role to ping when a limited drop hits\n" +
           "`/remove-role <@role>` — Removes a role from drop alerts\n" +
           "`/check` — Runs an on-demand store scrape immediately and posts active drops\n" +
+          "`/widget` — Privately preview and deploy an auto-updating live stock & recent drops widget\n" +
           "`/help` — Opens this private interactive dashboard",
         inline: false,
       },
@@ -388,6 +391,76 @@ export async function handleInteraction(
       }
     }
 
+    // E. Handle Widget Deployment Confirmation / Cancellation
+    if (customId?.startsWith("widget_confirm:") || customId?.startsWith("widget_cancel:")) {
+      if (!guild_id) {
+        return jsonResponse({ flags: EPHEMERAL_FLAG, content: "This action only works in a server." });
+      }
+      if (!hasManageServerPermission(member)) {
+        return jsonResponse({
+          flags: EPHEMERAL_FLAG,
+          content: "You need Manage Server or Administrator permissions to deploy status widgets.",
+        });
+      }
+      const targetChannelId = customId.split(":")[1] || body.channel_id;
+      if (customId.startsWith("widget_cancel:")) {
+        return jsonResponse(
+          {
+            flags: EPHEMERAL_FLAG,
+            content: "Widget deployment cancelled. No public message was posted.",
+            embeds: [],
+            components: [],
+          },
+          7
+        );
+      }
+
+      if (!targetChannelId) {
+        return jsonResponse(
+          {
+            flags: EPHEMERAL_FLAG,
+            content: "Could not determine target channel for widget deployment.",
+            embeds: [],
+            components: [],
+          },
+          7
+        );
+      }
+
+      runAsync(
+        (async () => {
+          try {
+            const res = await deployStatusWidgetToChannel(
+              env,
+              guild_id,
+              targetChannelId,
+              portalOrigin
+            );
+            if (!res.ok) {
+              await editOriginalInteractionResponse(appId, interactionToken, {
+                content: `⚠️ Failed to deploy status widget to <#${targetChannelId}>: \`${res.error || "Unknown error"}\``,
+                embeds: [],
+                components: [],
+              });
+              return;
+            }
+            await editOriginalInteractionResponse(appId, interactionToken, {
+              content: `✅ **Live Status Widget Deployed** in <#${targetChannelId}> (Message ID: \`${res.messageId}\`).\nIt will automatically refresh in-place within 1 minute of every store check.`,
+              embeds: [],
+              components: [],
+            });
+          } catch (err: any) {
+            await editOriginalInteractionResponse(appId, interactionToken, {
+              content: `⚠️ Failed to deploy status widget: ${err?.message || "Unexpected error."}`,
+              embeds: [],
+              components: [],
+            });
+          }
+        })()
+      );
+      return deferredResponse(true, true);
+    }
+
     return jsonResponse({ flags: EPHEMERAL_FLAG, content: "Action received." });
   }
 
@@ -575,6 +648,49 @@ export async function handleInteraction(
         })()
       );
       return deferredResponse(false, false);
+    }
+
+    case "widget": {
+      if (!hasManageServerPermission(member)) {
+        return jsonResponse({
+          flags: EPHEMERAL_FLAG,
+          content: "You need Manage Server or Administrator permissions to deploy a live status widget.",
+        });
+      }
+      const targetChannelId = String(body.channel_id || "").trim();
+      if (!targetChannelId) {
+        return jsonResponse({
+          flags: EPHEMERAL_FLAG,
+          content: "Run `/widget` inside the text channel where you want the live status widget posted.",
+        });
+      }
+      const previewPayload = await buildWidgetMessagePayload(env, portalOrigin);
+      return jsonResponse({
+        flags: EPHEMERAL_FLAG,
+        content:
+          `**Live Status Widget Preview** *(Private — Only visible to you)*\n` +
+          `Confirm to post this auto-updating widget in <#${targetChannelId}>. It will sync in-place within 1 minute of every store check.`,
+        embeds: previewPayload.embeds,
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 2,
+                style: 3,
+                custom_id: `widget_confirm:${targetChannelId}`,
+                label: "Deploy Widget Here",
+              },
+              {
+                type: 2,
+                style: 4,
+                custom_id: `widget_cancel:${targetChannelId}`,
+                label: "Cancel",
+              },
+            ],
+          },
+        ],
+      });
     }
 
     default:

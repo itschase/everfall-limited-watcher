@@ -1,13 +1,18 @@
 import {
   getAllGuildIds,
+  getAllWidgetGuildIds,
   getCatalogSnapshot,
+  getDeliveryLogs,
   getGuildConfig,
+  getGuildSentMessages,
   getEffectiveEmbedConfig,
   getListingHistory,
   getMonitorStatus,
+  getWidgetDeployment,
   purgePublicEdgeCaches,
   setListingAvailability,
   setMonitorStatus,
+  setWidgetDeployment,
   upsertListingRecord,
   isListingSentToGuild,
   markListingSentToGuild,
@@ -102,18 +107,21 @@ async function archiveListingImages(
   existingImages?: string[]
 ): Promise<CarListing> {
   const kv = env.DISCORD_BOT as KVNamespace;
-  if (!kv || !car.images?.length) return car;
+  const r2 = env.MEDIA_BUCKET as R2Bucket | undefined;
+  if ((!kv && !r2) || !car.images?.length) return car;
   const origin = resolvePublicOrigin(env, originHint);
   const canUseOriginUrl = isDiscordSafeHttpsOrigin(origin);
 
-  // Skip re-reading media blobs from KV if existing record already references our archived URLs
+  // Skip re-reading media blobs when existing record already references our archived URLs (and R2 has slot 0)
   if (
     canUseOriginUrl &&
     Array.isArray(existingImages) &&
     existingImages.length === car.images.length &&
-    existingImages.every((u, idx) => u === `${origin}/media/listings/${car.id}/${idx}`)
+    existingImages.every((u, idx) => u.startsWith(`${origin}/media/listings/${car.id}/${idx}`))
   ) {
-    return { ...car, images: existingImages };
+    if (!r2 || (await r2.head(`media:${car.id}:0`))) {
+      return { ...car, images: existingImages };
+    }
   }
 
   const archivedImages = await Promise.all(
@@ -122,17 +130,43 @@ async function archiveListingImages(
       if (!sourceUrl || sourceUrl.includes(`/media/listings/${car.id}/`)) {
         return sourceUrl;
       }
-      if (existingImages?.[index] === targetUrl) {
-        return targetUrl;
+      if (existingImages?.[index] && existingImages[index].startsWith(targetUrl)) {
+        if (!r2 || (await r2.head(`media:${car.id}:${index}`))) {
+          return existingImages[index];
+        }
       }
       const key = `media:${car.id}:${index}`;
       try {
-        const existing = await kv.getWithMetadata<{ contentType?: string }>(key, "arrayBuffer");
-        if (!existing.value) {
-          const response = await fetch(sourceUrl);
-          if (!response.ok) return sourceUrl;
-          const contentType = response.headers.get("content-type") || "image/webp";
-          await kv.put(key, await response.arrayBuffer(), { metadata: { contentType } });
+        if (r2) {
+          const existingR2 = await r2.head(key);
+          if (!existingR2) {
+            // Migrate from KV if already archived previously before hitting origin CDN
+            const existingKv = kv
+              ? await kv.getWithMetadata<{ contentType?: string }>(key, "arrayBuffer")
+              : null;
+            if (existingKv?.value) {
+              await r2.put(key, existingKv.value, {
+                httpMetadata: {
+                  contentType: existingKv.metadata?.contentType || "image/webp",
+                },
+              });
+            } else {
+              const response = await fetch(sourceUrl);
+              if (!response.ok) return sourceUrl;
+              const contentType = response.headers.get("content-type") || "image/webp";
+              await r2.put(key, await response.arrayBuffer(), {
+                httpMetadata: { contentType },
+              });
+            }
+          }
+        } else if (kv) {
+          const existing = await kv.getWithMetadata<{ contentType?: string }>(key, "arrayBuffer");
+          if (!existing.value) {
+            const response = await fetch(sourceUrl);
+            if (!response.ok) return sourceUrl;
+            const contentType = response.headers.get("content-type") || "image/webp";
+            await kv.put(key, await response.arrayBuffer(), { metadata: { contentType } });
+          }
         }
         return canUseOriginUrl ? `${origin}/media/listings/${car.id}/${index}` : sourceUrl;
       } catch (error) {
@@ -150,20 +184,38 @@ export async function getArchivedListingImage(
   index: number,
   request?: Request
 ): Promise<Response> {
-  const etag = `"media-${listingId}-${index}-v1"`;
-  if (request && request.headers.get("If-None-Match") === etag) {
-    return new Response(null, {
-      status: 304,
-      headers: {
-        ETag: etag,
-        "Cache-Control": "public, max-age=31536000, immutable",
-      },
-    });
-  }
-
+  const key = `media:${listingId}:${index}`;
+  const r2 = env.MEDIA_BUCKET as R2Bucket | undefined;
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
   const edgeCache: Cache | null =
     typeof caches !== "undefined" && (caches as any)?.default ? (caches as any).default : null;
-  const cacheKey = request ? new Request(new URL(request.url).toString(), { method: "GET" }) : null;
+  const cacheKey = request
+    ? new Request(new URL(request.url).origin + new URL(request.url).pathname, { method: "GET" })
+    : null;
+
+  if (r2) {
+    const obj = await r2.get(key);
+    if (obj) {
+      const etag = obj.httpEtag || `"r2-${listingId}-${index}-${obj.size}"`;
+      if (request && request.headers.get("If-None-Match") === etag) {
+        return new Response(null, {
+          status: 304,
+          headers: {
+            ETag: etag,
+            "Cache-Control": "public, max-age=60, must-revalidate",
+          },
+        });
+      }
+      return new Response(obj.body, {
+        headers: {
+          "Content-Type": obj.httpMetadata?.contentType || "image/webp",
+          "Cache-Control": "public, max-age=60, must-revalidate",
+          ETag: etag,
+        },
+      });
+    }
+  }
+
   if (edgeCache && cacheKey) {
     try {
       const cached = await edgeCache.match(cacheKey);
@@ -173,18 +225,28 @@ export async function getArchivedListingImage(
     }
   }
 
-  const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return new Response("Not found", { status: 404 });
-  const result = await kv.getWithMetadata<{ contentType?: string }>(
-    `media:${listingId}:${index}`,
-    "arrayBuffer"
-  );
+  const result = await kv.getWithMetadata<{ contentType?: string }>(key, "arrayBuffer");
   if (!result.value) return new Response("Not found", { status: 404 });
 
+  // Lazily migrate legacy KV image blob into R2 when available
+  if (r2) {
+    try {
+      await r2.put(key, result.value, {
+        httpMetadata: {
+          contentType: result.metadata?.contentType || "image/webp",
+        },
+      });
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  const etag = `"kv-${listingId}-${index}-${result.value.byteLength}"`;
   const response = new Response(result.value, {
     headers: {
       "Content-Type": result.metadata?.contentType || "image/webp",
-      "Cache-Control": "public, max-age=31536000, immutable",
+      "Cache-Control": "public, max-age=60, must-revalidate",
       ETag: etag,
     },
   });
@@ -193,7 +255,7 @@ export async function getArchivedListingImage(
     try {
       await edgeCache.put(cacheKey, response.clone());
     } catch {
-      // Non-fatal if cache put fails
+      // Non-fatal
     }
   }
 
@@ -509,7 +571,13 @@ async function getRateLimitedStoreListings(
   originHint?: string,
   source: MonitorLogSource = "other",
   options: { skipHistoryFetchWhenBlocked?: boolean } = {}
-): Promise<{ listings: CarListing[]; notice?: string; checkedStore: boolean; authoritative?: boolean }> {
+): Promise<{
+  listings: CarListing[];
+  soldOutIds?: string[];
+  notice?: string;
+  checkedStore: boolean;
+  authoritative?: boolean;
+}> {
   const status = await getMonitorStatus(env);
   // If HTTP fetch cron (/cron) succeeded within 25m, let scheduled runner yield cleanly
   if (
@@ -519,6 +587,7 @@ async function getRateLimitedStoreListings(
   ) {
     return {
       listings: options.skipHistoryFetchWhenBlocked ? [] : await getAvailableHistoryListings(env),
+      soldOutIds: [],
       notice: "HTTP fetch cron verified storefront recently; scheduled runner deferred.",
       checkedStore: false,
       authoritative: status.authoritative,
@@ -541,6 +610,7 @@ async function getRateLimitedStoreListings(
     });
     return {
       listings: options.skipHistoryFetchWhenBlocked ? [] : await getAvailableHistoryListings(env),
+      soldOutIds: [],
       notice: "Using recorded listing history; storefront was checked recently.",
       checkedStore: false,
       authoritative: status.authoritative,
@@ -558,6 +628,7 @@ async function getRateLimitedStoreListings(
   });
   return {
     listings: synced.availableListings,
+    soldOutIds: synced.soldOutIds,
     notice: result.notice,
     checkedStore: true,
     authoritative: result.authoritative,
@@ -707,12 +778,66 @@ export async function sendDiscordChannelMessage(
   };
 }
 
+export async function editDiscordChannelMessage(
+  token: string,
+  channelId: string,
+  messageId: string,
+  messagePayload: any
+): Promise<{ ok: boolean; messageId?: string; httpStatus?: number; error?: string }> {
+  const endpoint = `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`;
+  const headers = {
+    Authorization: `Bot ${token}`,
+    "Content-Type": "application/json",
+  };
+
+  let res = await fetchDiscordWithRetry(endpoint, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(messagePayload),
+  });
+
+  if (res.ok) {
+    try {
+      const json: any = await res.json();
+      return { ok: true, messageId: json?.id || messageId, httpStatus: res.status };
+    } catch {
+      return { ok: true, messageId, httpStatus: res.status };
+    }
+  }
+
+  let errorBody = await res.text();
+  if (res.status === 400 && /emoji/i.test(errorBody)) {
+    const fallbackPayload = stripCustomEmojisFromPayload(messagePayload);
+    res = await fetchDiscordWithRetry(endpoint, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify(fallbackPayload),
+    });
+    if (res.ok) {
+      try {
+        const json: any = await res.json();
+        return { ok: true, messageId: json?.id || messageId, httpStatus: res.status };
+      } catch {
+        return { ok: true, messageId, httpStatus: res.status };
+      }
+    }
+    errorBody = await res.text();
+  }
+
+  console.error(`Discord message edit error (channel ${channelId}, msg ${messageId}, status ${res.status}):`, errorBody);
+  return {
+    ok: false,
+    httpStatus: res.status,
+    error: `Discord API ${res.status}: ${errorBody.slice(0, 180)}`,
+  };
+}
+
 export function buildCarDropMessage(
   car: CarListing,
   embedConfig?: any,
   roleIds?: string[],
   env?: any,
-  options: { isTest?: boolean } = {}
+  options: { isTest?: boolean; isUpdate?: boolean } = {}
 ) {
   const validImages = (car.images || []).filter(
     (img) => typeof img === "string" && /^https?:\/\//i.test(img)
@@ -747,7 +872,7 @@ export function buildCarDropMessage(
       : "1571981507973746868";
 
   const pings =
-    !options.isTest && roleIds && roleIds.length > 0
+    !options.isTest && !options.isUpdate && roleIds && roleIds.length > 0
       ? roleIds.map((r) => `<@&${r}>`).join(" ")
       : "";
 
@@ -764,6 +889,10 @@ export function buildCarDropMessage(
   ];
   if (showDetectionTime) details.push(`**First Detected:** <t:${detected}:f> (<t:${detected}:R>)`);
   if (showLastVerified) details.push(`**Last Verified:** <t:${verified}:f>`);
+  if (isSoldOut && car.soldOutAt) {
+    const soldOutSec = Math.floor(car.soldOutAt / 1000);
+    details.push(`**Confirmed Sold Out:** <t:${soldOutSec}:f> (<t:${soldOutSec}:R>)`);
+  }
 
   const containerComponents: any[] = [{ type: 10, content: details.join("\n\n") }];
 
@@ -779,7 +908,7 @@ export function buildCarDropMessage(
 
   const storeButton: Record<string, any> = {
     type: 2,
-    style: isSoldOut ? 5 : 5,
+    style: 5,
     label: storeButtonLabel.slice(0, 80),
     url: isSoldOut ? "https://store.everfallcommunity.com/" : car.url,
   };
@@ -791,8 +920,12 @@ export function buildCarDropMessage(
     type: 1,
     components: [storeButton],
   });
-  if (footerText || options.isTest) {
-    const combinedFooter = [footerText, options.isTest ? "Test Dispatch" : ""]
+  if (footerText || options.isTest || options.isUpdate) {
+    const combinedFooter = [
+      footerText,
+      options.isTest ? "Test Dispatch" : "",
+      options.isUpdate ? (isSoldOut ? "Updated: Sold Out" : "Embed Refreshed") : "",
+    ]
       .filter(Boolean)
       .join(" • ");
     containerComponents.push({
@@ -807,7 +940,10 @@ export function buildCarDropMessage(
 
   return {
     flags: 1 << 15,
-    allowed_mentions: { parse: [], roles: options.isTest ? [] : roleIds || [] },
+    allowed_mentions: {
+      parse: [],
+      roles: options.isTest || options.isUpdate ? [] : roleIds || [],
+    },
     components,
   };
 }
@@ -876,9 +1012,310 @@ export async function dispatchListingToGuild(
   });
 
   if (result.ok && options.method !== "test") {
-    await markListingSentToGuild(env, guildId, car.id);
+    await markListingSentToGuild(env, guildId, car.id, {
+      channelId,
+      messageId: result.messageId,
+      isSoldOutRendered: car.isAvailable === false,
+    });
   }
   return result;
+}
+
+async function resolveDeployedMessageRef(
+  env: any,
+  guildId: string,
+  listingId: string
+): Promise<{ channelId: string; messageId: string } | null> {
+  const sentMap = await getGuildSentMessages(env, guildId);
+  const tracked = sentMap[listingId];
+  if (tracked?.channelId && tracked?.messageId) {
+    return { channelId: tracked.channelId, messageId: tracked.messageId };
+  }
+  // Fallback to scanning deliveryLogs for the latest delivered/updated messageId
+  const logs = await getDeliveryLogs(env);
+  const match = logs.find(
+    (log) =>
+      log.guildId === guildId &&
+      log.listingId === listingId &&
+      log.method !== "test" &&
+      (log.status === "delivered" || log.status === "updated") &&
+      log.channelId &&
+      log.messageId
+  );
+  if (match && match.channelId && match.messageId) {
+    return { channelId: match.channelId, messageId: match.messageId };
+  }
+  return null;
+}
+
+export async function updateSentListingEmbedForGuild(
+  env: any,
+  car: CarListing,
+  guildId: string,
+  options: { overrideMessageId?: string; overrideChannelId?: string } = {}
+): Promise<{ ok: boolean; messageId?: string; channelId?: string; error?: string; skippedNotSent?: boolean }> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return { ok: false, error: "DISCORD_BOT_TOKEN is not configured." };
+
+  const config = await getGuildConfig(env, guildId);
+  const environment = config?.environment === "test" ? "test" : "production";
+
+  let ref: { channelId: string; messageId: string } | null = null;
+  if (options.overrideChannelId && options.overrideMessageId) {
+    ref = { channelId: options.overrideChannelId, messageId: options.overrideMessageId };
+  } else {
+    ref = await resolveDeployedMessageRef(env, guildId, car.id);
+  }
+
+  if (!ref) {
+    return {
+      ok: false,
+      skippedNotSent: true,
+      error: "No tracked Discord message ID found for this listing in this server.",
+    };
+  }
+
+  await saveCarPackage(env, car);
+  const embedConfig = await getEffectiveEmbedConfig(env, guildId);
+  const messagePayload = buildCarDropMessage(car, embedConfig, [], env, {
+    isTest: false,
+    isUpdate: true,
+  });
+
+  const res = await editDiscordChannelMessage(token, ref.channelId, ref.messageId, messagePayload);
+  await appendDeliveryLog(env, {
+    id: crypto.randomUUID(),
+    listingId: car.id,
+    listingName: car.name,
+    guildId,
+    channelId: ref.channelId,
+    messageId: ref.messageId,
+    method: "manual",
+    environment,
+    status: res.ok ? "updated" : "failed",
+    httpStatus: res.httpStatus,
+    error: res.error,
+    timestamp: Date.now(),
+  });
+
+  if (res.ok) {
+    await markListingSentToGuild(env, guildId, car.id, {
+      channelId: ref.channelId,
+      messageId: ref.messageId,
+      isUpdate: true,
+      isSoldOutRendered: car.isAvailable === false,
+    });
+  }
+
+  return {
+    ok: res.ok,
+    messageId: ref.messageId,
+    channelId: ref.channelId,
+    error: res.error,
+  };
+}
+
+export async function updateSoldOutListingEmbeds(
+  env: any,
+  listingId: string
+): Promise<number> {
+  const history = await getListingHistory(env);
+  const record = history.find((r) => r.id === listingId);
+  if (!record) return 0;
+
+  const car: CarListing = {
+    ...record.payload,
+    id: record.id,
+    detectedAt: record.firstSeenAt,
+    lastVerifiedAt: record.lastVerifiedAt,
+    soldOutAt: record.soldOutAt,
+    isAvailable: record.isAvailable,
+  };
+
+  const guildIds = await getAllGuildIds(env);
+  let updatedCount = 0;
+
+  for (const guildId of guildIds) {
+    const sentMap = await getGuildSentMessages(env, guildId);
+    const meta = sentMap[listingId];
+    if (!meta?.messageId || meta.isSoldOutRendered) continue;
+    const res = await updateSentListingEmbedForGuild(env, car, guildId, {
+      overrideChannelId: meta.channelId,
+      overrideMessageId: meta.messageId,
+    });
+    if (res.ok) updatedCount++;
+  }
+
+  return updatedCount;
+}
+
+export async function buildWidgetMessagePayload(
+  env: any,
+  originHint?: string
+): Promise<any> {
+  const origin = resolvePublicOrigin(env, originHint);
+  const [snapshot, monitorStatus] = await Promise.all([
+    getCatalogSnapshot(env),
+    getMonitorStatus(env),
+  ]);
+
+  const sorted = [...snapshot.records].sort((a, b) => b.firstSeenAt - a.firstSeenAt);
+  const activeListings = sorted.filter((r) => r.isAvailable).slice(0, 3);
+  const recentListings = sorted.slice(0, 3);
+
+  const pickWidgetImage = (record?: any): string | undefined => {
+    if (!record) return undefined;
+    const imgs: string[] = Array.isArray(record.payload?.images)
+      ? record.payload.images.filter((u: unknown) => typeof u === "string" && /^https?:\/\//i.test(u))
+      : [];
+    // Prefer Slot 3 (4th photo) when available, falling back to Slot 0
+    const explicitSlot3 = imgs.find((u) => new RegExp(`/media/listings/${record.id}/3(?:\\?|$)`).test(u));
+    const chosen = explicitSlot3 || imgs[3] || imgs[0];
+    if (!chosen) return undefined;
+    if (origin && isDiscordSafeHttpsOrigin(origin) && chosen.includes(`/media/listings/${record.id}/`)) {
+      return `${chosen.split("?")[0]}?v=${snapshot.version || 1}`;
+    }
+    return chosen;
+  };
+
+  const checkedAt = monitorStatus?.checkedAt || Date.now();
+  const checkedSec = Math.floor(checkedAt / 1000);
+  const sourceLabel =
+    monitorStatus?.lastSource === "scrapling"
+      ? "Scrapling"
+      : monitorStatus?.lastSource === "cron-fetch"
+        ? "HTTP Cron"
+        : monitorStatus?.lastSource === "manual"
+          ? "Manual Scan"
+          : "Store Monitor";
+
+  const fields: Array<{ name: string; value: string; inline: boolean }> = [];
+
+  // Active Listings Columns (up to 3 smaller columns)
+  if (activeListings.length > 0) {
+    for (const car of activeListings) {
+      const carName = String(car.payload?.name || `Limited #${car.id}`).slice(0, 80);
+      const carUrl =
+        typeof car.payload?.url === "string" && /^https?:\/\//i.test(car.payload.url)
+          ? car.payload.url
+          : `https://store.everfallcommunity.com/package/${car.id}`;
+      fields.push({
+        name: `🟢 ${carName}`,
+        value: `In Stock • [View](${carUrl})`,
+        inline: true,
+      });
+    }
+  } else {
+    fields.push({
+      name: "Active Limiteds (0)",
+      value: "No active limited vehicles in stock.\n[View](https://store.everfallcommunity.com/category/limited-cars)",
+      inline: true,
+    });
+  }
+
+  // Dedicated History Column (up to 3 most recent vehicles)
+  const historyLines =
+    recentListings.length > 0
+      ? recentListings.map((r) => {
+          const name = String(r.payload?.name || `Limited #${r.id}`).slice(0, 60);
+          const url =
+            r.isAvailable && typeof r.payload?.url === "string" && /^https?:\/\//i.test(r.payload.url)
+              ? r.payload.url
+              : `https://store.everfallcommunity.com/package/${r.id}`;
+          const stateLabel = r.isAvailable ? "🟢 **In Stock**" : "🔴 **Sold Out**";
+          return `• **${name}** — ${stateLabel} • [View](${url})`;
+        })
+      : ["No vehicle releases recorded yet."];
+
+  fields.push({
+    name: "Recent Drop History (Last 3)",
+    value: historyLines.join("\n"),
+    inline: false,
+  });
+
+  const featuredImageUrl = pickWidgetImage(activeListings[0] || recentListings[0]);
+
+  const embed: any = {
+    title: "Everfall Limited Watcher — Live Store Status",
+    description:
+      `**Last Store Check:** <t:${checkedSec}:f> (<t:${checkedSec}:R>)\n` +
+      `**Verification:** ${sourceLabel} • Updates within 1 minute of every check`,
+    color: activeListings.length > 0 ? 0x10b981 : 0x52525b,
+    fields,
+    footer: {
+      text: "Everfall Limited Watcher • Live Status Widget",
+    },
+    timestamp: new Date(checkedAt).toISOString(),
+  };
+
+  if (featuredImageUrl) {
+    embed.image = { url: featuredImageUrl };
+  }
+
+  return {
+    embeds: [embed],
+  };
+}
+
+export async function deployStatusWidgetToChannel(
+  env: any,
+  guildId: string,
+  channelId: string,
+  originHint?: string
+): Promise<{ ok: boolean; messageId?: string; error?: string }> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return { ok: false, error: "DISCORD_BOT_TOKEN is not configured." };
+
+  const payload = await buildWidgetMessagePayload(env, originHint);
+  const res = await sendDiscordChannelMessage(token, channelId, payload);
+  if (!res.ok || !res.messageId) {
+    return { ok: false, error: res.error || "Discord rejected the widget message." };
+  }
+
+  const now = Date.now();
+  await setWidgetDeployment(env, {
+    guildId,
+    channelId,
+    messageId: res.messageId,
+    deployedAt: now,
+    lastSyncedAt: now,
+    lastSyncStatus: "ok",
+  });
+
+  return { ok: true, messageId: res.messageId };
+}
+
+export async function refreshAllWidgets(
+  env: any,
+  originHint?: string
+): Promise<{ refreshed: number; failed: number }> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return { refreshed: 0, failed: 0 };
+
+  const guildIds = await getAllWidgetGuildIds(env);
+  if (guildIds.length === 0) return { refreshed: 0, failed: 0 };
+
+  const payload = await buildWidgetMessagePayload(env, originHint);
+  let refreshed = 0;
+  let failed = 0;
+
+  for (const guildId of guildIds) {
+    const widget = await getWidgetDeployment(env, guildId);
+    if (!widget?.channelId || !widget?.messageId) continue;
+
+    const res = await editDiscordChannelMessage(token, widget.channelId, widget.messageId, payload);
+    const now = Date.now();
+    await setWidgetDeployment(env, {
+      ...widget,
+      lastSyncedAt: now,
+      lastSyncStatus: res.ok ? "ok" : "error",
+      lastSyncError: res.ok ? undefined : res.error,
+    });
+    if (res.ok) refreshed++;
+    else failed++;
+  }
+
+  return { refreshed, failed };
 }
 
 export async function broadcastListing(
@@ -898,7 +1335,6 @@ export async function broadcastListing(
     });
     if (res.ok) sentCount++;
   }
-
   return sentCount;
 }
 
@@ -981,9 +1417,16 @@ export async function manualScanStoreOnly(
     dispatchedDrops: 0,
     preservedHistoryCount,
   });
+
+  if (fetched.authoritative && soldOutIds.length > 0) {
+    for (const soldId of soldOutIds) {
+      await updateSoldOutListingEmbeds(env, soldId);
+    }
+  }
+  await refreshAllWidgets(env, originHint);
   await purgePublicEdgeCaches(originHint || env?.PUBLIC_ORIGIN);
 
-  // Never send Discord notifications during a manual scan
+  // Never send new-drop Discord notifications during a manual scan
   const updatedHistory = await getListingHistory(env);
   const listings = updatedHistory.map(
     (record) =>
@@ -1052,7 +1495,11 @@ export async function publishActiveListingsToGuildOnSetup(
       try {
         const res = await sendDiscordChannelMessage(token, cfg.channelId, payload);
         if (res.ok) {
-          await markListingSentToGuild(env, guildId, car.id);
+          await markListingSentToGuild(env, guildId, car.id, {
+            channelId: cfg.channelId,
+            messageId: res.messageId,
+            isSoldOutRendered: car.isAvailable === false,
+          });
           published++;
         } else {
           lastError = res.error;
@@ -1343,12 +1790,10 @@ export async function runCron(
   originHint?: string,
   source: "scheduled" | "cron-fetch" = "scheduled"
 ): Promise<{ checked: number; newDrops: number; notice?: string; authoritative?: boolean }> {
-  const { listings, notice, authoritative } = await getRateLimitedStoreListings(
-    env,
-    originHint,
-    source,
-    { skipHistoryFetchWhenBlocked: true }
-  );
+  const { listings, soldOutIds = [], notice, checkedStore, authoritative } =
+    await getRateLimitedStoreListings(env, originHint, source, {
+      skipHistoryFetchWhenBlocked: true,
+    });
   let newDrops = 0;
 
   for (const car of listings) {
@@ -1356,6 +1801,16 @@ export async function runCron(
     if (sent > 0) {
       newDrops += sent;
     }
+  }
+
+  if (authoritative && soldOutIds.length > 0) {
+    for (const soldId of soldOutIds) {
+      await updateSoldOutListingEmbeds(env, soldId);
+    }
+  }
+
+  if (checkedStore) {
+    await refreshAllWidgets(env, originHint);
   }
 
   return { checked: listings.length, newDrops, notice, authoritative };
@@ -1484,6 +1939,11 @@ export async function ingestVerifiedStoreScan(
         newDrops += sent;
       }
     }
+    if (synced.soldOutIds.length > 0) {
+      for (const soldId of synced.soldOutIds) {
+        await updateSoldOutListingEmbeds(env, soldId);
+      }
+    }
   }
 
   await recordMonitorAttempt(env, source, result, synced.newDiscoveries, {
@@ -1491,6 +1951,7 @@ export async function ingestVerifiedStoreScan(
     dispatchedDrops: newDrops,
     preservedHistoryCount: synced.totalHistoryCount,
   });
+  await refreshAllWidgets(env, originHint);
   await purgePublicEdgeCaches(originHint || env?.PUBLIC_ORIGIN);
 
   return {

@@ -30,10 +30,12 @@ export function PrivacyPage() {
                 permissions.
               </p>
               <p>
-                <strong className="text-white">Discord Server Configuration:</strong> When Everfall Limited Watcher
+                <strong className="text-white">Discord Server Configuration &amp; Widget Tracking:</strong> When Everfall Limited Watcher
                 is configured in a Discord server, we store server IDs, selected notification channel IDs,
-                configured mention role IDs, environment designations (production vs. test), and message
-                delivery tracking markers.
+                configured mention role IDs, environment designations (production vs. test), deployed live
+                status widget channel and message IDs (only when explicitly deployed by an administrator via{" "}
+                <code>/widget</code>), and sent listing message IDs so posted Discord embeds can be updated
+                when vehicles become sold out.
               </p>
               <p>
                 <strong className="text-white">Application Activity &amp; Monitoring Logs:</strong> We retain
@@ -42,9 +44,9 @@ export function PrivacyPage() {
                 verification monitor logs (retained for up to 7 days) alongside store check status timestamps to operate and troubleshoot the service.
               </p>
               <p>
-                <strong className="text-white">Store Listing Information:</strong> Everfall Limited Watcher collects
+                <strong className="text-white">Store Listing Information &amp; Media:</strong> Everfall Limited Watcher collects
                 publicly accessible product metadata from the Everfall storefront, including listing names,
-                descriptions, product URLs, archived vehicle images, availability state, and detection or
+                descriptions, product URLs, archived or administrator-managed vehicle images, availability state, and detection or
                 verification timestamps.
               </p>
             </section>
@@ -77,13 +79,15 @@ export function PrivacyPage() {
             <section className="space-y-2">
               <h2 className="text-lg font-semibold text-white">4. Data Storage and Retention</h2>
               <p>
-                Everfall Limited Watcher runs on Cloudflare infrastructure (Cloudflare Workers and Workers KV).
-                Cached user Discord server lists (<code>user_guilds:*</code>) automatically expire after 24
-                hours, and temporary Discord API guild caches expire within 10 minutes to 24 hours. Server
-                configurations and historical public vehicle records (alongside archived listing images) are
-                retained to provide ongoing drop notifications and historical reference until modified or
-                removed. Removing the bot from a Discord server does not automatically purge shared public
-                vehicle history or historical delivery records unless requested.
+                Everfall Limited Watcher runs on Cloudflare infrastructure (Cloudflare Workers, Workers KV,
+                and Cloudflare R2 object storage for archived listing media). Cached user Discord server lists (
+                <code>user_guilds:*</code>) automatically expire after 24 hours, and temporary Discord API
+                guild caches expire within 10 minutes to 24 hours. Server configurations, widget deployment
+                pointers, and historical public vehicle records (alongside archived listing images stored in
+                Cloudflare R2) are retained to provide ongoing drop notifications, live embed updates, and
+                historical reference until modified or removed. Removing the bot from a Discord server does
+                not automatically purge shared public vehicle history or historical delivery records unless
+                requested.
               </p>
             </section>
 
@@ -91,7 +95,7 @@ export function PrivacyPage() {
               <h2 className="text-lg font-semibold text-white">5. Third-Party Infrastructure</h2>
               <p>
                 We rely on <strong className="text-white">Discord</strong> (OAuth authentication, slash
-                commands, and message delivery; see{" "}
+                commands, and message delivery/editing; see{" "}
                 <a
                   href="https://discord.com/privacy"
                   target="_blank"
@@ -100,8 +104,9 @@ export function PrivacyPage() {
                 >
                   discord.com/privacy
                 </a>
-                ) and <strong className="text-white">Cloudflare</strong> (edge application execution and KV
-                storage). We do not sell personal information or use Discord account data for advertising.
+                ) and <strong className="text-white">Cloudflare</strong> (edge application execution, Workers KV,
+                and Cloudflare R2 object storage). We do not sell personal information or use Discord account
+                data for advertising.
               </p>
             </section>
 

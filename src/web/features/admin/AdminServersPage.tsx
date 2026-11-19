@@ -25,6 +25,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function AdminServersPage() {
   const queryClient = useQueryClient();
@@ -102,18 +104,23 @@ export function AdminServersPage() {
 
       <Card>
         {isLoading ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">Loading servers...</div>
+          <div className="space-y-3 p-6">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
         ) : guilds.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">
             No connected Discord servers found.
           </div>
         ) : (
-          <Table>
-            <TableHeader>
+          <Table containerClassName="thin-scrollbar max-h-[520px] overflow-y-auto overflow-x-auto">
+            <TableHeader className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
               <TableRow>
                 <TableHead>Server</TableHead>
                 <TableHead>Environment</TableHead>
                 <TableHead>Configuration</TableHead>
+                <TableHead>Widget</TableHead>
                 <TableHead>Mention Roles</TableHead>
                 <TableHead className="text-right">Details</TableHead>
               </TableRow>
@@ -122,7 +129,14 @@ export function AdminServersPage() {
               {guilds
                 .slice((serverPage - 1) * serverPageSize, serverPage * serverPageSize)
                 .map((guild) => (
-                  <TableRow key={guild.id}>
+                  <TableRow
+                    key={guild.id}
+                    onClick={() => {
+                      const sel = typeof window !== "undefined" ? window.getSelection()?.toString() : "";
+                      if (!sel?.trim()) setSelectedGuild(guild);
+                    }}
+                    className="cursor-pointer hover:bg-zinc-900/75"
+                  >
                     <TableCell>
                       <div className="flex items-center gap-3">
                         {guild.iconUrl ? (
@@ -134,23 +148,30 @@ export function AdminServersPage() {
                         )}
                         <div>
                           <p className="font-semibold text-white">{guild.name}</p>
-                          <div className="mt-0.5 flex items-center gap-1.5">
+                          <div
+                            className="mt-0.5 flex items-center gap-1.5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <span className="select-text font-mono text-[11px] text-muted-foreground">
                               {guild.id}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => void copyId(guild.id, "Server ID")}
-                              aria-label={`Copy server ID ${guild.id}`}
-                              title="Copy Server ID"
-                              className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
-                            >
-                              {copiedId === guild.id ? (
-                                <Check className="h-3 w-3 text-emerald-400" />
-                              ) : (
-                                <Copy className="h-3 w-3" />
-                              )}
-                            </button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  onClick={() => void copyId(guild.id, "Server ID")}
+                                  aria-label={`Copy server ID ${guild.id}`}
+                                  className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
+                                >
+                                  {copiedId === guild.id ? (
+                                    <Check className="h-3 w-3 text-emerald-400" />
+                                  ) : (
+                                    <Copy className="h-3 w-3" />
+                                  )}
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Copy Server ID</TooltipContent>
+                            </Tooltip>
                           </div>
                         </div>
                       </div>
@@ -160,34 +181,47 @@ export function AdminServersPage() {
                         {guild.environment === "test" ? "Test Server" : "Production"}
                       </Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       {guild.configured ? (
                         <div className="inline-flex items-center gap-1.5">
                           <Badge variant="success" className="font-mono">
                             #<span className="select-text cursor-text">{guild.channelId}</span>
                           </Badge>
-                          <button
-                            type="button"
-                            onClick={() => void copyId(guild.channelId, "Channel ID")}
-                            aria-label={`Copy channel ID ${guild.channelId}`}
-                            title="Copy Channel ID"
-                            className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
-                          >
-                            {copiedId === guild.channelId ? (
-                              <Check className="h-3 w-3 text-emerald-400" />
-                            ) : (
-                              <Copy className="h-3 w-3" />
-                            )}
-                          </button>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                onClick={() => void copyId(guild.channelId, "Channel ID")}
+                                aria-label={`Copy channel ID ${guild.channelId}`}
+                                className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
+                              >
+                                {copiedId === guild.channelId ? (
+                                  <Check className="h-3 w-3 text-emerald-400" />
+                                ) : (
+                                  <Copy className="h-3 w-3" />
+                                )}
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>Copy Channel ID</TooltipContent>
+                          </Tooltip>
                         </div>
                       ) : (
                         <Badge variant="secondary">Channel Not Set</Badge>
                       )}
                     </TableCell>
+                    <TableCell>
+                      {guild.widget ? (
+                        <Badge variant={guild.widget.lastSyncStatus === "error" ? "destructive" : "info"}>
+                          {guild.widget.lastSyncStatus === "error" ? "Widget Error" : "Live Widget"}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-xs text-zinc-300 tabular-nums">
                       {guild.roleIds.length > 0 ? `${guild.roleIds.length} role(s)` : "None"}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <Button variant="outline" size="sm" onClick={() => setSelectedGuild(guild)}>
                         Inspect Logs
                       </Button>
@@ -287,6 +321,14 @@ export function AdminServersPage() {
                   <span className="text-muted-foreground">Mention Roles Configured</span>
                   <p className="mt-0.5 text-white">{selectedGuild.roleIds.length}</p>
                 </div>
+                {selectedGuild.widget && (
+                  <div className="sm:col-span-2">
+                    <span className="text-muted-foreground">Deployed Live Status Widget (/widget)</span>
+                    <p className="mt-0.5 select-text font-mono text-zinc-200">
+                      Ch #{selectedGuild.widget.channelId} &bull; Msg {selectedGuild.widget.messageId}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>

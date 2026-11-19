@@ -8,6 +8,26 @@ export type GuildConfig = {
   embedConfig?: EmbedConfig;
 };
 
+export type SentListingMessageMeta = {
+  listingId: string;
+  channelId: string;
+  messageId?: string;
+  sentAt: number;
+  updatedAt?: number;
+  updatedSoldOutAt?: number;
+  isSoldOutRendered?: boolean;
+};
+
+export type WidgetDeployment = {
+  guildId: string;
+  channelId: string;
+  messageId: string;
+  deployedAt: number;
+  lastSyncedAt?: number;
+  lastSyncStatus?: "ok" | "error";
+  lastSyncError?: string;
+};
+
 export type ListingRecord = {
   id: string;
   firstSeenAt: number;
@@ -248,6 +268,33 @@ export async function purgePublicEdgeCaches(originHint?: string): Promise<void> 
       edgeCache.delete(new Request(`${origin}/api/public/listings`, { method: "GET" })).catch(() => false),
     ])
   );
+}
+
+export async function purgeListingMediaEdgeCaches(
+  listingId: string,
+  originHint?: string
+): Promise<void> {
+  if (typeof caches === "undefined" || !(caches as any)?.default) return;
+  const edgeCache = (caches as any).default as Cache;
+  const origins = new Set<string>(["https://everfall-limited-watcher.itschase.workers.dev"]);
+  if (typeof originHint === "string" && /^https?:\/\//i.test(originHint)) {
+    try {
+      origins.add(new URL(originHint).origin);
+    } catch {
+      // ignore invalid origin
+    }
+  }
+  const tasks: Promise<boolean>[] = [];
+  for (const origin of origins) {
+    for (let i = 0; i < 10; i++) {
+      tasks.push(
+        edgeCache
+          .delete(new Request(`${origin}/media/listings/${listingId}/${i}`, { method: "GET" }))
+          .catch(() => false)
+      );
+    }
+  }
+  await Promise.all(tasks);
 }
 
 export async function getGuildConfig(env: any, guildId: string): Promise<GuildConfig | null> {
@@ -549,19 +596,112 @@ export async function getMonitorStatus(env: any): Promise<MonitorStatus | null> 
   return raw ? JSON.parse(raw) : null;
 }
 
-// Per-Server (Guild) Delivery Tracking
+export async function updateListingImages(
+  env: any,
+  listingId: string,
+  images: string[]
+): Promise<ListingRecord | null> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return null;
+  const raw = await kv.get(`listing:${listingId}`);
+  if (!raw) return null;
+  const parsed = JSON.parse(raw);
+  const existing = normalizeSnapshotRecord(parsed, listingId);
+  if (!existing) return null;
+  const nextRecord: ListingRecord = {
+    ...existing,
+    payload: {
+      ...(existing.payload || {}),
+      images,
+    },
+  };
+  await kv.put(`listing:${listingId}`, JSON.stringify(nextRecord));
+  const nextSnap = await syncSnapshotRecord(kv, nextRecord, true);
+
+  const monitor = await getMonitorStatus(env);
+  if (monitor) {
+    const avail = nextSnap.records.filter((r) => r.isAvailable).length;
+    await setMonitorStatus(env, {
+      ...monitor,
+      catalogVersion: nextSnap.version,
+      listingSummary: {
+        total: nextSnap.records.length,
+        available: avail,
+        soldOut: nextSnap.records.length - avail,
+      },
+    });
+  }
+  return nextRecord;
+}
+
+// Per-Server (Guild) Delivery Tracking (stores messageId + channelId so embeds can be edited later)
+export async function getGuildSentMessages(
+  env: any,
+  guildId: string
+): Promise<Record<string, SentListingMessageMeta>> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return {};
+
+  const consolidatedRaw = await kv.get(`guild:${guildId}:messages`);
+  if (consolidatedRaw) {
+    try {
+      const parsed = JSON.parse(consolidatedRaw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, SentListingMessageMeta>;
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  // Fallback / migration from legacy guild:${guildId}:sent:${id} keys
+  const prefix = `guild:${guildId}:sent:`;
+  const keys = await listKeysByPrefix(kv, prefix);
+  const map: Record<string, SentListingMessageMeta> = {};
+  await Promise.all(
+    keys.map(async (key) => {
+      const listingId = key.slice(prefix.length);
+      if (!listingId) return;
+      const val = await kv.get(key);
+      if (!val) return;
+      try {
+        const parsed = JSON.parse(val);
+        if (parsed && typeof parsed === "object") {
+          map[listingId] = {
+            listingId,
+            channelId: String(parsed.channelId || ""),
+            messageId: parsed.messageId ? String(parsed.messageId) : undefined,
+            sentAt: Number(parsed.sentAt || Date.now()),
+            updatedAt: parsed.updatedAt ? Number(parsed.updatedAt) : undefined,
+            updatedSoldOutAt: parsed.updatedSoldOutAt ? Number(parsed.updatedSoldOutAt) : undefined,
+            isSoldOutRendered: Boolean(parsed.isSoldOutRendered),
+          };
+          return;
+        }
+      } catch {
+        // numeric legacy timestamp
+      }
+      map[listingId] = {
+        listingId,
+        channelId: "",
+        sentAt: Number(val) || Date.now(),
+      };
+    })
+  );
+  if (Object.keys(map).length > 0) {
+    await kv.put(`guild:${guildId}:messages`, JSON.stringify(map));
+  }
+  return map;
+}
+
 export async function listSentListingIdsForGuild(
   env: any,
   guildId: string
 ): Promise<Record<string, boolean>> {
-  const kv = env.DISCORD_BOT as KVNamespace;
-  if (!kv) return {};
-  const prefix = `guild:${guildId}:sent:`;
-  const keys = await listKeysByPrefix(kv, prefix);
+  const msgs = await getGuildSentMessages(env, guildId);
   const map: Record<string, boolean> = {};
-  for (const key of keys) {
-    const id = key.slice(prefix.length);
-    if (id) map[id] = true;
+  for (const id of Object.keys(msgs)) {
+    map[id] = true;
   }
   return map;
 }
@@ -573,6 +713,8 @@ export async function isListingSentToGuild(
 ): Promise<boolean> {
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return false;
+  const msgs = await getGuildSentMessages(env, guildId);
+  if (msgs[listingId]) return true;
   const val = await kv.get(`guild:${guildId}:sent:${listingId}`);
   return !!val;
 }
@@ -580,11 +722,99 @@ export async function isListingSentToGuild(
 export async function markListingSentToGuild(
   env: any,
   guildId: string,
-  listingId: string
+  listingId: string,
+  meta?: {
+    channelId?: string;
+    messageId?: string;
+    isUpdate?: boolean;
+    isSoldOutRendered?: boolean;
+  }
 ): Promise<void> {
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return;
-  await kv.put(`guild:${guildId}:sent:${listingId}`, Date.now().toString());
+  const now = Date.now();
+  const currentMap = await getGuildSentMessages(env, guildId);
+  const prev = currentMap[listingId];
+  const nextMeta: SentListingMessageMeta = {
+    listingId,
+    channelId: meta?.channelId || prev?.channelId || "",
+    messageId: meta?.messageId || prev?.messageId,
+    sentAt: prev?.sentAt || now,
+    updatedAt: meta?.isUpdate ? now : prev?.updatedAt,
+    updatedSoldOutAt:
+      meta?.isSoldOutRendered && !prev?.updatedSoldOutAt ? now : prev?.updatedSoldOutAt,
+    isSoldOutRendered:
+      meta?.isSoldOutRendered !== undefined ? meta.isSoldOutRendered : prev?.isSoldOutRendered,
+  };
+  currentMap[listingId] = nextMeta;
+  await Promise.all([
+    kv.put(`guild:${guildId}:sent:${listingId}`, JSON.stringify(nextMeta)),
+    kv.put(`guild:${guildId}:messages`, JSON.stringify(currentMap)),
+  ]);
+}
+
+// Per-Server Deployed Status Widget Registry (/widget)
+const WIDGET_INDEX_KEY = "widgets:all";
+
+export async function getAllWidgetGuildIds(env: any): Promise<string[]> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return [];
+  const raw = await kv.get(WIDGET_INDEX_KEY);
+  if (raw !== null) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return [...new Set(parsed.filter(Boolean))];
+    } catch {
+      // fall through
+    }
+  }
+  const keys = await listKeysByPrefix(kv, "widget:");
+  const ids = keys.map((k) => k.slice("widget:".length)).filter(Boolean);
+  if (ids.length > 0) {
+    await kv.put(WIDGET_INDEX_KEY, JSON.stringify(ids));
+  }
+  return ids;
+}
+
+export async function getWidgetDeployment(
+  env: any,
+  guildId: string
+): Promise<WidgetDeployment | null> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return null;
+  const raw = await kv.get(`widget:${guildId}`);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as WidgetDeployment;
+  } catch {
+    return null;
+  }
+}
+
+export async function setWidgetDeployment(
+  env: any,
+  widget: WidgetDeployment
+): Promise<void> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return;
+  await kv.put(`widget:${widget.guildId}`, JSON.stringify(widget));
+  const ids = await getAllWidgetGuildIds(env);
+  if (!ids.includes(widget.guildId)) {
+    ids.push(widget.guildId);
+    await kv.put(WIDGET_INDEX_KEY, JSON.stringify(ids));
+  }
+}
+
+export async function deleteWidgetDeployment(
+  env: any,
+  guildId: string
+): Promise<void> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return;
+  await kv.delete(`widget:${guildId}`);
+  const ids = await getAllWidgetGuildIds(env);
+  const filtered = ids.filter((id) => id !== guildId);
+  await kv.put(WIDGET_INDEX_KEY, JSON.stringify(filtered));
 }
 
 export async function getEmbedConfig(env: any): Promise<EmbedConfig> {

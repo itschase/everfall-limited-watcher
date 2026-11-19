@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, ExternalLink, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Images, Search } from "lucide-react";
 import { apiFetch, HistoryResponse, ListingItem } from "@/lib/api";
 import { formatLocalDateTime, safeExternalUrl } from "@/lib/utils";
+import { useSession } from "@/features/auth/useAuthActions";
 import { AppShell } from "@/components/layout/AppShell";
 import { StockStatusPill, VehicleCard } from "@/components/listings/VehicleCard";
 import { Button } from "@/components/ui/button";
@@ -15,9 +16,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export function HistoryPage() {
+  const { data: session } = useSession();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | "in_stock" | "sold_out">("all");
   const [page, setPage] = useState(1);
@@ -83,7 +86,7 @@ export function HistoryPage() {
       {isLoading ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((s) => (
-            <div key={s} className="h-[400px] animate-pulse rounded-xl border border-border bg-card" />
+            <Skeleton key={s} className="h-[400px] w-full rounded-xl" />
           ))}
         </div>
       ) : isError ? (
@@ -109,6 +112,11 @@ export function HistoryPage() {
                 key={item.id}
                 listing={item}
                 onInspect={openInspect}
+                editImagesHref={
+                  session?.user?.isAdmin
+                    ? `/admin/images?listingId=${encodeURIComponent(item.id)}`
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -237,7 +245,16 @@ export function HistoryPage() {
                 {selectedListing.description}
               </p>
 
-              <div className="flex justify-end pt-2">
+              <div className="flex flex-wrap justify-end gap-2 pt-2">
+                {session?.user?.isAdmin && (
+                  <a
+                    href={`/admin/images?listingId=${encodeURIComponent(selectedListing.id)}`}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-secondary px-4 py-2.5 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-800 hover:text-white sm:w-auto sm:py-2"
+                  >
+                    <Images className="h-3.5 w-3.5" />
+                    Edit Image Set
+                  </a>
+                )}
                 <a
                   href={
                     selectedListing.isAvailable

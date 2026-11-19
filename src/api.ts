@@ -1,20 +1,25 @@
 import {
   appendDeliveryLog,
   DEFAULT_EMBED_CONFIG,
+  deleteWidgetDeployment,
   EmbedConfig,
   getAllGuildIds,
   getCatalogSnapshot,
   getDeliveryLogs,
   getEmbedConfig,
   getGuildConfig,
+  getGuildSentMessages,
   getListingHistory,
   getMonitorLogs,
   getMonitorStatus,
-  listSentListingIdsForGuild,
+  getWidgetDeployment,
   ListingRecord,
   MonitorStatus,
+  purgeListingMediaEdgeCaches,
+  purgePublicEdgeCaches,
   setEmbedConfig,
   setGuildConfig,
+  updateListingImages,
 } from "./kv";
 import {
   BOT_PERMISSIONS,
@@ -32,9 +37,12 @@ import {
   dispatchListingToGuild,
   ensureHistoricalKnownListingsPreserved,
   manualScanStoreOnly,
+  refreshAllWidgets,
   resolvePublicOrigin,
   sendDiscordChannelMessage,
+  updateSentListingEmbedForGuild,
 } from "./scraper";
+import { fetchDiscordWithRetry } from "./discord";
 
 const NO_STORE_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -618,9 +626,16 @@ export async function handleApiRequest(
 
       const connectedGuilds = await Promise.all(
         [...guildIdSet].map(async (guildId) => {
-          const cfg = await getGuildConfig(env, guildId);
+          const [cfg, sentMessages, widget] = await Promise.all([
+            getGuildConfig(env, guildId),
+            getGuildSentMessages(env, guildId),
+            getWidgetDeployment(env, guildId),
+          ]);
           const botGuild = botGuildMap.get(guildId);
-          const sentMap = cfg?.channelId ? await listSentListingIdsForGuild(env, guildId) : {};
+          const sentListingIds: Record<string, boolean> = {};
+          for (const listingId of Object.keys(sentMessages)) {
+            sentListingIds[listingId] = true;
+          }
           const iconUrl = botGuild?.icon
             ? `https://cdn.discordapp.com/icons/${encodeURIComponent(guildId)}/${encodeURIComponent(botGuild.icon)}.png?size=64`
             : null;
@@ -634,7 +649,9 @@ export async function handleApiRequest(
             roleIds: cfg?.roleIds || [],
             environment: cfg?.environment === "test" ? "test" : "production",
             configured: Boolean(cfg?.channelId),
-            sentListingIds: sentMap,
+            sentListingIds,
+            sentMessages,
+            widget,
           };
         })
       );
@@ -913,6 +930,412 @@ export async function handleApiRequest(
         listingId,
         deliveryLogs,
       });
+    }
+
+    // 13. Manually Edit / Update Deployed Discord Embeds In-Place
+    if (method === "POST" && url.pathname === "/api/admin/dispatch/edit") {
+      let body: any = {};
+      try {
+        body = await request.json();
+      } catch {
+        return json({ error: "Invalid JSON payload." }, 400);
+      }
+
+      const listingId = String(body?.listingId || "").trim();
+      const rawGuildIds: string[] = Array.isArray(body?.guildIds)
+        ? body.guildIds.map((val: unknown) => String(val)).filter((id: string) => /^\d{17,20}$/.test(id))
+        : [];
+      const guildIds = Array.from(new Set<string>(rawGuildIds));
+
+      if (!listingId) return json({ error: "Select a vehicle listing to update." }, 400);
+      if (guildIds.length === 0) {
+        return json({ error: "Select at least one destination server." }, 400);
+      }
+
+      const history = await getListingHistory(env);
+      const record = history.find((item) => item.id === listingId);
+      if (!record) return json({ error: "Selected vehicle listing could not be found." }, 404);
+
+      const car: CarListing = {
+        ...record.payload,
+        id: record.id,
+        detectedAt: record.firstSeenAt,
+        lastVerifiedAt: record.lastVerifiedAt,
+        soldOutAt: record.soldOutAt,
+        isAvailable: record.isAvailable,
+      };
+
+      const results: Array<{
+        guildId: string;
+        ok: boolean;
+        skippedNotSent?: boolean;
+        messageId?: string;
+        channelId?: string;
+        error?: string;
+      }> = [];
+
+      for (const guildId of guildIds) {
+        const res = await updateSentListingEmbedForGuild(env, car, guildId, {
+          overrideMessageId:
+            typeof body?.overrideMessageId === "string" && guildIds.length === 1
+              ? body.overrideMessageId
+              : undefined,
+          overrideChannelId:
+            typeof body?.overrideChannelId === "string" && guildIds.length === 1
+              ? body.overrideChannelId
+              : undefined,
+        });
+        results.push({ guildId, ...res });
+      }
+
+      const deliveryLogs = await getDeliveryLogs(env);
+      return json({
+        ok: true,
+        results,
+        updatedCount: results.filter((r) => r.ok).length,
+        skippedCount: results.filter((r) => r.skippedNotSent).length,
+        failedCount: results.filter((r) => !r.ok && !r.skippedNotSent).length,
+        deliveryLogs,
+      });
+    }
+
+    // 14. Admin Widget Controls (Refresh All / Remove Guild Widget)
+    if (method === "POST" && url.pathname === "/api/admin/widgets/refresh") {
+      const result = await refreshAllWidgets(env, origin);
+      return json({
+        ok: true,
+        ...result,
+        refreshedAt: Date.now(),
+      });
+    }
+
+    const deleteWidgetMatch = url.pathname.match(/^\/api\/admin\/widgets\/(\d{17,20})$/);
+    if (deleteWidgetMatch && method === "DELETE") {
+      const guildId = deleteWidgetMatch[1];
+      const existingWidget = await getWidgetDeployment(env, guildId);
+      if (existingWidget?.channelId && existingWidget?.messageId && env.DISCORD_BOT_TOKEN) {
+        await fetchDiscordWithRetry(
+          `https://discord.com/api/v10/channels/${existingWidget.channelId}/messages/${existingWidget.messageId}`,
+          {
+            method: "DELETE",
+            headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` },
+          }
+        ).catch(() => null);
+      }
+      await deleteWidgetDeployment(env, guildId);
+      return json({ ok: true, guildId });
+    }
+
+    // 15. R2 Media Asset Manager & Placement Modifier (/admin/images)
+    const allowedMediaTypes = new Set([
+      "image/png",
+      "image/jpeg",
+      "image/jpg",
+      "image/webp",
+      "image/gif",
+      "image/avif",
+    ]);
+
+    const buildListingImageState = async (listingId: string) => {
+      const r2 = env.MEDIA_BUCKET as R2Bucket | undefined;
+      const kv = env.DISCORD_BOT as KVNamespace | undefined;
+      const snapshot = await getCatalogSnapshot(env);
+      const record = snapshot.records.find((r) => r.id === listingId);
+      if (!record) return null;
+
+      const baseOrigin = resolvePublicOrigin(env, origin) || origin;
+      const storedUrls: string[] = Array.isArray(record.payload?.images) ? record.payload.images : [];
+      const slots: Array<{
+        index: number;
+        exists: boolean;
+        storage: "r2" | "kv" | "external" | "empty";
+        size: number;
+        contentType: string;
+        etag: string | null;
+        url: string | null;
+        sourceUrl: string | null;
+      }> = [];
+
+      for (let idx = 0; idx < 10; idx++) {
+        const key = `media:${listingId}:${idx}`;
+        const r2Head = r2 ? await r2.head(key) : null;
+        if (r2Head) {
+          slots.push({
+            index: idx,
+            exists: true,
+            storage: "r2",
+            size: r2Head.size,
+            contentType: r2Head.httpMetadata?.contentType || "image/webp",
+            etag: r2Head.httpEtag || null,
+            url: `${baseOrigin}/media/listings/${listingId}/${idx}`,
+            sourceUrl: storedUrls[idx] || null,
+          });
+          continue;
+        }
+        const kvEntry = kv ? await kv.getWithMetadata<{ contentType?: string }>(key, "arrayBuffer") : null;
+        if (kvEntry?.value) {
+          slots.push({
+            index: idx,
+            exists: true,
+            storage: "kv",
+            size: kvEntry.value.byteLength,
+            contentType: kvEntry.metadata?.contentType || "image/webp",
+            etag: `kv-${listingId}-${idx}-${kvEntry.value.byteLength}`,
+            url: `${baseOrigin}/media/listings/${listingId}/${idx}`,
+            sourceUrl: storedUrls[idx] || null,
+          });
+          continue;
+        }
+        const rawUrl = storedUrls[idx];
+        const isExternal =
+          typeof rawUrl === "string" &&
+          /^https?:\/\//i.test(rawUrl) &&
+          !rawUrl.includes(`/media/listings/${listingId}/`);
+        slots.push({
+          index: idx,
+          exists: isExternal,
+          storage: isExternal ? "external" : "empty",
+          size: 0,
+          contentType: "",
+          etag: null,
+          url: isExternal ? rawUrl : null,
+          sourceUrl: rawUrl || null,
+        });
+      }
+
+      return {
+        listingId,
+        listingName: record.payload?.name || `Limited Vehicle #${listingId}`,
+        isAvailable: record.isAvailable,
+        slots,
+        payloadUrls: storedUrls,
+        r2Bound: Boolean(r2),
+      };
+    };
+
+    const syncRecordUrlsFromStorage = async (listingId: string, deletedIndex?: number) => {
+      const r2 = env.MEDIA_BUCKET as R2Bucket | undefined;
+      const kv = env.DISCORD_BOT as KVNamespace | undefined;
+      const baseOrigin = resolvePublicOrigin(env, origin) || origin;
+      const snapshot = await getCatalogSnapshot(env);
+      const record = snapshot.records.find((r) => r.id === listingId);
+      const existingUrls: string[] = Array.isArray(record?.payload?.images) ? record.payload.images : [];
+      const urls: string[] = [];
+
+      for (let idx = 0; idx < 10; idx++) {
+        const key = `media:${listingId}:${idx}`;
+        const hasR2 = r2 ? Boolean(await r2.head(key)) : false;
+        const hasKv = !hasR2 && kv ? Boolean(await kv.get(key, "arrayBuffer")) : false;
+        if (hasR2 || hasKv) {
+          urls.push(`${baseOrigin}/media/listings/${listingId}/${idx}`);
+        } else if (
+          deletedIndex !== idx &&
+          typeof existingUrls[idx] === "string" &&
+          /^https?:\/\//i.test(existingUrls[idx]) &&
+          !existingUrls[idx].includes(`/media/listings/${listingId}/`)
+        ) {
+          urls.push(existingUrls[idx]);
+        }
+      }
+
+      await updateListingImages(env, listingId, urls);
+      await purgeListingMediaEdgeCaches(listingId, baseOrigin);
+      await purgePublicEdgeCaches(baseOrigin);
+      await refreshAllWidgets(env, baseOrigin);
+      return urls;
+    };
+
+    const imagesListMatch = url.pathname.match(/^\/api\/admin\/listings\/(\d+)\/images$/);
+    if (imagesListMatch && method === "GET") {
+      const state = await buildListingImageState(imagesListMatch[1]);
+      if (!state) return json({ error: "Listing not found." }, 404);
+      return json({ ok: true, ...state });
+    }
+
+    const imagesReorderMatch = url.pathname.match(/^\/api\/admin\/listings\/(\d+)\/images\/reorder$/);
+    if (imagesReorderMatch && method === "PUT") {
+      const listingId = imagesReorderMatch[1];
+      const r2 = env.MEDIA_BUCKET as R2Bucket | undefined;
+      const kv = env.DISCORD_BOT as KVNamespace | undefined;
+      const snapshot = await getCatalogSnapshot(env);
+      const record = snapshot.records.find((r) => r.id === listingId);
+      if (!record) return json({ error: "Listing not found." }, 404);
+
+      let body: any = {};
+      try {
+        body = await request.json();
+      } catch {
+        return json({ error: "Invalid JSON payload." }, 400);
+      }
+
+      // Read all existing blobs (R2 first, fallback KV, fallback external fetch)
+      const blobMap = new Map<number, { data: ArrayBuffer; contentType: string }>();
+      const storedUrls: string[] = Array.isArray(record.payload?.images) ? record.payload.images : [];
+      for (let idx = 0; idx < 10; idx++) {
+        const key = `media:${listingId}:${idx}`;
+        if (r2) {
+          const obj = await r2.get(key);
+          if (obj) {
+            blobMap.set(idx, {
+              data: await obj.arrayBuffer(),
+              contentType: obj.httpMetadata?.contentType || "image/webp",
+            });
+            continue;
+          }
+        }
+        if (kv) {
+          const kvObj = await kv.getWithMetadata<{ contentType?: string }>(key, "arrayBuffer");
+          if (kvObj?.value) {
+            blobMap.set(idx, {
+              data: kvObj.value,
+              contentType: kvObj.metadata?.contentType || "image/webp",
+            });
+            continue;
+          }
+        }
+        const candidateUrl = storedUrls[idx];
+        if (
+          typeof candidateUrl === "string" &&
+          /^https?:\/\//i.test(candidateUrl) &&
+          !candidateUrl.includes(`/media/listings/${listingId}/`)
+        ) {
+          try {
+            const res = await fetch(candidateUrl);
+            if (res.ok) {
+              blobMap.set(idx, {
+                data: await res.arrayBuffer(),
+                contentType: res.headers.get("content-type") || "image/webp",
+              });
+            }
+          } catch {
+            // Skip unreachable external image
+          }
+        }
+      }
+
+      // Compute slot permutation 0..9 -> oldSlot
+      const targetMapping: number[] = Array.from({ length: 10 }, (_, i) => i);
+      if (Array.isArray(body?.order) && body.order.length > 0) {
+        const seen = new Set<number>();
+        const cleaned = body.order
+          .map((n: unknown) => Number(n))
+          .filter((n: number) => Number.isInteger(n) && n >= 0 && n < 10 && !seen.has(n) && (seen.add(n), true));
+        for (let i = 0; i < 10; i++) {
+          if (!seen.has(i)) cleaned.push(i);
+        }
+        for (let i = 0; i < 10; i++) targetMapping[i] = cleaned[i];
+      } else if (
+        Number.isInteger(Number(body?.fromIndex)) &&
+        Number.isInteger(Number(body?.toIndex))
+      ) {
+        const from = Number(body.fromIndex);
+        const to = Number(body.toIndex);
+        if (from < 0 || from > 9 || to < 0 || to > 9) {
+          return json({ error: "Slot indices must be between 0 and 9." }, 400);
+        }
+        if (body?.mode === "move") {
+          const seq = Array.from({ length: 10 }, (_, i) => i);
+          const [moved] = seq.splice(from, 1);
+          seq.splice(to, 0, moved);
+          for (let i = 0; i < 10; i++) targetMapping[i] = seq[i];
+        } else {
+          targetMapping[from] = to;
+          targetMapping[to] = from;
+        }
+      } else {
+        return json({ error: "Provide either { order } or { fromIndex, toIndex }." }, 400);
+      }
+
+      for (let newIdx = 0; newIdx < 10; newIdx++) {
+        const oldIdx = targetMapping[newIdx];
+        const key = `media:${listingId}:${newIdx}`;
+        const blob = blobMap.get(oldIdx);
+        if (blob) {
+          if (r2) {
+            await r2.put(key, blob.data, { httpMetadata: { contentType: blob.contentType } });
+            if (kv) await kv.delete(key).catch(() => null);
+          } else if (kv) {
+            await kv.put(key, blob.data, { metadata: { contentType: blob.contentType } });
+          }
+        } else {
+          if (r2) await r2.delete(key).catch(() => null);
+          if (kv) await kv.delete(key).catch(() => null);
+        }
+      }
+
+      await syncRecordUrlsFromStorage(listingId);
+      const nextState = await buildListingImageState(listingId);
+      return json({ ok: true, ...nextState });
+    }
+
+    const imageSlotMatch = url.pathname.match(/^\/api\/admin\/listings\/(\d+)\/images\/(\d+)$/);
+    if (imageSlotMatch && method === "POST") {
+      const listingId = imageSlotMatch[1];
+      const slotIndex = Number(imageSlotMatch[2]);
+      if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex > 9) {
+        return json({ error: "Image slot index must be between 0 and 9." }, 400);
+      }
+
+      const r2 = env.MEDIA_BUCKET as R2Bucket | undefined;
+      const kv = env.DISCORD_BOT as KVNamespace | undefined;
+      const reqContentType = request.headers.get("content-type") || "";
+      let fileBytes: ArrayBuffer | null = null;
+      let mimeType = "image/webp";
+
+      if (reqContentType.includes("multipart/form-data")) {
+        const formData = await request.formData();
+        const file = formData.get("file");
+        if (!file || typeof file === "string") {
+          return json({ error: "Missing uploaded file field ('file')." }, 400);
+        }
+        mimeType = file.type || "image/webp";
+        fileBytes = await file.arrayBuffer();
+      } else {
+        mimeType = reqContentType.split(";")[0].trim() || "image/webp";
+        fileBytes = await request.arrayBuffer();
+      }
+
+      if (!fileBytes || fileBytes.byteLength === 0) {
+        return json({ error: "Uploaded image file is empty." }, 400);
+      }
+      if (fileBytes.byteLength > 25 * 1024 * 1024) {
+        return json({ error: "Image file exceeds the 25 MB upload limit." }, 413);
+      }
+      if (!allowedMediaTypes.has(mimeType.toLowerCase())) {
+        return json({ error: `Unsupported image content type: ${mimeType}` }, 400);
+      }
+
+      const key = `media:${listingId}:${slotIndex}`;
+      if (r2) {
+        await r2.put(key, fileBytes, { httpMetadata: { contentType: mimeType } });
+        if (kv) await kv.delete(key).catch(() => null);
+      } else if (kv) {
+        await kv.put(key, fileBytes, { metadata: { contentType: mimeType } });
+      } else {
+        return json({ error: "Neither R2 bucket nor KV storage is bound." }, 500);
+      }
+
+      await syncRecordUrlsFromStorage(listingId);
+      const nextState = await buildListingImageState(listingId);
+      return json({ ok: true, ...nextState });
+    }
+
+    if (imageSlotMatch && method === "DELETE") {
+      const listingId = imageSlotMatch[1];
+      const slotIndex = Number(imageSlotMatch[2]);
+      if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex > 9) {
+        return json({ error: "Image slot index must be between 0 and 9." }, 400);
+      }
+
+      const r2 = env.MEDIA_BUCKET as R2Bucket | undefined;
+      const kv = env.DISCORD_BOT as KVNamespace | undefined;
+      const key = `media:${listingId}:${slotIndex}`;
+      if (r2) await r2.delete(key).catch(() => null);
+      if (kv) await kv.delete(key).catch(() => null);
+
+      await syncRecordUrlsFromStorage(listingId, slotIndex);
+      const nextState = await buildListingImageState(listingId);
+      return json({ ok: true, ...nextState });
     }
   }
 

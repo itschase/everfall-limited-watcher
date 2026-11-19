@@ -25,8 +25,10 @@ import { useAuthActions } from "@/features/auth/useAuthActions";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function ServerStatusIndicator({ status }: { status: ServerStatus }) {
@@ -268,17 +270,20 @@ function ServerConfigPanel({
                 return (
                   <label
                     key={role.id}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      toggleRole(role.id);
+                    }}
                     className={cn(
                       "flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-xs transition",
                       checked ? "bg-zinc-800/80 text-white" : "text-zinc-300 hover:bg-secondary"
                     )}
                   >
                     <span className="truncate">@{role.name}</span>
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={checked}
-                      onChange={() => toggleRole(role.id)}
-                      className="h-4 w-4 accent-zinc-200"
+                      onCheckedChange={() => toggleRole(role.id)}
+                      onClick={(e) => e.stopPropagation()}
                     />
                   </label>
                 );
@@ -452,7 +457,7 @@ export function DashboardPage() {
       {isLoading ? (
         <div className="space-y-3">
           {[0, 1, 2].map((s) => (
-            <div key={s} className="h-24 animate-pulse rounded-xl border border-border bg-card" />
+            <Skeleton key={s} className="h-24 w-full rounded-xl" />
           ))}
         </div>
       ) : isError ? (
