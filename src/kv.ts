@@ -307,6 +307,7 @@ export async function purgePublicEdgeCaches(originHint?: string): Promise<void> 
     [...origins].flatMap((origin) => [
       edgeCache.delete(new Request(`${origin}/api/public/status`, { method: "GET" })).catch(() => false),
       edgeCache.delete(new Request(`${origin}/api/public/listings`, { method: "GET" })).catch(() => false),
+      edgeCache.delete(new Request(`${origin}/api/public/presentation`, { method: "GET" })).catch(() => false),
     ])
   );
 }

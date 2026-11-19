@@ -16,7 +16,6 @@ import {
   Loader2,
   Plus,
   SlidersHorizontal,
-  Terminal,
   Users,
 } from "lucide-react";
 import {
@@ -32,6 +31,7 @@ import { cn, formatLocalDateTime, formatLocalTime, safeExternalUrl } from "@/lib
 import { useAuthActions, useSession } from "@/features/auth/useAuthActions";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { AnimatedHero } from "@/components/hero/AnimatedHero";
+import { SlashCommandsSection } from "@/components/discord/SlashCommandsSection";
 import {
   FeatureChipList,
   StockStatusPill,
@@ -93,15 +93,6 @@ const FEATURES = [
       "Choose which Discord roles to mention when a new limited drop is posted, so the right members receive notifications.",
     icon: Users,
   },
-];
-
-const SLASH_COMMANDS = [
-  { command: "/setup <#channel>", summary: "Set the destination channel for new limited vehicle alerts." },
-  { command: "/widget", summary: "Preview privately and deploy an auto-updating live stock & recent drops widget." },
-  { command: "/add-role <@role>", summary: "Add a Discord role to mention when a limited drop is published." },
-  { command: "/remove-role <@role>", summary: "Remove a role from server notification mentions." },
-  { command: "/check", summary: "Run an on-demand store scan for unsent active drops." },
-  { command: "/help", summary: "Open server configuration summary and interactive controls." },
 ];
 
 export function HomePage() {
@@ -503,30 +494,7 @@ export function HomePage() {
 
       {/* Slash Commands Reference */}
       <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-        <Card className="p-6 sm:p-8">
-          <div className="flex items-center gap-2.5">
-            <Terminal className="h-5 w-5 text-white" />
-            <h2 className="text-xl font-bold text-white">Discord Slash Commands</h2>
-          </div>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            Server configuration commands require Manage Server or Administrator permissions inside your Discord server.
-          </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {SLASH_COMMANDS.map((item) => (
-              <div
-                key={item.command}
-                className="rounded-lg border border-border bg-zinc-950/80 p-4 transition-colors hover:border-zinc-700"
-              >
-                <code className="select-all cursor-text font-mono text-xs font-semibold text-zinc-100">
-                  {item.command}
-                </code>
-                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                  {item.summary}
-                </p>
-              </div>
-            ))}
-          </div>
-        </Card>
+        <SlashCommandsSection variant="compact" />
       </section>
 
       {/* Vehicle Inspection Modal */}

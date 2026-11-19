@@ -174,10 +174,23 @@ export interface PublicStatusResponse {
   lastSuccessAt: number | null;
   authoritative: boolean | null;
   catalogVersion: number;
+  presentationVersion?: number;
   totalCount: number;
   availableCount: number;
   soldOutCount: number;
   hero?: HeroConfig;
+}
+
+export interface PublicPresentationResponse {
+  ok: boolean;
+  version: number;
+  updatedAt: number;
+  publicOrigin: string;
+  announcements: {
+    inStock: AnnouncementTemplate;
+    soldOut: AnnouncementTemplate;
+  };
+  widgetDefault: WidgetTemplateConfig;
 }
 
 export interface HistoryResponse {

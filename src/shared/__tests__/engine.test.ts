@@ -24,6 +24,7 @@ import {
 import { createSessionToken } from "../../admin";
 import { handleApiRequest } from "../../api";
 import { setWidgetDeployment } from "../../kv";
+import { DISCORD_SLASH_COMMANDS } from "../slashCommands";
 
 test("extractVehicleMetadata normalizes Seraph GTS features without hyphen and isolates terms", () => {
   const desc =
@@ -535,4 +536,146 @@ test("Server dashboard widget routes enforce auth, per-guild ownership, and cros
   } finally {
     globalThis.fetch = origFetch;
   }
+});
+
+test("GET /api/public/presentation returns sanitized templates, reflects admin updates, and leaks zero secrets", async () => {
+  const kv = createMemoryKv();
+  await kv.put(
+    "listings:snapshot",
+    JSON.stringify({
+      version: 2,
+      records: [
+        {
+          id: "7815819",
+          firstSeenAt: 1_760_000_000_000,
+          lastSeenAt: 1_760_000_060_000,
+          isAvailable: false,
+          payload: { name: "Seraph GTS", description: "Limited car", images: [] },
+        },
+      ],
+    })
+  );
+
+  const secret = "test-client-secret-should-never-leak";
+  const env: any = {
+    DISCORD_BOT: kv,
+    DISCORD_BOT_TOKEN: "super-secret-bot-token",
+    DISCORD_CLIENT_SECRET: secret,
+    DISCORD_PRIMARY_ADMINISTRATOR: "151037568484507648",
+    DISCORD_APPLICATION_ID: "1571958001928245378",
+    PUBLIC_ORIGIN: "https://everfall-limited-watcher.itschase.workers.dev",
+  };
+
+  // Unauthenticated access allowed
+  const pubRes = await handleApiRequest(
+    new Request("https://everfall-limited-watcher.itschase.workers.dev/api/public/presentation"),
+    env,
+    new URL("https://everfall-limited-watcher.itschase.workers.dev/api/public/presentation")
+  );
+  assert.equal(pubRes?.status, 200);
+  const rawBody = await pubRes!.text();
+  assert.ok(!rawBody.includes("super-secret-bot-token"), "Public endpoint must never expose bot token");
+  assert.ok(!rawBody.includes(secret), "Public endpoint must never expose OAuth secret");
+  assert.ok(!rawBody.includes("151037568484507648"), "Public endpoint must never expose admin IDs");
+
+  const parsed: any = JSON.parse(rawBody);
+  assert.equal(parsed.ok, true);
+  assert.ok(parsed.announcements?.inStock?.titlePrefix);
+  assert.ok(parsed.announcements?.soldOut?.titlePrefix);
+  assert.ok(parsed.widgetDefault?.title);
+  assert.equal((parsed as any).updatedBy, undefined);
+  assert.equal((parsed as any).recentEmojis, undefined);
+
+  // Admin updates presentation template and public endpoints reflect updated version + template without mutating listing availability
+  const adminToken = await createSessionToken("151037568484507648", "xchasex", "", secret);
+  const updateReq = new Request(
+    "https://everfall-limited-watcher.itschase.workers.dev/api/admin/presentation",
+    {
+      method: "PUT",
+      headers: {
+        Cookie: `everfall_session=${adminToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        announcements: {
+          inStock: {
+            ...DEFAULT_IN_STOCK_TEMPLATE,
+            titlePrefix: "Fresh Limited Drop:",
+          },
+          soldOut: DEFAULT_SOLD_OUT_TEMPLATE,
+        },
+        widgetDefault: {
+          ...DEFAULT_WIDGET_TEMPLATE,
+          title: "Everfall Custom Board Title",
+        },
+      }),
+    }
+  );
+  const updateRes = await handleApiRequest(updateReq, env, new URL(updateReq.url));
+  assert.equal(updateRes?.status, 200);
+
+  const afterPubRes = await handleApiRequest(
+    new Request("https://everfall-limited-watcher.itschase.workers.dev/api/public/presentation"),
+    env,
+    new URL("https://everfall-limited-watcher.itschase.workers.dev/api/public/presentation")
+  );
+  const afterJson: any = await afterPubRes!.json();
+  assert.equal(afterJson.announcements.inStock.titlePrefix, "Fresh Limited Drop:");
+  assert.equal(afterJson.widgetDefault.title, "Everfall Custom Board Title");
+  assert.ok(afterJson.version > parsed.version);
+
+  const statusRes = await handleApiRequest(
+    new Request("https://everfall-limited-watcher.itschase.workers.dev/api/public/status"),
+    env,
+    new URL("https://everfall-limited-watcher.itschase.workers.dev/api/public/status")
+  );
+  const statusJson: any = await statusRes!.json();
+  assert.equal(statusJson.presentationVersion, afterJson.version);
+
+  // Confirm stored snapshot availability remained untouched (isAvailable still false)
+  const snapshotRaw: any = await kv.get("listings:snapshot", "json");
+  assert.equal(snapshotRaw.records[0].isAvailable, false);
+});
+
+test("Features preview payload builders handle empty archive, incomplete metadata, and non-mutating simulation cleanly", () => {
+  // 1. Empty archive widget preview stays valid under Discord limits
+  const emptyWidget = buildWidgetPayload({
+    records: [],
+    monitorStatus: null,
+    template: DEFAULT_WIDGET_TEMPLATE,
+    nowMs: 1_760_000_000_000,
+  });
+  assert.equal(validateDiscordPayloadLimits(emptyWidget).valid, true);
+  assert.ok(
+    emptyWidget.embeds[0].fields.some((f: any) =>
+      String(f.value || "").includes(DEFAULT_WIDGET_TEMPLATE.emptyStateMessage)
+    ),
+    "Empty archive widget must render configured emptyStateMessage"
+  );
+
+  // 2. Incomplete metadata vehicle never fabricates features and never mutates source record availability
+  const minimalCar = {
+    id: "9001",
+    name: "Minimal Drop",
+    description: "",
+    url: "https://store.everfallcommunity.com/package/9001",
+    images: [],
+    isAvailable: false,
+    detectedAt: 1_760_000_000_000,
+    lastVerifiedAt: 1_760_000_030_000,
+  };
+  const simulatedInStock = buildCarDropPayload({
+    car: { ...minimalCar, isAvailable: true },
+    template: DEFAULT_IN_STOCK_TEMPLATE,
+  });
+  assert.equal(simulatedInStock.flags, 1 << 15);
+  assert.equal(minimalCar.isAvailable, false, "Preview generation must never mutate stored record availability");
+  const resolvedMinimal = resolveListingPresentation(minimalCar);
+  assert.equal(resolvedMinimal.effective.features.length, 0);
+});
+
+test("Shared DISCORD_SLASH_COMMANDS doc list covers all registered Discord slash commands cleanly", () => {
+  const registeredNames = COMMANDS.map((c) => c.name).sort();
+  const documentedNames = DISCORD_SLASH_COMMANDS.map((c) => c.name).sort();
+  assert.deepEqual(documentedNames, registeredNames);
 });

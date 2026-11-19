@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, createRouter, Outlet } from "@tanstack/react-router";
 import { HomePage } from "@/features/homepage/HomePage";
+import { FeaturesPage } from "@/features/features/FeaturesPage";
 import { HistoryPage } from "@/features/history/HistoryPage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { TermsPage } from "@/features/legal/TermsPage";
@@ -24,6 +25,12 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   component: HomePage,
+});
+
+const featuresRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/features",
+  component: FeaturesPage,
 });
 
 const historyRoute = createRoute({
@@ -118,6 +125,7 @@ const adminHeroRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  featuresRoute,
   historyRoute,
   dashboardRoute,
   termsRoute,

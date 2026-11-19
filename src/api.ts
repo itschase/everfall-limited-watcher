@@ -363,12 +363,51 @@ export async function handleApiRequest(
         lastSuccessAt: monitorStatus?.lastSuccessAt ?? null,
         authoritative: monitorStatus?.authoritative ?? null,
         catalogVersion,
+        presentationVersion: presentationBundle.version,
         totalCount: listingSummary.total,
         availableCount: listingSummary.available,
         soldOutCount: listingSummary.soldOut,
         hero: presentationBundle.hero,
       },
       25
+    );
+    if (edgeCache) {
+      try {
+        await edgeCache.put(cacheKey, res.clone());
+      } catch {
+        // Non-fatal
+      }
+    }
+    return res;
+  }
+
+  // 1c. Sanitized Public Presentation Templates (edge-cached & busted on /api/admin/presentation save)
+  if (method === "GET" && url.pathname === "/api/public/presentation") {
+    const edgeCache = getEdgeCache();
+    const cacheKey = getPublicCacheRequest(env, url);
+    if (edgeCache) {
+      try {
+        const hit = await edgeCache.match(cacheKey);
+        if (hit) return hit;
+      } catch {
+        // Ignore cache lookup failure
+      }
+    }
+
+    const bundle = await getPresentationConfig(env);
+    const res = publicCachedJson(
+      {
+        ok: true,
+        version: bundle.version,
+        updatedAt: bundle.updatedAt,
+        publicOrigin: resolvePublicOrigin(env, origin),
+        announcements: {
+          inStock: bundle.announcements.inStock,
+          soldOut: bundle.announcements.soldOut,
+        },
+        widgetDefault: bundle.widgetDefault,
+      },
+      45
     );
     if (edgeCache) {
       try {
@@ -1224,6 +1263,7 @@ export async function handleApiRequest(
         },
       };
       await setPresentationConfig(env, updatedBundle);
+      await purgePublicEdgeCaches(resolvePublicOrigin(env, origin));
       return json({ ok: true, embedConfig: nextConfig, savedAt: Date.now() });
     }
 

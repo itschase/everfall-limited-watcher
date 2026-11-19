@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { History, LayoutDashboard, Shield } from "lucide-react";
+import { LayoutDashboard, Shield } from "lucide-react";
 import { useAuthActions, useSession, useSessionSync } from "@/features/auth/useAuthActions";
 import { Button } from "@/components/ui/button";
 import { UserAccountMenu } from "./UserAccountMenu";
@@ -33,16 +33,23 @@ export function PublicLayout({ children }: { children: ReactNode }) {
             </span>
           </Link>
 
-          <nav className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
+          <nav aria-label="Primary" className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
             <Link
               to="/"
-              className="whitespace-nowrap transition hover:text-white [&.active]:text-white"
+              activeOptions={{ exact: true }}
+              className="whitespace-nowrap transition hover:text-white [&.active]:font-semibold [&.active]:text-white"
             >
               Home
             </Link>
             <Link
+              to="/features"
+              className="whitespace-nowrap transition hover:text-white [&.active]:font-semibold [&.active]:text-white"
+            >
+              Features
+            </Link>
+            <Link
               to="/history"
-              className="whitespace-nowrap transition hover:text-white [&.active]:text-white"
+              className="whitespace-nowrap transition hover:text-white [&.active]:font-semibold [&.active]:text-white"
             >
               Drop History
             </Link>
@@ -53,13 +60,6 @@ export function PublicLayout({ children }: { children: ReactNode }) {
               <div className="h-9 w-28 animate-pulse rounded-lg bg-secondary sm:w-32" />
             ) : user ? (
               <div className="flex items-center gap-2">
-                <Link
-                  to="/history"
-                  aria-label="Limited Drop History"
-                  className="inline-flex items-center justify-center rounded-lg border border-border bg-secondary p-2 text-zinc-200 transition hover:bg-zinc-800 md:hidden"
-                >
-                  <History className="h-4 w-4" />
-                </Link>
                 <Link
                   to="/dashboard"
                   className="hidden items-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-zinc-200 transition hover:bg-zinc-800 sm:inline-flex"
@@ -90,6 +90,32 @@ export function PublicLayout({ children }: { children: ReactNode }) {
             )}
           </div>
         </div>
+
+        {/* Mobile Public Navigation */}
+        <nav
+          aria-label="Mobile Navigation"
+          className="flex items-center justify-around border-t border-border/60 bg-zinc-950/90 px-3 py-2 text-xs font-medium text-muted-foreground md:hidden"
+        >
+          <Link
+            to="/"
+            activeOptions={{ exact: true }}
+            className="rounded-md px-3 py-1 transition hover:text-white [&.active]:bg-zinc-900 [&.active]:font-semibold [&.active]:text-white"
+          >
+            Home
+          </Link>
+          <Link
+            to="/features"
+            className="rounded-md px-3 py-1 transition hover:text-white [&.active]:bg-zinc-900 [&.active]:font-semibold [&.active]:text-white"
+          >
+            Features
+          </Link>
+          <Link
+            to="/history"
+            className="rounded-md px-3 py-1 transition hover:text-white [&.active]:bg-zinc-900 [&.active]:font-semibold [&.active]:text-white"
+          >
+            Drop History
+          </Link>
+        </nav>
       </header>
 
       <main className="flex-1">{children}</main>
@@ -108,6 +134,12 @@ export function PublicLayout({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-6 text-xs text-muted-foreground">
+            <Link to="/features" className="transition hover:text-white">
+              Features
+            </Link>
+            <Link to="/history" className="transition hover:text-white">
+              Drop History
+            </Link>
             <Link to="/terms-of-service" className="transition hover:text-white">
               Terms of Service
             </Link>
