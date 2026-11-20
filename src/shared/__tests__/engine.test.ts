@@ -34,13 +34,15 @@ import {
 import { handleInteraction, hasManageServerPermission } from "../../commands";
 import {
   buildBotReadinessChecks,
+  checkBotHealthSnapshot,
   COMMANDS,
   compareDiscordCommands,
 } from "../../register";
-import { createSessionToken } from "../../admin";
+import { createSessionToken, getBotGuilds, getGuildControlOptions } from "../../admin";
 import { handleApiRequest } from "../../api";
 import {
   getAllWidgetDeployments,
+  getBotHealthSnapshot,
   getCatalogSnapshot,
   getDeliveryLogs,
   getGuildConfig,
@@ -48,6 +50,7 @@ import {
   getMonitorLogs,
   getPresentationConfig,
   setGuildConfig,
+  setBotHealthSnapshot,
   setPresentationConfig,
   setWidgetDeployment,
   WIDGET_REGISTRY_KEY,
@@ -396,6 +399,186 @@ function createMemoryKv() {
     },
   };
 }
+
+test("bot health checks coalesce concurrent refreshes and tolerate KV write quota failures", async () => {
+  const kv = createMemoryKv();
+  let kvGets = 0;
+  let kvPuts = 0;
+  let fetchCalls = 0;
+  const trackedKv = {
+    ...kv,
+    async get(key: string, type?: string) {
+      kvGets++;
+      return kv.get(key, type);
+    },
+    async put(key: string, value: string | ArrayBuffer) {
+      kvPuts++;
+      throw new Error("KV put limit exceeded for the day.");
+    },
+  };
+  const env = {
+    DISCORD_BOT: trackedKv,
+    DISCORD_BOT_TOKEN: "test-token",
+    DISCORD_APPLICATION_ID: "1571958001928245378",
+    PUBLIC_ORIGIN: "https://bot-health-cache-test.example.com",
+  };
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    fetchCalls++;
+    const url = String(input);
+    return url.endsWith("/users/@me")
+      ? Response.json({ id: "1571958001928245378", username: "Everfall Test" })
+      : Response.json({ id: "1571958001928245378", name: "Everfall Test" });
+  };
+  console.warn = () => {};
+
+  try {
+    const [first, second] = await Promise.all([
+      checkBotHealthSnapshot(env),
+      checkBotHealthSnapshot(env),
+    ]);
+    assert.equal(first.online, true);
+    assert.equal(second, first);
+    assert.equal(fetchCalls, 2, "Concurrent checks should share one Discord identity refresh");
+    assert.equal(kvGets, 1, "The coalesced refresh should read the snapshot once");
+    assert.equal(kvPuts, 1, "The coalesced refresh should attempt one KV write");
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+  }
+});
+
+test("D1 migrates bot health snapshot once and handles routine snapshot updates without KV writes", async () => {
+  const baseKv = createMemoryKv();
+  const state = new Map<string, { updated_at: number; value_json: string }>();
+  const db: any = {
+    prepare(query: string) {
+      let params: unknown[] = [];
+      const statement: any = {
+        bind(...values: unknown[]) {
+          params = values;
+          return statement;
+        },
+        async first() {
+          const row = state.get(String(params[0]));
+          if (!row) return null;
+          if (query.includes("SELECT updated_at")) return { updated_at: row.updated_at };
+          if (query.includes("SELECT value_json")) return { value_json: row.value_json };
+          return null;
+        },
+        async run() {
+          if (query.includes("INSERT INTO monitor_state")) {
+            state.set(String(params[0]), {
+              updated_at: Number(params[1]),
+              value_json: String(params[2]),
+            });
+          }
+          return { success: true, results: [], meta: { changes: 1 } };
+        },
+        async all() {
+          return { success: true, results: [], meta: { rows_read: 0 } };
+        },
+      };
+      return statement;
+    },
+    async batch(statements: any[]) {
+      await Promise.all(statements.map((statement) => statement.all()));
+      return [];
+    },
+  };
+  const legacySnapshot = {
+    verified: true,
+    online: true,
+    checkedAt: 1_760_000_000_000,
+    appId: "1571958001928245378",
+    botUsername: "Everfall Legacy",
+  };
+  await baseKv.put("bot:health_snapshot", JSON.stringify(legacySnapshot));
+  let kvReads = 0;
+  let kvWrites = 0;
+  const trackedKv = {
+    ...baseKv,
+    async get(key: string, type?: string) {
+      kvReads++;
+      return baseKv.get(key, type);
+    },
+    async put(key: string, value: string | ArrayBuffer) {
+      kvWrites++;
+      return baseKv.put(key, value);
+    },
+  };
+
+  const env: any = {
+    DB: db as D1Database,
+    DISCORD_BOT: trackedKv,
+  };
+  const migrated = await getBotHealthSnapshot(env);
+  assert.equal(migrated?.botUsername, "Everfall Legacy");
+
+  const updated = { ...legacySnapshot, checkedAt: legacySnapshot.checkedAt + 1 };
+  await setBotHealthSnapshot(env, updated);
+  const persisted = await getBotHealthSnapshot(env);
+  assert.equal(persisted?.checkedAt, updated.checkedAt);
+  assert.equal(kvReads, 1, "Only the one-time legacy migration should read KV");
+  assert.equal(kvWrites, 0, "D1-backed snapshot refreshes should not write KV");
+});
+
+test("dashboard cache refreshes coalesce and persist one bot-guild and per-guild control record", async () => {
+  const baseKv = createMemoryKv();
+  let kvPuts = 0;
+  let fetchCalls = 0;
+  const kv = {
+    ...baseKv,
+    async put(key: string, value: string | ArrayBuffer) {
+      kvPuts++;
+      return baseKv.put(key, value);
+    },
+  };
+  const env = {
+    DISCORD_BOT: kv,
+    DISCORD_BOT_TOKEN: "test-token",
+    DISCORD_APPLICATION_ID: "1571958001928245378",
+    PUBLIC_ORIGIN: "https://dashboard-cache-test.example.com",
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    fetchCalls++;
+    const url = String(input);
+    if (url.includes("/users/@me/guilds")) {
+      return Response.json([{ id: "111111111111111111", name: "Test Guild" }]);
+    }
+    if (url.endsWith("/channels")) {
+      return Response.json([{ id: "222222222222222222", name: "alerts", type: 0 }]);
+    }
+    return Response.json([{ id: "333333333333333333", name: "Members", managed: false }]);
+  };
+
+  try {
+    const [guilds1, guilds2] = await Promise.all([
+      getBotGuilds(env),
+      getBotGuilds(env),
+    ]);
+    assert.deepEqual(guilds1, guilds2);
+    assert.equal(kvPuts, 1, "Bot guild refreshes should write a single fallback cache key");
+    assert.equal(fetchCalls, 1, "Concurrent bot guild refreshes should share one Discord request");
+
+    const [controls1, controls2] = await Promise.all([
+      getGuildControlOptions(env, "111111111111111111"),
+      getGuildControlOptions(env, "111111111111111111"),
+    ]);
+    assert.deepEqual(controls1, controls2);
+    assert.equal(kvPuts, 2, "Guild control refresh should add only one cache write");
+    assert.equal(fetchCalls, 3, "Concurrent control refreshes should share two Discord requests");
+
+    await getBotGuilds(env);
+    await getGuildControlOptions(env, "111111111111111111");
+    assert.equal(kvPuts, 2, "Warm isolate caches should avoid repeated KV writes");
+    assert.equal(fetchCalls, 3, "Warm isolate caches should avoid repeated Discord requests");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("handleInteraction verifies Ed25519 signature, immediately defers /widget, and patches private preview confirmation", async () => {
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");

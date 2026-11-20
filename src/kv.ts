@@ -1,7 +1,7 @@
 // Unified D1-first + KV-fallback / ephemeral-TTL cache helper for Everfall Limited Watcher.
 // Structured application data lives in Cloudflare D1 (env.DB) when bound, with safe non-destructive
 // one-time lazy migration from legacy KV keys. Workers KV (env.DISCORD_BOT) is reserved for
-// short-lived TTL caches (user_guilds, guild_controls, oauth states, pending /widget prompts, bot health snapshots).
+// OAuth state, user guilds, pending /widget prompts, and fallback caches when D1 is unavailable.
 
 import {
   createDefaultPresentationConfig,
@@ -23,6 +23,7 @@ import {
   getMonitorStateValue,
   setMonitorStateValue,
 } from "./d1";
+import { withKvMetrics } from "./kvMetrics";
 
 export type GuildConfig = {
   channelId: string;
@@ -2594,11 +2595,41 @@ export async function setBotCommandSyncMeta(
   return combined;
 }
 
-// Ephemeral 600s TTL snapshot stays in KV intentionally
+async function ensureBotHealthSnapshotMigrated(
+  db: D1Database,
+  kv?: KVNamespace
+): Promise<void> {
+  await ensureDomainMigrated(db, "bot_health_snapshot", async () => {
+    if (!kv) return;
+    let raw: string | null;
+    try {
+      raw = await withKvMetrics("bot_health_snapshot", "get", () =>
+        kv.get(BOT_HEALTH_SNAPSHOT_KEY)
+      );
+    } catch (error) {
+      console.warn("Failed to migrate legacy bot health snapshot from KV:", error);
+      return;
+    }
+    if (!raw) return;
+    try {
+      await setMonitorStateValue(db, BOT_HEALTH_SNAPSHOT_KEY, JSON.parse(raw));
+    } catch (error) {
+      console.warn("Failed to migrate legacy bot health snapshot to D1:", error);
+    }
+  });
+}
+
 export async function getBotHealthSnapshot(env: any): Promise<BotHealthSnapshot | null> {
+  const db = getD1Database(env);
   const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  if (db) {
+    await ensureBotHealthSnapshotMigrated(db, kv);
+    return await getMonitorStateValue<BotHealthSnapshot>(db, BOT_HEALTH_SNAPSHOT_KEY);
+  }
   if (!kv) return null;
-  const raw = await kv.get(BOT_HEALTH_SNAPSHOT_KEY);
+  const raw = await withKvMetrics("bot_health_snapshot", "get", () =>
+    kv.get(BOT_HEALTH_SNAPSHOT_KEY)
+  );
   if (!raw) return null;
   try {
     return JSON.parse(raw) as BotHealthSnapshot;
@@ -2611,11 +2642,19 @@ export async function setBotHealthSnapshot(
   env: any,
   snapshot: BotHealthSnapshot
 ): Promise<void> {
+  const db = getD1Database(env);
   const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  if (db) {
+    await ensureBotHealthSnapshotMigrated(db, kv);
+    await setMonitorStateValue(db, BOT_HEALTH_SNAPSHOT_KEY, snapshot, snapshot.checkedAt);
+    return;
+  }
   if (!kv) return;
-  await kv.put(BOT_HEALTH_SNAPSHOT_KEY, JSON.stringify(snapshot), {
-    expirationTtl: 600,
-  });
+  await withKvMetrics("bot_health_snapshot", "put", () =>
+    kv.put(BOT_HEALTH_SNAPSHOT_KEY, JSON.stringify(snapshot), {
+      expirationTtl: 600,
+    })
+  );
 }
 
 // Creator profile in D1 (migrated cleanly from KV creator:profile)
