@@ -21,13 +21,22 @@ import {
 } from "./scraper";
 import { EF_LOGO_BASE64 } from "./assets";
 import { fetchDiscordWithRetry } from "./discord";
-import { getD1Database, getMonitorStateValue, setMonitorStateValue } from "./d1";
+import {
+  consumeOAuthState,
+  createOAuthState,
+  getD1Database,
+  getMonitorStateValue,
+  setMonitorStateValue,
+} from "./d1";
 import { withKvMetrics } from "./kvMetrics";
 
 const REDIRECT_PATH = "/auth/callback";
 const SESSION_COOKIE = "everfall_session";
 const OAUTH_STATE_COOKIE = "everfall_oauth_state";
+const OAUTH_STATE_TTL_MS = 600 * 1000;
 export const BOT_PERMISSIONS = "8462935362366544";
+
+class OAuthStateStorageError extends Error {}
 
 export interface SessionUser {
   id: string;
@@ -649,12 +658,19 @@ async function buildDiscordOAuthUrl(request: Request, env: any): Promise<{
   const redirectUri = `${origin}${REDIRECT_PATH}`;
   const appId = env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
   const secret = getSessionSecret(env);
+  if (!secret) throw new OAuthStateStorageError("Discord OAuth signing is not configured.");
   const nonce = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(24)));
-  const state = secret ? await signToken({ nonce, issuedAt: Date.now() }, secret) : nonce;
-
-  const kv = env.DISCORD_BOT as KVNamespace;
-  if (kv) {
-    await kv.put(`oauth_state:${nonce}`, "1", { expirationTtl: 600 });
+  const issuedAt = Date.now();
+  const state = await signToken({ nonce, issuedAt }, secret);
+  const db = getD1Database(env);
+  if (!db) {
+    throw new OAuthStateStorageError("The D1 database binding (DB) is not configured.");
+  }
+  try {
+    await createOAuthState(db, nonce, issuedAt + OAUTH_STATE_TTL_MS, issuedAt);
+  } catch (error) {
+    console.error("Failed to persist OAuth state in D1:", error);
+    throw new OAuthStateStorageError("OAuth state could not be stored in D1.");
   }
 
   const isHttps = isHttpsContext(request, origin);
@@ -664,6 +680,14 @@ async function buildDiscordOAuthUrl(request: Request, env: any): Promise<{
     `&scope=identify%20guilds&state=${encodeURIComponent(state)}`;
   const stateCookie = `${OAUTH_STATE_COOKIE}=${state}; ${getCookieAttributes(isHttps, 600)}`;
   return { url: discordAuthUrl, stateCookie, origin };
+}
+
+function oauthStateStorageErrorResponse(error: OAuthStateStorageError): Response {
+  console.error("Discord login is unavailable:", error.message);
+  return new Response(`${error.message} Please try again later.`, {
+    status: 503,
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+  });
 }
 
 export async function handleAuthUrl(request: Request, env: any): Promise<Response> {
@@ -681,7 +705,14 @@ export async function handleAuthUrl(request: Request, env: any): Promise<Respons
     );
   }
 
-  const { url, stateCookie } = await buildDiscordOAuthUrl(request, env);
+  let url: string;
+  let stateCookie: string;
+  try {
+    ({ url, stateCookie } = await buildDiscordOAuthUrl(request, env));
+  } catch (error) {
+    if (error instanceof OAuthStateStorageError) return oauthStateStorageErrorResponse(error);
+    throw error;
+  }
   return new Response(JSON.stringify({ url }), {
     status: 200,
     headers: {
@@ -717,7 +748,14 @@ export async function handleLoginRedirect(request: Request, env: any): Promise<R
     );
   }
 
-  const { url: discordAuthUrl, stateCookie } = await buildDiscordOAuthUrl(request, env);
+  let discordAuthUrl: string;
+  let stateCookie: string;
+  try {
+    ({ url: discordAuthUrl, stateCookie } = await buildDiscordOAuthUrl(request, env));
+  } catch (error) {
+    if (error instanceof OAuthStateStorageError) return oauthStateStorageErrorResponse(error);
+    throw error;
+  }
 
   return new Response(null, {
     status: 302,
@@ -736,25 +774,25 @@ async function isValidOAuthState(
 ): Promise<boolean> {
   if (!returnedState) return false;
   const expectedCookieState = readCookie(cookieHeader, OAUTH_STATE_COOKIE);
-  if (expectedCookieState && returnedState === expectedCookieState) {
-    return true;
-  }
+  if (!expectedCookieState || returnedState !== expectedCookieState) return false;
 
   const parsed = await verifyToken<{ nonce?: string; issuedAt: number }>(
     returnedState,
     secret,
-    600 * 1000
+    OAUTH_STATE_TTL_MS
   );
-  if (!parsed?.nonce) return false;
+  if (typeof parsed?.nonce !== "string" || !parsed.nonce) return false;
 
-  const kv = env.DISCORD_BOT as KVNamespace;
-  if (kv) {
-    const key = `oauth_state:${parsed.nonce}`;
-    const stored = await kv.get(key);
-    if (!stored) return false;
-    await kv.delete(key);
+  const db = getD1Database(env);
+  if (!db) {
+    throw new OAuthStateStorageError("The D1 database binding (DB) is not configured.");
   }
-  return true;
+  try {
+    return await consumeOAuthState(db, parsed.nonce);
+  } catch (error) {
+    console.error("Failed to consume OAuth state from D1:", error);
+    throw new OAuthStateStorageError("OAuth state could not be validated in D1.");
+  }
 }
 
 export async function handleOAuthCallback(request: Request, env: any): Promise<Response> {
@@ -782,12 +820,18 @@ export async function handleOAuthCallback(request: Request, env: any): Promise<R
     });
   }
 
-  const stateValid = await isValidOAuthState(
-    returnedState,
-    request.headers.get("Cookie"),
-    sessionSecret,
-    env
-  );
+  let stateValid: boolean;
+  try {
+    stateValid = await isValidOAuthState(
+      returnedState,
+      request.headers.get("Cookie"),
+      sessionSecret,
+      env
+    );
+  } catch (error) {
+    if (error instanceof OAuthStateStorageError) return oauthStateStorageErrorResponse(error);
+    throw error;
+  }
   if (!stateValid) {
     return new Response(
       "Invalid or expired OAuth state. Please return home and try logging in again.",

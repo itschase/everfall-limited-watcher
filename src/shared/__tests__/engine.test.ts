@@ -38,7 +38,13 @@ import {
   COMMANDS,
   compareDiscordCommands,
 } from "../../register";
-import { createSessionToken, getBotGuilds, getGuildControlOptions } from "../../admin";
+import {
+  createSessionToken,
+  getBotGuilds,
+  getGuildControlOptions,
+  handleLoginRedirect,
+  handleOAuthCallback,
+} from "../../admin";
 import { handleApiRequest } from "../../api";
 import {
   getAllWidgetDeployments,
@@ -64,6 +70,125 @@ import {
   refreshAllWidgets,
 } from "../../scraper";
 import { DISCORD_SLASH_COMMANDS } from "../slashCommands";
+
+test("Discord OAuth state is issued and consumed once through D1 without OAuth-state KV operations", async () => {
+  const db = createLocalD1(":memory:");
+  const kvOperations: string[] = [];
+  const env: any = {
+    DB: db,
+    DISCORD_CLIENT_SECRET: "oauth-state-test-secret",
+    DISCORD_CLIENT_ID: "test-client",
+    DISCORD_BOT: {
+      async put(key: string) {
+        kvOperations.push(`put:${key}`);
+      },
+      async delete(key: string) {
+        kvOperations.push(`delete:${key}`);
+      },
+    },
+  };
+  const originalFetch = globalThis.fetch;
+
+  try {
+    const missingDbResponse = await handleLoginRedirect(
+      new Request("https://example.test/login"),
+      { DISCORD_CLIENT_SECRET: env.DISCORD_CLIENT_SECRET }
+    );
+    assert.equal(missingDbResponse.status, 503);
+    assert.match(await missingDbResponse.text(), /D1 database binding/);
+
+    const loginResponse = await handleLoginRedirect(
+      new Request("https://example.test/login"),
+      env
+    );
+    assert.equal(loginResponse.status, 302);
+    const state = new URL(loginResponse.headers.get("Location")!).searchParams.get("state");
+    const stateCookie = loginResponse.headers.get("Set-Cookie")!.split(";")[0];
+    assert.ok(state);
+    assert.ok(stateCookie.endsWith(`=${state}`));
+    assert.equal(
+      (await db.prepare("SELECT COUNT(*) AS count FROM oauth_states").first<{ count: number }>())
+        ?.count,
+      1
+    );
+    assert.equal(kvOperations.some((operation) => operation.includes("oauth_state:")), false);
+
+    globalThis.fetch = async (input) => {
+      const requestUrl = String(input);
+      if (requestUrl.endsWith("/oauth2/token")) {
+        return new Response(JSON.stringify({ access_token: "test-access-token" }), {
+          status: 200,
+        });
+      }
+      if (requestUrl.endsWith("/users/@me")) {
+        return new Response(JSON.stringify({ id: "123456789", username: "test-user" }), {
+          status: 200,
+        });
+      }
+      if (requestUrl.endsWith("/users/@me/guilds")) {
+        return new Response("[]", { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    };
+
+    const callbackUrl = `https://example.test/auth/callback?code=test-code&state=${encodeURIComponent(state!)}`;
+    const callbackRequest = () =>
+      new Request(callbackUrl, { headers: { Cookie: stateCookie } });
+    const callbackResponse = await handleOAuthCallback(callbackRequest(), env);
+    assert.equal(callbackResponse.status, 200);
+    assert.match(await callbackResponse.text(), /Discord Connected/);
+
+    const replayResponse = await handleOAuthCallback(callbackRequest(), env);
+    assert.equal(replayResponse.status, 400);
+    assert.equal(kvOperations.some((operation) => operation.includes("oauth_state:")), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Discord OAuth callback rejects invalid and expired state", async () => {
+  const db = createLocalD1(":memory:");
+  const env: any = { DB: db, DISCORD_CLIENT_SECRET: "oauth-state-test-secret" };
+  const originalNow = Date.now;
+  const originalFetch = globalThis.fetch;
+
+  try {
+    const loginResponse = await handleLoginRedirect(
+      new Request("https://example.test/login"),
+      env
+    );
+    const location = new URL(loginResponse.headers.get("Location")!);
+    const validState = location.searchParams.get("state")!;
+    const cookie = loginResponse.headers.get("Set-Cookie")!.split(";")[0];
+
+    const invalidResponse = await handleOAuthCallback(
+      new Request(
+        "https://example.test/auth/callback?code=test-code&state=invalid",
+        { headers: { Cookie: "everfall_oauth_state=invalid" } }
+      ),
+      env
+    );
+    assert.equal(invalidResponse.status, 400);
+
+    Date.now = () => originalNow() + 601_000;
+    const expiredResponse = await handleOAuthCallback(
+      new Request(
+        `https://example.test/auth/callback?code=test-code&state=${encodeURIComponent(validState)}`,
+        { headers: { Cookie: cookie } }
+      ),
+      env
+    );
+    assert.equal(expiredResponse.status, 400);
+    assert.equal(
+      (await db.prepare("SELECT COUNT(*) AS count FROM oauth_states").first<{ count: number }>())
+        ?.count,
+      1
+    );
+  } finally {
+    Date.now = originalNow;
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("extractVehicleMetadata normalizes Seraph GTS features without hyphen and isolates terms", () => {
   const desc =
