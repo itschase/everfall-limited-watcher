@@ -35,6 +35,11 @@ const SCHEMA_STATEMENTS = [
     updated_at INTEGER NOT NULL,
     value_json TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS oauth_states (
+    nonce TEXT PRIMARY KEY,
+    expires_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_oauth_states_expiry ON oauth_states(expires_at)`,
   `CREATE TABLE IF NOT EXISTS monitor_logs (
     id TEXT PRIMARY KEY,
     timestamp INTEGER NOT NULL,
@@ -140,6 +145,33 @@ export async function setMonitorStateValue(
     )
     .bind(key, updatedAt, JSON.stringify(value))
     .run();
+}
+
+export async function createOAuthState(
+  db: D1Database,
+  nonce: string,
+  expiresAt: number,
+  now = Date.now()
+): Promise<void> {
+  await ensureD1Schema(db);
+  await db.prepare("DELETE FROM oauth_states WHERE expires_at <= ?").bind(now).run();
+  await db
+    .prepare("INSERT INTO oauth_states (nonce, expires_at) VALUES (?, ?)")
+    .bind(nonce, expiresAt)
+    .run();
+}
+
+export async function consumeOAuthState(
+  db: D1Database,
+  nonce: string,
+  now = Date.now()
+): Promise<boolean> {
+  await ensureD1Schema(db);
+  const row = await db
+    .prepare("DELETE FROM oauth_states WHERE nonce = ? AND expires_at > ? RETURNING nonce")
+    .bind(nonce, now)
+    .first<{ nonce: string }>();
+  return Boolean(row);
 }
 
 export async function ensureDomainMigrated(
