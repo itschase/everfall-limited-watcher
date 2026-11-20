@@ -21,6 +21,8 @@ import {
 } from "./scraper";
 import { EF_LOGO_BASE64 } from "./assets";
 import { fetchDiscordWithRetry } from "./discord";
+import { getD1Database, getMonitorStateValue, setMonitorStateValue } from "./d1";
+import { withKvMetrics } from "./kvMetrics";
 
 const REDIRECT_PATH = "/auth/callback";
 const SESSION_COOKIE = "everfall_session";
@@ -122,10 +124,22 @@ export async function getManagedGuildsForUser(env: any, userId: string): Promise
 
 const BOT_GUILDS_CACHE_KEY = "bot:guilds:cache";
 const BOT_GUILDS_STALE_KEY = "bot:guilds:stale";
-const BOT_GUILDS_CACHE_TTL = 600;
+const BOT_GUILDS_CACHE_TTL_MS = 60 * 60 * 1000;
 const BOT_GUILDS_STALE_TTL = 86400;
-const GUILD_CONTROLS_CACHE_TTL = 600;
+const GUILD_CONTROLS_CACHE_TTL_MS = 30 * 60 * 1000;
+const GUILD_CONTROLS_CACHE_TTL = 30 * 60;
+const BOT_GUILDS_CACHE_STATE_KEY = "cache:bot_guilds";
+const dashboardCacheScope = (env: any) =>
+  `${env.PUBLIC_ORIGIN || "local"}:${env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "default"}`;
+type BotGuildCache = { guilds: BotGuild[]; fetchedAt: number };
+type GuildControlsCache = { channels: GuildChannelOption[]; roles: GuildRoleOption[] };
+const botGuildsMemoryCache = new Map<string, BotGuildCache>();
+const guildControlsMemoryCache = new Map<string, { value: GuildControlsCache; cachedAt: number }>();
 const inFlightBotGuilds = new Map<string, Promise<BotGuild[]>>();
+const inFlightGuildControls = new Map<
+  string,
+  Promise<{ channels: GuildChannelOption[]; roles: GuildRoleOption[]; error?: string }>
+>();
 
 export async function getGuildControlOptions(
   env: any,
@@ -135,51 +149,104 @@ export async function getGuildControlOptions(
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return { channels: [], roles: [], error: "DISCORD_BOT_TOKEN is not configured." };
 
-  const kv = env.DISCORD_BOT as KVNamespace;
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  const db = getD1Database(env);
   const cacheKey = `guild_controls:${guildId}`;
-  if (kv && !forceRefresh) {
-    const cached = await kv.get(cacheKey);
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed?.channels) && Array.isArray(parsed?.roles)) {
-          return { channels: parsed.channels, roles: parsed.roles };
-        }
-      } catch {
-        // Ignore malformed cache
+  const memoryKey = `${dashboardCacheScope(env)}:${cacheKey}`;
+  const flightKey = `${memoryKey}:${forceRefresh ? "refresh" : "cached"}`;
+  const pending = inFlightGuildControls.get(flightKey);
+  if (pending) return pending;
+
+  const memoryCached = guildControlsMemoryCache.get(memoryKey);
+  let stale = memoryCached?.value;
+  if (
+    !forceRefresh &&
+    memoryCached &&
+    Date.now() - memoryCached.cachedAt < GUILD_CONTROLS_CACHE_TTL_MS
+  ) {
+    return memoryCached.value;
+  }
+
+  if (!forceRefresh) {
+    try {
+      let cached: any = null;
+      if (db) {
+        cached = await getMonitorStateValue(db, cacheKey);
+      } else if (kv) {
+        const raw = await withKvMetrics("guild_controls", "get", () => kv.get(cacheKey));
+        cached = raw ? JSON.parse(raw) : null;
       }
+      if (Array.isArray(cached?.channels) && Array.isArray(cached?.roles)) {
+        stale = { channels: cached.channels, roles: cached.roles };
+        const cachedAt = typeof cached.cachedAt === "number" ? cached.cachedAt : Date.now();
+        guildControlsMemoryCache.set(memoryKey, { value: stale, cachedAt });
+        if (Date.now() - cachedAt < GUILD_CONTROLS_CACHE_TTL_MS) return stale;
+      }
+    } catch (error) {
+      console.warn(`Failed to read cached dashboard controls for guild ${guildId}:`, error);
     }
   }
 
-  const headers = { Authorization: `Bot ${token}` };
-  try {
-    const [channelsResponse, rolesResponse] = await Promise.all([
-      fetchDiscordWithRetry(`https://discord.com/api/v10/guilds/${guildId}/channels`, { headers }),
-      fetchDiscordWithRetry(`https://discord.com/api/v10/guilds/${guildId}/roles`, { headers }),
-    ]);
-    const channels = channelsResponse.ok
-      ? ((await channelsResponse.json()) as GuildChannelOption[])
-          .filter((channel) => channel.type === 0 || channel.type === 5)
-          .sort((a, b) => a.name.localeCompare(b.name))
-      : [];
-    const roles = rolesResponse.ok
-      ? ((await rolesResponse.json()) as GuildRoleOption[])
-          .filter((role) => role.id !== guildId && !role.managed)
-          .sort((a, b) => a.name.localeCompare(b.name))
-      : [];
-    const error =
-      !channelsResponse.ok || !rolesResponse.ok
-        ? `Discord API returned ${channelsResponse.status}/${rolesResponse.status}`
-        : undefined;
-    if (!error && kv) {
-      await kv.put(cacheKey, JSON.stringify({ channels, roles }), {
-        expirationTtl: GUILD_CONTROLS_CACHE_TTL,
-      });
+  const existing = inFlightGuildControls.get(flightKey);
+  if (existing) return existing;
+
+  const task = (async () => {
+    try {
+      const headers = { Authorization: `Bot ${token}` };
+      const [channelsResponse, rolesResponse] = await Promise.all([
+        fetchDiscordWithRetry(`https://discord.com/api/v10/guilds/${guildId}/channels`, { headers }),
+        fetchDiscordWithRetry(`https://discord.com/api/v10/guilds/${guildId}/roles`, { headers }),
+      ]);
+      const channels = channelsResponse.ok
+        ? ((await channelsResponse.json()) as GuildChannelOption[])
+            .filter((channel) => channel.type === 0 || channel.type === 5)
+            .sort((a, b) => a.name.localeCompare(b.name))
+        : [];
+      const roles = rolesResponse.ok
+        ? ((await rolesResponse.json()) as GuildRoleOption[])
+            .filter((role) => role.id !== guildId && !role.managed)
+            .sort((a, b) => a.name.localeCompare(b.name))
+        : [];
+      const error =
+        !channelsResponse.ok || !rolesResponse.ok
+          ? `Discord API returned ${channelsResponse.status}/${rolesResponse.status}`
+          : undefined;
+      if (error) {
+        return stale ? { ...stale, error } : { channels, roles, error };
+      }
+
+      const value = { channels, roles };
+      const cachedAt = Date.now();
+      guildControlsMemoryCache.set(memoryKey, { value, cachedAt });
+      try {
+        if (db) {
+          await setMonitorStateValue(db, cacheKey, { ...value, cachedAt }, cachedAt);
+        } else if (kv) {
+          await withKvMetrics("guild_controls", "put", () =>
+            kv.put(cacheKey, JSON.stringify({ ...value, cachedAt }), {
+              expirationTtl: GUILD_CONTROLS_CACHE_TTL,
+            })
+          );
+        }
+      } catch (error) {
+        console.warn(`Failed to persist dashboard controls for guild ${guildId}:`, error);
+      }
+      return value;
+    } catch (error) {
+      console.error(`Failed to load dashboard controls for guild ${guildId}:`, error);
+      return stale
+        ? { ...stale, error: "Failed to refresh Discord server controls; showing cached values." }
+        : { channels: [], roles: [], error: "Failed to contact Discord API." };
     }
-    return { channels, roles, error };
-  } catch (error) {
-    console.error(`Failed to load dashboard controls for guild ${guildId}:`, error);
-    return { channels: [], roles: [], error: "Failed to contact Discord API." };
+  })();
+
+  inFlightGuildControls.set(flightKey, task);
+  try {
+    return await task;
+  } finally {
+    if (inFlightGuildControls.get(flightKey) === task) {
+      inFlightGuildControls.delete(flightKey);
+    }
   }
 }
 
@@ -438,14 +505,26 @@ export async function getCreatorProfile(
   return defaultProfile;
 }
 
-async function readCachedBotGuilds(kv: KVNamespace | undefined, key: string): Promise<BotGuild[] | null> {
+function normalizeBotGuildCache(value: any): BotGuildCache | null {
+  if (Array.isArray(value)) return { guilds: value, fetchedAt: Date.now() };
+  if (Array.isArray(value?.guilds)) {
+    return {
+      guilds: value.guilds,
+      fetchedAt: typeof value.fetchedAt === "number" ? value.fetchedAt : Date.now(),
+    };
+  }
+  return null;
+}
+
+async function readCachedBotGuilds(
+  kv: KVNamespace | undefined,
+  key: string
+): Promise<BotGuildCache | null> {
   if (!kv) return null;
-  const raw = await kv.get(key);
+  const raw = await withKvMetrics("bot_guilds", "get", () => kv.get(key));
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed;
-    if (Array.isArray(parsed?.guilds)) return parsed.guilds;
+    return normalizeBotGuildCache(JSON.parse(raw));
   } catch {
     // Ignore malformed cache
   }
@@ -454,6 +533,10 @@ async function readCachedBotGuilds(kv: KVNamespace | undefined, key: string): Pr
 
 export async function clearBotGuildsCache(env: any): Promise<void> {
   const kv = env.DISCORD_BOT as KVNamespace | undefined;
+  const db = getD1Database(env);
+  const memoryKey = dashboardCacheScope(env);
+  botGuildsMemoryCache.delete(memoryKey);
+  if (db) return;
   if (!kv) return;
   await Promise.all([
     kv.delete(BOT_GUILDS_CACHE_KEY).catch(() => null),
@@ -466,19 +549,38 @@ export async function getBotGuilds(env: any, forceRefresh = false): Promise<BotG
   if (!token) return [];
 
   const kv = env.DISCORD_BOT as KVNamespace | undefined;
-  if (!forceRefresh) {
-    const cached = await readCachedBotGuilds(kv, BOT_GUILDS_CACHE_KEY);
-    if (cached) return cached;
-  }
-
-  const dedupKey = `${env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "default"}:${forceRefresh ? "refresh" : "cached"}`;
+  const db = getD1Database(env);
+  const memoryKey = dashboardCacheScope(env);
+  const dedupKey = `${memoryKey}:${forceRefresh ? "refresh" : "cached"}`;
   const existingRequest = inFlightBotGuilds.get(dedupKey);
   if (existingRequest) return existingRequest;
 
+  const memoryCached = botGuildsMemoryCache.get(memoryKey);
+  if (
+    !forceRefresh &&
+    memoryCached &&
+    Date.now() - memoryCached.fetchedAt < BOT_GUILDS_CACHE_TTL_MS
+  ) {
+    return memoryCached.guilds;
+  }
+
   const task = (async (): Promise<BotGuild[]> => {
     const guilds: BotGuild[] = [];
-    let after = "";
+    let cached = memoryCached || null;
     try {
+      if (!cached) {
+        cached = db
+          ? normalizeBotGuildCache(
+              await getMonitorStateValue<unknown>(db, BOT_GUILDS_CACHE_STATE_KEY)
+            )
+          : await readCachedBotGuilds(kv, BOT_GUILDS_CACHE_KEY);
+        if (cached) botGuildsMemoryCache.set(memoryKey, cached);
+      }
+      if (!forceRefresh && cached && Date.now() - cached.fetchedAt < BOT_GUILDS_CACHE_TTL_MS) {
+        return cached.guilds;
+      }
+
+      let after = "";
       for (;;) {
         const params = new URLSearchParams({ limit: "200" });
         if (after) params.set("after", after);
@@ -488,11 +590,9 @@ export async function getBotGuilds(env: any, forceRefresh = false): Promise<BotG
         );
         if (!response.ok) {
           const errorBody = await response.text();
-          console.warn(
+          throw new Error(
             `Discord bot guilds fetch returned ${response.status}: ${errorBody.slice(0, 200)}`
           );
-          const stale = await readCachedBotGuilds(kv, BOT_GUILDS_STALE_KEY);
-          return stale || [];
         }
         const page = (await response.json()) as BotGuild[];
         guilds.push(...page);
@@ -500,18 +600,37 @@ export async function getBotGuilds(env: any, forceRefresh = false): Promise<BotG
         after = page[page.length - 1].id;
       }
 
-      if (kv) {
-        const payload = JSON.stringify({ guilds, fetchedAt: Date.now() });
-        await Promise.all([
-          kv.put(BOT_GUILDS_CACHE_KEY, payload, { expirationTtl: BOT_GUILDS_CACHE_TTL }),
-          kv.put(BOT_GUILDS_STALE_KEY, payload, { expirationTtl: BOT_GUILDS_STALE_TTL }),
-        ]);
+      const fetchedAt = Date.now();
+      cached = { guilds, fetchedAt };
+      botGuildsMemoryCache.set(memoryKey, cached);
+      try {
+        if (db) {
+          await setMonitorStateValue(db, BOT_GUILDS_CACHE_STATE_KEY, cached, fetchedAt);
+        } else if (kv) {
+          await withKvMetrics("bot_guilds", "put", () =>
+            kv.put(BOT_GUILDS_CACHE_KEY, JSON.stringify(cached), {
+              expirationTtl: BOT_GUILDS_STALE_TTL,
+            })
+          );
+        }
+      } catch (error) {
+        console.warn("Failed to persist bot guild cache; using the in-memory result:", error);
       }
       return guilds;
     } catch (error) {
       console.error("Failed to fetch bot guilds:", error);
-      const stale = await readCachedBotGuilds(kv, BOT_GUILDS_STALE_KEY);
-      return stale || [];
+      if (!cached && !db && kv) {
+        try {
+          cached = await readCachedBotGuilds(kv, BOT_GUILDS_STALE_KEY);
+        } catch (cacheError) {
+          console.warn("Failed to read stale bot guild cache:", cacheError);
+        }
+      }
+      if (cached && Date.now() - cached.fetchedAt <= BOT_GUILDS_STALE_TTL * 1000) {
+        botGuildsMemoryCache.set(memoryKey, cached);
+        return cached.guilds;
+      }
+      return [];
     } finally {
       inFlightBotGuilds.delete(dedupKey);
     }

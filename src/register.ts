@@ -2,6 +2,10 @@ import { fetchDiscordWithRetry } from "./discord";
 import { BotHealthSnapshot, getBotHealthSnapshot, setBotHealthSnapshot } from "./kv";
 import type { DiscordEmojiRef } from "./shared/presentation";
 
+const BOT_HEALTH_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
+const botHealthMemoryCache = new Map<string, BotHealthSnapshot>();
+const inFlightBotHealthChecks = new Map<string, Promise<BotHealthSnapshot>>();
+
 export const COMMANDS = [
   {
     name: "setup",
@@ -288,23 +292,74 @@ export async function checkBotHealthSnapshot(
       error: "DISCORD_BOT_TOKEN is not configured.",
     };
   }
+
+  const cacheKey = `${env.PUBLIC_ORIGIN || "local"}:${getDiscordApplicationId(env)}`;
+  const forcedKey = `${cacheKey}:forced`;
   if (!forceRefresh) {
-    const cached = await getBotHealthSnapshot(env);
-    if (cached && Date.now() - cached.checkedAt < 5 * 60 * 1000) {
-      return cached;
+    const forcedRefresh = inFlightBotHealthChecks.get(forcedKey);
+    if (forcedRefresh) return forcedRefresh;
+  }
+  const requestKey = `${cacheKey}:${forceRefresh ? "forced" : "normal"}`;
+  const pending = inFlightBotHealthChecks.get(requestKey);
+  if (pending) return pending;
+
+  const memoryCached = botHealthMemoryCache.get(cacheKey);
+  if (
+    !forceRefresh &&
+    memoryCached &&
+    Date.now() - memoryCached.checkedAt < BOT_HEALTH_SNAPSHOT_TTL_MS
+  ) {
+    return memoryCached;
+  }
+
+  const task = (async (): Promise<BotHealthSnapshot> => {
+    if (!forceRefresh) {
+      try {
+        const persisted = await getBotHealthSnapshot(env);
+        if (persisted) {
+          botHealthMemoryCache.set(cacheKey, persisted);
+          if (Date.now() - persisted.checkedAt < BOT_HEALTH_SNAPSHOT_TTL_MS) {
+            return persisted;
+          }
+        }
+      } catch (error) {
+        console.warn("Failed to read bot health snapshot; refreshing Discord status:", error);
+      }
+    }
+
+    const info = await fetchBotApplicationInfo(env);
+    const snapshot: BotHealthSnapshot = {
+      verified: true,
+      online: info.ok,
+      checkedAt: Date.now(),
+      appId: info.appId,
+      botUsername: info.botUser?.username,
+      ...(info.error ? { error: info.error } : {}),
+    };
+    botHealthMemoryCache.set(cacheKey, snapshot);
+    try {
+      await setBotHealthSnapshot(env, snapshot);
+    } catch (error) {
+      console.warn("Failed to persist bot health snapshot; using the in-memory result:", error);
+    }
+    return snapshot;
+  })();
+
+  inFlightBotHealthChecks.set(requestKey, task);
+  try {
+    return await task;
+  } catch (error) {
+    const previous = botHealthMemoryCache.get(cacheKey);
+    if (previous) {
+      console.error("Bot health refresh failed; serving the last known snapshot:", error);
+      return previous;
+    }
+    throw error;
+  } finally {
+    if (inFlightBotHealthChecks.get(requestKey) === task) {
+      inFlightBotHealthChecks.delete(requestKey);
     }
   }
-  const info = await fetchBotApplicationInfo(env);
-  const snapshot: BotHealthSnapshot = {
-    verified: true,
-    online: info.ok,
-    checkedAt: Date.now(),
-    appId: info.appId,
-    botUsername: info.botUser?.username,
-    ...(info.error ? { error: info.error } : {}),
-  };
-  await setBotHealthSnapshot(env, snapshot);
-  return snapshot;
 }
 
 export async function fetchLiveDiscordCommands(
