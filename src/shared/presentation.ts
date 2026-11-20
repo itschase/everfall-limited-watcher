@@ -763,7 +763,7 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
     ],
     architectureHeading: "Infrastructure & Data Integrity",
     architectureBody:
-      "Everfall Limited Watcher runs on Cloudflare Workers for low-latency global routing, backed by Cloudflare D1 for structured state and Cloudflare R2 for immutable media assets, with Workers KV reserved strictly for short-lived OAuth and Discord API caches.",
+      "Everfall Limited Watcher runs on Cloudflare Workers for low-latency global routing, backed by Cloudflare D1 for structured and short-lived state and Cloudflare R2 for media assets. Workers KV is retained only for legacy compatibility while existing records and media are imported into D1 and R2.",
     disclaimerHeading: "Independent Community Project",
     disclaimerBody:
       "Everfall Limited Watcher is an independent utility operated for Everfall players and server communities. It is not affiliated with, endorsed by, or officially connected to Everfall Roleplay, FiveM, Cfx.re, Rockstar Games, Discord Inc., or Tebex.",
@@ -782,7 +782,7 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
       {
         id: "priv-1",
         heading: "1. Information Collected via Discord OAuth2",
-        body: "When you sign in to Everfall Limited Watcher using Discord OAuth2 (identify and guilds scopes), we receive your Discord User ID, username, avatar hash, and the list of Discord servers where you hold management permissions. Signed HTTP-only session cookies maintain your authenticated portal session, and short-lived guild caches are held temporarily in Workers KV with automatic expiration.",
+        body: "When you sign in to Everfall Limited Watcher using Discord OAuth2 (identify and guilds scopes), we receive your Discord User ID, username, avatar hash, and the list of Discord servers where you hold management permissions. Signed HTTP-only session cookies maintain your authenticated portal session. OAuth state and handoff records, server access lists, widget confirmations, and test-notification cooldowns are held temporarily in Cloudflare D1 with automatic expiration.",
       },
       {
         id: "priv-2",
@@ -791,8 +791,8 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
       },
       {
         id: "priv-3",
-        heading: "3. Media Archiving & Caching (Cloudflare R2 & Workers KV)",
-        body: "Public storefront vehicle images are archived in Cloudflare R2 object storage so release galleries remain available over time. Workers KV is used strictly for short-lived TTL caches (such as OAuth handoffs, guild channel/role lookups, pending /widget confirmations, and bot health snapshots) rather than long-term structured records.",
+        heading: "3. Media Archiving & Legacy Storage (Cloudflare R2, D1 & Workers KV)",
+        body: "Public storefront vehicle images are archived in Cloudflare R2 object storage so release galleries remain available over time. Structured records, temporary access data, and operational caches are stored in Cloudflare D1. Existing image blobs and records in Workers KV may be read during compatibility migrations into R2 or D1; new media uploads require R2.",
       },
       {
         id: "priv-4",
@@ -828,7 +828,7 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
       {
         id: "terms-3",
         heading: "3. Authorized Server Administration",
-        body: "You may only configure Discord alert channels, role mentions, embed recovery actions, and /widget deployments for servers where you hold valid administrative or Manage Server permissions. Abuse, automated scraping of private admin routes, or unauthorized probing is prohibited.",
+        body: "You may only configure Discord alert channels, role mentions, embed recovery actions, and /widget deployments for servers where you hold valid administrative or Manage Server permissions. Server access data, temporary authorization state, and storage are handled as described in the Privacy Policy. Structured data is stored in Cloudflare D1 and media in Cloudflare R2; legacy Workers KV may be read during compatibility migrations. Abuse, automated scraping of private admin routes, or unauthorized probing is prohibited.",
       },
       {
         id: "terms-4",

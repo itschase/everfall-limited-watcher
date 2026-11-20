@@ -844,7 +844,7 @@ export function buildBotReadinessChecks(params: {
   expectedInteractionsUrl: string;
   botTokenConfigured: boolean;
   publicKeyConfigured: boolean;
-  kvBound: boolean;
+  d1Bound: boolean;
 }): BotReadinessCheck[] {
   const {
     identity,
@@ -853,7 +853,7 @@ export function buildBotReadinessChecks(params: {
     expectedInteractionsUrl,
     botTokenConfigured,
     publicKeyConfigured,
-    kvBound,
+    d1Bound,
   } = params;
   const checks: BotReadinessCheck[] = [];
 
@@ -957,14 +957,14 @@ export function buildBotReadinessChecks(params: {
     id: "runtime_bindings",
     label: "Signature Verification & Storage",
     category: "execution",
-    status: publicKeyConfigured && kvBound ? "pass" : "fail",
+    status: publicKeyConfigured && d1Bound ? "pass" : "fail",
     summary:
-      publicKeyConfigured && kvBound
-        ? "DISCORD_PUBLIC_KEY Ed25519 verification and DISCORD_BOT Workers KV are ready."
-        : `${!publicKeyConfigured ? "DISCORD_PUBLIC_KEY missing. " : ""}${!kvBound ? "DISCORD_BOT KV unbound." : ""}`.trim(),
-    ...(publicKeyConfigured && kvBound
+      publicKeyConfigured && d1Bound
+        ? "DISCORD_PUBLIC_KEY Ed25519 verification and D1 state storage are ready."
+        : `${!publicKeyConfigured ? "DISCORD_PUBLIC_KEY missing. " : ""}${!d1Bound ? "D1 database binding DB is unavailable." : ""}`.trim(),
+    ...(publicKeyConfigured && d1Bound
       ? {}
-      : { remediation: "Bind DISCORD_BOT KV and set DISCORD_PUBLIC_KEY secret matching the Developer Portal." }),
+      : { remediation: "Bind the D1 database as DB and set DISCORD_PUBLIC_KEY to the Developer Portal key." }),
   });
 
   if (identity.application?.hasGuildCommandsInstallScope === false) {

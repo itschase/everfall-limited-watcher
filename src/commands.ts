@@ -20,6 +20,7 @@ import {
 } from "./scraper";
 import { fetchDiscordWithRetry } from "./discord";
 import { CHECK_INTERVAL_LABEL } from "./shared/appConfig";
+import { getD1Database } from "./d1";
 
 const EPHEMERAL_FLAG = 64;
 
@@ -407,6 +408,12 @@ export async function handleInteraction(
           content: "You need Manage Server or Administrator permissions to deploy status widgets.",
         });
       }
+      if (!getD1Database(env)) {
+        return jsonResponse({
+          flags: EPHEMERAL_FLAG,
+          content: "Widget confirmation storage is unavailable. Please try `/widget` again later.",
+        });
+      }
       const actorId = String(member?.user?.id || body?.user?.id || "").trim();
       const actorName = String(member?.user?.username || body?.user?.username || "").trim();
       const parts = customId.split(":");
@@ -433,7 +440,7 @@ export async function handleInteraction(
           flags: EPHEMERAL_FLAG,
           content: "Only the administrator who initiated `/widget` can confirm or cancel this preview.",
         });
-      } else if (env.DISCORD_BOT) {
+      } else {
         return jsonResponse(
           {
             flags: EPHEMERAL_FLAG,

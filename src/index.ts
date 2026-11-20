@@ -25,6 +25,7 @@ import {
 import { handleApiRequest } from "./api";
 import { EF_LOGO_BASE64 } from "./assets";
 import { getListingHistory, getMonitorStatus } from "./kv";
+import { getD1Database } from "./d1";
 
 function getLogoBinaryResponse(): Response {
   const b64Data = EF_LOGO_BASE64.replace(/^data:image\/webp;base64,/, "");
@@ -141,19 +142,21 @@ export default {
 
     if (url.pathname === "/health") {
       const kvAvailable = Boolean(env.DISCORD_BOT);
-      const monitorStatus = kvAvailable ? await getMonitorStatus(env) : null;
+      const d1Available = Boolean(getD1Database(env));
+      const monitorStatus = d1Available ? await getMonitorStatus(env) : null;
       return new Response(
         JSON.stringify({
           ok: true,
           service: "Everfall Limited Watcher",
           kvAvailable,
+          d1Available,
           botConfigured: Boolean(env.DISCORD_BOT_TOKEN),
           lastCheckedAt: monitorStatus?.checkedAt ?? null,
           lastSuccessAt: monitorStatus?.lastSuccessAt ?? null,
           authoritative: monitorStatus?.authoritative ?? null,
         }),
         {
-          status: kvAvailable ? 200 : 503,
+          status: d1Available ? 200 : 503,
           headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
         }
       );

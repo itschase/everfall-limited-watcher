@@ -40,6 +40,28 @@ const SCHEMA_STATEMENTS = [
     expires_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_oauth_states_expiry ON oauth_states(expires_at)`,
+  `CREATE TABLE IF NOT EXISTS oauth_handoffs (
+    handoff_id TEXT PRIMARY KEY,
+    expires_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_oauth_handoffs_expiry ON oauth_handoffs(expires_at)`,
+  `CREATE TABLE IF NOT EXISTS user_guilds (
+    user_id TEXT PRIMARY KEY,
+    expires_at INTEGER NOT NULL,
+    guilds_json TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_user_guilds_expiry ON user_guilds(expires_at)`,
+  `CREATE TABLE IF NOT EXISTS pending_widget_confirmations (
+    token TEXT PRIMARY KEY,
+    expires_at INTEGER NOT NULL,
+    record_json TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_pending_widget_confirmations_expiry ON pending_widget_confirmations(expires_at)`,
+  `CREATE TABLE IF NOT EXISTS test_alert_cooldowns (
+    guild_id TEXT PRIMARY KEY,
+    expires_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_test_alert_cooldowns_expiry ON test_alert_cooldowns(expires_at)`,
   `CREATE TABLE IF NOT EXISTS monitor_logs (
     id TEXT PRIMARY KEY,
     timestamp INTEGER NOT NULL,
@@ -171,6 +193,98 @@ export async function consumeOAuthState(
     .prepare("DELETE FROM oauth_states WHERE nonce = ? AND expires_at > ? RETURNING nonce")
     .bind(nonce, now)
     .first<{ nonce: string }>();
+  return Boolean(row);
+}
+
+export async function createOAuthHandoff(
+  db: D1Database,
+  handoffId: string,
+  expiresAt: number,
+  now = Date.now()
+): Promise<void> {
+  await ensureD1Schema(db);
+  await db.prepare("DELETE FROM oauth_handoffs WHERE expires_at <= ?").bind(now).run();
+  await db
+    .prepare("INSERT INTO oauth_handoffs (handoff_id, expires_at) VALUES (?, ?)")
+    .bind(handoffId, expiresAt)
+    .run();
+}
+
+export async function consumeOAuthHandoff(
+  db: D1Database,
+  handoffId: string,
+  now = Date.now()
+): Promise<boolean> {
+  await ensureD1Schema(db);
+  const row = await db
+    .prepare("DELETE FROM oauth_handoffs WHERE handoff_id = ? AND expires_at > ? RETURNING handoff_id")
+    .bind(handoffId, now)
+    .first<{ handoff_id: string }>();
+  return Boolean(row);
+}
+
+export async function getCachedUserGuilds(
+  db: D1Database,
+  userId: string,
+  now = Date.now()
+): Promise<unknown[] | null> {
+  await ensureD1Schema(db);
+  const row = await db
+    .prepare("SELECT expires_at, guilds_json FROM user_guilds WHERE user_id = ?")
+    .bind(userId)
+    .first<{ expires_at: number; guilds_json: string }>();
+  if (!row) return null;
+  if (Number(row.expires_at) <= now) {
+    await db.prepare("DELETE FROM user_guilds WHERE user_id = ?").bind(userId).run();
+    return null;
+  }
+  try {
+    const guilds: unknown = JSON.parse(row.guilds_json);
+    return Array.isArray(guilds) ? guilds : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setCachedUserGuilds(
+  db: D1Database,
+  userId: string,
+  guilds: unknown[],
+  expiresAt: number,
+  now = Date.now()
+): Promise<void> {
+  await ensureD1Schema(db);
+  await db.prepare("DELETE FROM user_guilds WHERE expires_at <= ?").bind(now).run();
+  await db
+    .prepare(
+      `INSERT INTO user_guilds (user_id, expires_at, guilds_json)
+       VALUES (?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         expires_at = excluded.expires_at,
+         guilds_json = excluded.guilds_json`
+    )
+    .bind(userId, expiresAt, JSON.stringify(guilds))
+    .run();
+}
+
+export async function reserveTestAlertCooldown(
+  db: D1Database,
+  guildId: string,
+  expiresAt: number,
+  now = Date.now()
+): Promise<boolean> {
+  await ensureD1Schema(db);
+  await db.prepare("DELETE FROM test_alert_cooldowns WHERE expires_at <= ?").bind(now).run();
+  const row = await db
+    .prepare(
+      `INSERT INTO test_alert_cooldowns (guild_id, expires_at)
+       VALUES (?, ?)
+       ON CONFLICT(guild_id) DO UPDATE SET expires_at = excluded.expires_at
+       WHERE test_alert_cooldowns.expires_at <= ?
+       RETURNING guild_id`
+    )
+    .bind(guildId, expiresAt, now)
+    .first<{ guild_id: string }>();
   return Boolean(row);
 }
 

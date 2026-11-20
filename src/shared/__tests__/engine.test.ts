@@ -42,17 +42,23 @@ import {
   createSessionToken,
   getBotGuilds,
   getGuildControlOptions,
+  getManagedGuildsForUser,
+  handleAuthHandoff,
   handleLoginRedirect,
   handleOAuthCallback,
 } from "../../admin";
 import { handleApiRequest } from "../../api";
+import { reserveTestAlertCooldown, setCachedUserGuilds } from "../../d1";
 import {
+  createPendingWidgetConfirmation,
+  deletePendingWidgetConfirmation,
   getAllWidgetDeployments,
   getBotHealthSnapshot,
   getCatalogSnapshot,
   getDeliveryLogs,
   getGuildConfig,
   getGuildSentMessages,
+  getPendingWidgetConfirmation,
   getMonitorLogs,
   getPresentationConfig,
   setGuildConfig,
@@ -79,6 +85,10 @@ test("Discord OAuth state is issued and consumed once through D1 without OAuth-s
     DISCORD_CLIENT_SECRET: "oauth-state-test-secret",
     DISCORD_CLIENT_ID: "test-client",
     DISCORD_BOT: {
+      async get(key: string) {
+        kvOperations.push(`get:${key}`);
+        return null;
+      },
       async put(key: string) {
         kvOperations.push(`put:${key}`);
       },
@@ -136,14 +146,136 @@ test("Discord OAuth state is issued and consumed once through D1 without OAuth-s
       new Request(callbackUrl, { headers: { Cookie: stateCookie } });
     const callbackResponse = await handleOAuthCallback(callbackRequest(), env);
     assert.equal(callbackResponse.status, 200);
-    assert.match(await callbackResponse.text(), /Discord Connected/);
+    assert.deepEqual(kvOperations, []);
+    const callbackHtml = await callbackResponse.text();
+    assert.match(callbackHtml, /Discord Connected/);
+    const handoffToken = callbackHtml.match(/var handoff = "([^"]+)";/)?.[1];
+    assert.ok(handoffToken);
+    assert.equal(
+      (
+        await db
+          .prepare("SELECT user_id FROM user_guilds WHERE user_id = ?")
+          .bind("123456789")
+          .first<{ user_id: string }>()
+      )?.user_id,
+      "123456789"
+    );
+
+    const handoffRequest = () =>
+      new Request("https://example.test/api/auth/handoff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handoff: handoffToken }),
+      });
+    const handoffResponse = await handleAuthHandoff(handoffRequest(), env);
+    assert.equal(handoffResponse.status, 200);
+    const handoffReplayResponse = await handleAuthHandoff(handoffRequest(), env);
+    assert.equal(handoffReplayResponse.status, 400);
+    assert.deepEqual(kvOperations, []);
 
     const replayResponse = await handleOAuthCallback(callbackRequest(), env);
     assert.equal(replayResponse.status, 400);
-    assert.equal(kvOperations.some((operation) => operation.includes("oauth_state:")), false);
+    assert.deepEqual(kvOperations, []);
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("Discord OAuth callback contains Discord token-request failures", async () => {
+  const db = createLocalD1(":memory:");
+  const env = {
+    DB: db,
+    DISCORD_CLIENT_SECRET: "oauth-state-test-secret",
+    DISCORD_CLIENT_ID: "test-client",
+  };
+  const originalFetch = globalThis.fetch;
+
+  try {
+    const loginResponse = await handleLoginRedirect(
+      new Request("https://example.test/login"),
+      env
+    );
+    const state = new URL(loginResponse.headers.get("Location")!).searchParams.get("state")!;
+    const cookie = loginResponse.headers.get("Set-Cookie")!.split(";")[0];
+    globalThis.fetch = async () => {
+      throw new Error("Discord unavailable");
+    };
+
+    const callbackResponse = await handleOAuthCallback(
+      new Request(
+        `https://example.test/auth/callback?code=test-code&state=${encodeURIComponent(state)}`,
+        { headers: { Cookie: cookie } }
+      ),
+      env
+    );
+    assert.equal(callbackResponse.status, 502);
+    assert.match(await callbackResponse.text(), /Unable to reach Discord/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("short-lived widget confirmations and test notification cooldowns use D1, not KV", async () => {
+  const db = createLocalD1(":memory:");
+  const kvOperations: string[] = [];
+  const env = {
+    DB: db,
+    DISCORD_BOT: {
+      async put(key: string) {
+        kvOperations.push(`put:${key}`);
+      },
+      async get(key: string) {
+        kvOperations.push(`get:${key}`);
+        return null;
+      },
+      async delete(key: string) {
+        kvOperations.push(`delete:${key}`);
+      },
+    },
+  };
+
+  const pending = await createPendingWidgetConfirmation(env, {
+    guildId: "guild-1",
+    channelId: "channel-1",
+    userId: "user-1",
+  });
+  assert.deepEqual(await getPendingWidgetConfirmation(env, pending.token), pending);
+  await deletePendingWidgetConfirmation(env, pending.token);
+  assert.equal(await getPendingWidgetConfirmation(env, pending.token), null);
+
+  assert.equal(await reserveTestAlertCooldown(db, "guild-1", 1_015_000, 1_000_000), true);
+  assert.equal(await reserveTestAlertCooldown(db, "guild-1", 1_016_000, 1_001_000), false);
+  assert.equal(await reserveTestAlertCooldown(db, "guild-1", 1_030_000, 1_015_000), true);
+  assert.deepEqual(kvOperations, []);
+});
+
+test("legacy user guild cache is imported into D1 once", async () => {
+  const db = createLocalD1(":memory:");
+  let kvReads = 0;
+  const env = {
+    DB: db,
+    DISCORD_BOT: {
+      async get(key: string) {
+        assert.equal(key, "user_guilds:user-1");
+        kvReads++;
+        return JSON.stringify([
+          { id: "guild-1", owner: true, permissions: "0" },
+          { id: "guild-2", owner: false, permissions: "32" },
+          { id: "guild-3", owner: false, permissions: "0" },
+        ]);
+      },
+    },
+  };
+
+  assert.deepEqual(
+    (await getManagedGuildsForUser(env, "user-1")).map((guild) => guild.id),
+    ["guild-1", "guild-2"]
+  );
+  assert.deepEqual(
+    (await getManagedGuildsForUser(env, "user-1")).map((guild) => guild.id),
+    ["guild-1", "guild-2"]
+  );
+  assert.equal(kvReads, 1);
 });
 
 test("Discord OAuth callback rejects invalid and expired state", async () => {
@@ -160,6 +292,16 @@ test("Discord OAuth callback rejects invalid and expired state", async () => {
     const location = new URL(loginResponse.headers.get("Location")!);
     const validState = location.searchParams.get("state")!;
     const cookie = loginResponse.headers.get("Set-Cookie")!.split(";")[0];
+
+    const unavailableResponse = await handleOAuthCallback(
+      new Request(
+        `https://example.test/auth/callback?code=test-code&state=${encodeURIComponent(validState)}`,
+        { headers: { Cookie: cookie } }
+      ),
+      { ...env, DB: undefined }
+    );
+    assert.equal(unavailableResponse.status, 503);
+    assert.match(await unavailableResponse.text(), /D1 database binding/);
 
     const invalidResponse = await handleOAuthCallback(
       new Request(
@@ -485,7 +627,7 @@ test("buildBotReadinessChecks separates command sync, Portal interactions endpoi
     expectedInteractionsUrl: "https://everfall-limited-watcher.itschase.workers.dev/interactions",
     botTokenConfigured: true,
     publicKeyConfigured: true,
-    kvBound: true,
+    d1Bound: true,
   });
 
   const endpointCheck = checks.find((c) => c.id === "interactions_url");
@@ -525,7 +667,7 @@ function createMemoryKv() {
   };
 }
 
-test("bot health checks coalesce concurrent refreshes and tolerate KV write quota failures", async () => {
+test("bot health checks coalesce concurrent refreshes without Workers KV", async () => {
   const kv = createMemoryKv();
   let kvGets = 0;
   let kvPuts = 0;
@@ -566,8 +708,8 @@ test("bot health checks coalesce concurrent refreshes and tolerate KV write quot
     assert.equal(first.online, true);
     assert.equal(second, first);
     assert.equal(fetchCalls, 2, "Concurrent checks should share one Discord identity refresh");
-    assert.equal(kvGets, 1, "The coalesced refresh should read the snapshot once");
-    assert.equal(kvPuts, 1, "The coalesced refresh should attempt one KV write");
+    assert.equal(kvGets, 0, "Ephemeral health snapshots should not read Workers KV");
+    assert.equal(kvPuts, 0, "Ephemeral health snapshots should not write Workers KV");
   } finally {
     globalThis.fetch = originalFetch;
     console.warn = originalWarn;
@@ -650,6 +792,7 @@ test("D1 migrates bot health snapshot once and handles routine snapshot updates 
 });
 
 test("dashboard cache refreshes coalesce and persist one bot-guild and per-guild control record", async () => {
+  const db = createLocalD1(":memory:");
   const baseKv = createMemoryKv();
   let kvPuts = 0;
   let fetchCalls = 0;
@@ -661,6 +804,7 @@ test("dashboard cache refreshes coalesce and persist one bot-guild and per-guild
     },
   };
   const env = {
+    DB: db,
     DISCORD_BOT: kv,
     DISCORD_BOT_TOKEN: "test-token",
     DISCORD_APPLICATION_ID: "1571958001928245378",
@@ -685,7 +829,7 @@ test("dashboard cache refreshes coalesce and persist one bot-guild and per-guild
       getBotGuilds(env),
     ]);
     assert.deepEqual(guilds1, guilds2);
-    assert.equal(kvPuts, 1, "Bot guild refreshes should write a single fallback cache key");
+    assert.equal(kvPuts, 0, "Bot guild refreshes should not write KV");
     assert.equal(fetchCalls, 1, "Concurrent bot guild refreshes should share one Discord request");
 
     const [controls1, controls2] = await Promise.all([
@@ -693,12 +837,12 @@ test("dashboard cache refreshes coalesce and persist one bot-guild and per-guild
       getGuildControlOptions(env, "111111111111111111"),
     ]);
     assert.deepEqual(controls1, controls2);
-    assert.equal(kvPuts, 2, "Guild control refresh should add only one cache write");
+    assert.equal(kvPuts, 0, "Guild control refresh should not write KV");
     assert.equal(fetchCalls, 3, "Concurrent control refreshes should share two Discord requests");
 
     await getBotGuilds(env);
     await getGuildControlOptions(env, "111111111111111111");
-    assert.equal(kvPuts, 2, "Warm isolate caches should avoid repeated KV writes");
+    assert.equal(kvPuts, 0, "Warm isolate caches should avoid KV writes");
     assert.equal(fetchCalls, 3, "Warm isolate caches should avoid repeated Discord requests");
   } finally {
     globalThis.fetch = originalFetch;
@@ -712,6 +856,7 @@ test("handleInteraction verifies Ed25519 signature, immediately defers /widget, 
 
   const kv = createMemoryKv();
   const env = {
+    DB: createLocalD1(":memory:"),
     DISCORD_PUBLIC_KEY: rawPubHex,
     DISCORD_APPLICATION_ID: "1571958001928245378",
     DISCORD_BOT: kv,
@@ -776,9 +921,11 @@ test("handleInteraction verifies Ed25519 signature, immediately defers /widget, 
 });
 
 test("Server dashboard widget routes enforce auth, per-guild ownership, and cross-server widget isolation", async () => {
+  const db = createLocalD1(":memory:");
   const kv = createMemoryKv();
   const secret = "test_session_secret_0123456789abcdef";
   const env = {
+    DB: db,
     DISCORD_CLIENT_SECRET: secret,
     DISCORD_BOT_TOKEN: "mock_bot_token",
     DISCORD_BOT: kv,
@@ -786,12 +933,14 @@ test("Server dashboard widget routes enforce auth, per-guild ownership, and cros
   };
 
   // User manages guild A (111...) only, NOT guild B (222...)
-  await kv.put(
-    "user_guilds:555555555555555555",
-    JSON.stringify([
+  await setCachedUserGuilds(
+    db,
+    "555555555555555555",
+    [
       { id: "111111111111111111", name: "Guild A", permissions: "32", owner: false },
       { id: "222222222222222222", name: "Guild B (Viewer Only)", permissions: "1024", owner: false },
-    ])
+    ],
+    Date.now() + 86400_000
   );
   // Seed accessible channels cache for Guild A & Guild B
   await kv.put(
@@ -819,6 +968,12 @@ test("Server dashboard widget routes enforce auth, per-guild ownership, and cros
   globalThis.fetch = (async (input: any, init?: any) => {
     const urlStr = String(input);
     const method = (init?.method || "GET").toUpperCase();
+    if (urlStr.includes("/guilds/111111111111111111/channels")) {
+      return Response.json([{ id: "333333333333333333", name: "widget-updates", type: 0 }]);
+    }
+    if (urlStr.includes("/guilds/111111111111111111/roles")) {
+      return Response.json([]);
+    }
     if (urlStr.includes("/channels/333333333333333333/messages") && method === "POST") {
       return new Response(JSON.stringify({ id: "777777777777777777" }), { status: 200 });
     }
@@ -856,7 +1011,7 @@ test("Server dashboard widget routes enforce auth, per-guild ownership, and cros
     const crossTenantRes = await handleApiRequest(crossTenantReq, env, new URL(crossTenantReq.url));
     assert.equal(crossTenantRes?.status, 404);
 
-    // 4. Managed Guild A deploy & delete succeed and synchronize KV
+    // 4. Managed Guild A deploy & delete succeed with D1-backed state
     const deployReq = new Request("https://portal.example.com/api/dashboard/servers/111111111111111111/widgets/deploy", {
       method: "POST",
       headers: { Cookie: cookieHeader, "Content-Type": "application/json" },

@@ -25,6 +25,19 @@ export function PrivacyPage() {
     statusData?.pages?.privacy ||
     presentationData?.pages?.privacy ||
     DEFAULT_SITE_PAGES_CONFIG.privacy;
+  const requiredSectionIds = new Set(["priv-1", "priv-2", "priv-3"]);
+  const requiredSections = DEFAULT_SITE_PAGES_CONFIG.privacy.sections.filter((section) =>
+    requiredSectionIds.has(section.id)
+  );
+  const sectionsById = new Map(requiredSections.map((section) => [section.id, section]));
+  const privacySections = privacy.sections.map(
+    (section) => sectionsById.get(section.id) || section
+  );
+  for (const section of requiredSections) {
+    if (!privacySections.some((existing) => existing.id === section.id)) {
+      privacySections.push(section);
+    }
+  }
 
   const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(privacy.contactEmail);
 
@@ -52,7 +65,7 @@ export function PrivacyPage() {
           </div>
 
           <div className="mt-8 space-y-7 text-sm leading-relaxed text-zinc-300">
-            {privacy.sections.map((sec) => (
+            {privacySections.map((sec) => (
               <section key={sec.id} className="space-y-2">
                 <h2 className="text-lg font-semibold text-white">{sec.heading}</h2>
                 <p className="whitespace-pre-line">{sec.body}</p>

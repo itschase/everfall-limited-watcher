@@ -25,6 +25,15 @@ export function TermsPage() {
     statusData?.pages?.terms ||
     presentationData?.pages?.terms ||
     DEFAULT_SITE_PAGES_CONFIG.terms;
+  const requiredSection = DEFAULT_SITE_PAGES_CONFIG.terms.sections.find(
+    (section) => section.id === "terms-3"
+  );
+  const termsSections = terms.sections.map((section) =>
+    requiredSection && section.id === requiredSection.id ? requiredSection : section
+  );
+  if (requiredSection && !termsSections.some((section) => section.id === requiredSection.id)) {
+    termsSections.push(requiredSection);
+  }
 
   const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(terms.contactEmail);
 
@@ -52,7 +61,7 @@ export function TermsPage() {
           </div>
 
           <div className="mt-8 space-y-7 text-sm leading-relaxed text-zinc-300">
-            {terms.sections.map((sec) => (
+            {termsSections.map((sec) => (
               <section key={sec.id} className="space-y-2">
                 <h2 className="text-lg font-semibold text-white">{sec.heading}</h2>
                 <p className="whitespace-pre-line">{sec.body}</p>
