@@ -1,7 +1,4 @@
-// Unified D1-first + KV-fallback / ephemeral-TTL cache helper for Everfall Limited Watcher.
-// Structured application data lives in Cloudflare D1 (env.DB) when bound, with safe non-destructive
-// one-time lazy migration from legacy KV keys. Workers KV (env.DISCORD_BOT) is reserved for
-// OAuth state, user guilds, pending /widget prompts, and fallback caches when D1 is unavailable.
+// D1-first storage helpers with non-destructive one-time imports from legacy KV records.
 
 import {
   createDefaultPresentationConfig,
@@ -1590,7 +1587,6 @@ export const WIDGET_REGISTRY_KEY = "widgets:registry";
 const LEGACY_WIDGET_INDEX_KEY = "widgets:all";
 const WIDGET_IDS_INDEX_KEY = "widgets:all_ids";
 const WIDGET_INSTANCE_PREFIX = "widget_instance:";
-const WIDGET_PENDING_PREFIX = "widget_pending:";
 
 function normalizeWidgetRecord(raw: any): WidgetDeployment | null {
   if (!raw || typeof raw !== "object") return null;
@@ -1935,7 +1931,6 @@ export async function deleteWidgetDeployment(env: any, guildId: string): Promise
   }
 }
 
-// Ephemeral 15-min TTL confirmations stay in KV intentionally
 export async function createPendingWidgetConfirmation(
   env: any,
   input: Omit<PendingWidgetConfirmation, "token" | "createdAt" | "expiresAt">
@@ -1948,12 +1943,19 @@ export async function createPendingWidgetConfirmation(
     createdAt: now,
     expiresAt: now + 15 * 60 * 1000,
   };
-  const kv = env.DISCORD_BOT as KVNamespace | undefined;
-  if (kv) {
-    await kv.put(`${WIDGET_PENDING_PREFIX}${token}`, JSON.stringify(record), {
-      expirationTtl: 900,
-    });
-  }
+  const db = getD1Database(env);
+  if (!db) throw new Error("The D1 database binding (DB) is required for widget confirmations.");
+  await ensureD1Schema(db);
+  await db
+    .prepare("DELETE FROM pending_widget_confirmations WHERE expires_at <= ?")
+    .bind(now)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO pending_widget_confirmations (token, expires_at, record_json) VALUES (?, ?, ?)"
+    )
+    .bind(token, record.expiresAt, JSON.stringify(record))
+    .run();
   return record;
 }
 
@@ -1961,26 +1963,38 @@ export async function getPendingWidgetConfirmation(
   env: any,
   token: string
 ): Promise<PendingWidgetConfirmation | null> {
-  const kv = env.DISCORD_BOT as KVNamespace | undefined;
-  if (!kv || !token) return null;
-  const raw = await kv.get(`${WIDGET_PENDING_PREFIX}${token}`);
-  if (!raw) return null;
+  const db = getD1Database(env);
+  if (!db || !token) return null;
+  await ensureD1Schema(db);
+  const row = await db
+    .prepare(
+      "SELECT expires_at, record_json FROM pending_widget_confirmations WHERE token = ?"
+    )
+    .bind(token)
+    .first<{ expires_at: number; record_json: string }>();
+  if (!row) return null;
+  if (Number(row.expires_at) <= Date.now()) {
+    await db
+      .prepare("DELETE FROM pending_widget_confirmations WHERE token = ?")
+      .bind(token)
+      .run();
+    return null;
+  }
   try {
-    const parsed = JSON.parse(raw) as PendingWidgetConfirmation;
-    if (!parsed || typeof parsed.expiresAt !== "number" || Date.now() > parsed.expiresAt) {
-      await kv.delete(`${WIDGET_PENDING_PREFIX}${token}`).catch(() => null);
-      return null;
-    }
-    return parsed;
+    return JSON.parse(row.record_json) as PendingWidgetConfirmation;
   } catch {
     return null;
   }
 }
 
 export async function deletePendingWidgetConfirmation(env: any, token: string): Promise<void> {
-  const kv = env.DISCORD_BOT as KVNamespace | undefined;
-  if (!kv || !token) return;
-  await kv.delete(`${WIDGET_PENDING_PREFIX}${token}`).catch(() => null);
+  const db = getD1Database(env);
+  if (!db || !token) return;
+  await ensureD1Schema(db);
+  await db
+    .prepare("DELETE FROM pending_widget_confirmations WHERE token = ?")
+    .bind(token)
+    .run();
 }
 
 // ---------- Presentation & Site Pages Config ----------
@@ -2626,16 +2640,7 @@ export async function getBotHealthSnapshot(env: any): Promise<BotHealthSnapshot 
     await ensureBotHealthSnapshotMigrated(db, kv);
     return await getMonitorStateValue<BotHealthSnapshot>(db, BOT_HEALTH_SNAPSHOT_KEY);
   }
-  if (!kv) return null;
-  const raw = await withKvMetrics("bot_health_snapshot", "get", () =>
-    kv.get(BOT_HEALTH_SNAPSHOT_KEY)
-  );
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as BotHealthSnapshot;
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 export async function setBotHealthSnapshot(
@@ -2649,12 +2654,6 @@ export async function setBotHealthSnapshot(
     await setMonitorStateValue(db, BOT_HEALTH_SNAPSHOT_KEY, snapshot, snapshot.checkedAt);
     return;
   }
-  if (!kv) return;
-  await withKvMetrics("bot_health_snapshot", "put", () =>
-    kv.put(BOT_HEALTH_SNAPSHOT_KEY, JSON.stringify(snapshot), {
-      expirationTtl: 600,
-    })
-  );
 }
 
 // Creator profile in D1 (migrated cleanly from KV creator:profile)

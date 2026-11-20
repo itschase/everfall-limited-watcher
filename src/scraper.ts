@@ -32,6 +32,7 @@ import {
 } from "./kv";
 import { fetchDiscordChannelMessage, fetchDiscordWithRetry } from "./discord";
 import { MIN_STORE_CHECK_INTERVAL_MS } from "./shared/appConfig";
+import { getD1Database } from "./d1";
 import {
   AnnouncementTemplate,
   buildCarDropPayload,
@@ -78,7 +79,7 @@ const STORE_HEADERS = {
   "Sec-Fetch-User": "?1",
   "Upgrade-Insecure-Requests": "1",
 };
-const historicalSeededKVs = new WeakSet<object>();
+const historicalSeededStores = new WeakSet<object>();
 
 export function resolvePublicOrigin(env: any, originHint?: string): string {
   const candidates = [env?.PUBLIC_ORIGIN, originHint, env?.APP_URL];
@@ -124,9 +125,8 @@ async function archiveListingImages(
   originHint?: string,
   existingImages?: string[]
 ): Promise<CarListing> {
-  const kv = env.DISCORD_BOT as KVNamespace;
   const r2 = env.MEDIA_BUCKET as R2Bucket | undefined;
-  if ((!kv && !r2) || !car.images?.length) return car;
+  if (!r2 || !car.images?.length) return car;
   const origin = resolvePublicOrigin(env, originHint);
   const canUseOriginUrl = isDiscordSafeHttpsOrigin(origin);
 
@@ -159,8 +159,11 @@ async function archiveListingImages(
           const existingR2 = await r2.head(key);
           if (!existingR2) {
             // Migrate from KV if already archived previously before hitting origin CDN
-            const existingKv = kv
-              ? await kv.getWithMetadata<{ contentType?: string }>(key, "arrayBuffer")
+            const existingKv = env.DISCORD_BOT
+              ? await (env.DISCORD_BOT as KVNamespace).getWithMetadata<{ contentType?: string }>(
+                  key,
+                  "arrayBuffer"
+                )
               : null;
             if (existingKv?.value) {
               await r2.put(key, existingKv.value, {
@@ -176,14 +179,6 @@ async function archiveListingImages(
                 httpMetadata: { contentType },
               });
             }
-          }
-        } else if (kv) {
-          const existing = await kv.getWithMetadata<{ contentType?: string }>(key, "arrayBuffer");
-          if (!existing.value) {
-            const response = await fetch(sourceUrl);
-            if (!response.ok) return sourceUrl;
-            const contentType = response.headers.get("content-type") || "image/webp";
-            await kv.put(key, await response.arrayBuffer(), { metadata: { contentType } });
           }
         }
         return canUseOriginUrl ? `${origin}/media/listings/${car.id}/${index}` : sourceUrl;
@@ -312,9 +307,30 @@ export async function ensureHistoricalKnownListingsPreserved(
   env: any,
   originHint?: string
 ): Promise<void> {
+  const db = getD1Database(env);
+  if (db) {
+    if (historicalSeededStores.has(db as object)) return;
+    const baseHistoricalTimes: Record<string, number> = {
+      "7815813": Date.UTC(2026, 10, 15, 22, 0, 0),
+      "7815819": Date.UTC(2026, 10, 16, 22, 46, 0),
+    };
+    for (const car of KNOWN_LIMITED_CARS) {
+      const existing = await getListingRecordById(env, car.id);
+      if (existing) continue;
+      const archived = await archiveListingImages(env, car, originHint);
+      await upsertListingRecord(env, car.id, archived, false, {
+        firstSeenAtOverride: baseHistoricalTimes[car.id] || Date.now(),
+        lastHttpStatus: 404,
+        markVerified: false,
+      });
+    }
+    historicalSeededStores.add(db as object);
+    return;
+  }
+
   const kv = env.DISCORD_BOT as KVNamespace | undefined;
   if (!kv) return;
-  if (historicalSeededKVs.has(kv as object)) return;
+  if (historicalSeededStores.has(kv as object)) return;
 
   // Fast 1-read check against listings:all index before touching individual listing keys
   const registryRaw = await kv.get("listings:all");
@@ -325,7 +341,7 @@ export async function ensureHistoricalKnownListingsPreserved(
         Array.isArray(registry) &&
         KNOWN_LIMITED_CARS.every((car) => registry.includes(car.id))
       ) {
-        historicalSeededKVs.add(kv as object);
+        historicalSeededStores.add(kv as object);
         return;
       }
     } catch {
@@ -350,7 +366,7 @@ export async function ensureHistoricalKnownListingsPreserved(
       markVerified: false,
     });
   }
-  historicalSeededKVs.add(kv as object);
+  historicalSeededStores.add(kv as object);
 }
 
 type StoreFetchResult = {
@@ -735,19 +751,34 @@ export async function getCarPackage(env: any, carId: string): Promise<CarListing
       isAvailable: existingRecord.isAvailable !== false,
     };
   }
+  const db = getD1Database(env);
   const kv = env.DISCORD_BOT as KVNamespace | undefined;
   if (kv) {
     const pkgRaw = await kv.get(`package:${carId}`);
-    if (pkgRaw) return JSON.parse(pkgRaw);
+    if (pkgRaw) {
+      let cachedPackage: CarListing;
+      try {
+        const parsed: unknown = JSON.parse(pkgRaw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("Legacy package cache is not an object.");
+        }
+        cachedPackage = parsed as CarListing;
+      } catch (error) {
+        console.warn(`Failed to parse legacy package cache for listing ${carId}:`, error);
+        return KNOWN_LIMITED_CARS.find((c) => c.id === carId) || null;
+      }
+      if (db && cachedPackage && typeof cachedPackage === "object") {
+        await upsertListingRecord(env, carId, cachedPackage, cachedPackage.isAvailable !== false, {
+          firstSeenAtOverride: cachedPackage.detectedAt,
+          lastHttpStatus: cachedPackage.lastHttpStatus,
+          markVerified: Boolean(cachedPackage.lastVerifiedAt),
+        });
+      }
+      return cachedPackage;
+    }
   }
 
   return KNOWN_LIMITED_CARS.find((c) => c.id === carId) || null;
-}
-
-export async function saveCarPackage(env: any, car: CarListing): Promise<void> {
-  const kv = env.DISCORD_BOT as KVNamespace;
-  if (!kv) return;
-  await kv.put(`package:${car.id}`, JSON.stringify(car));
 }
 
 function stripCustomEmojisFromPayload(payload: any): any {

@@ -22,13 +22,16 @@ import {
 import { EF_LOGO_BASE64 } from "./assets";
 import { fetchDiscordWithRetry } from "./discord";
 import {
+  consumeOAuthHandoff,
   consumeOAuthState,
   createOAuthState,
+  createOAuthHandoff,
+  getCachedUserGuilds,
   getD1Database,
   getMonitorStateValue,
+  setCachedUserGuilds,
   setMonitorStateValue,
 } from "./d1";
-import { withKvMetrics } from "./kvMetrics";
 
 const REDIRECT_PATH = "/auth/callback";
 const SESSION_COOKIE = "everfall_session";
@@ -116,27 +119,32 @@ export function buildLogoutCookies(request: Request, env: any): string[] {
 }
 
 export async function getManagedGuildsForUser(env: any, userId: string): Promise<any[]> {
-  if (!env.DISCORD_BOT) return [];
-  const raw = await env.DISCORD_BOT.get(`user_guilds:${userId}`);
-  if (!raw) return [];
-  try {
-    const guilds: any[] = JSON.parse(raw);
-    return guilds.filter((guild) => {
-      if (guild.owner) return true;
-      const permissions = BigInt(guild.permissions || "0");
-      return (permissions & 0x20n) === 0x20n || (permissions & 0x8n) === 0x8n;
-    });
-  } catch {
-    return [];
+  const db = getD1Database(env);
+  if (!db) throw new Error("The D1 database binding (DB) is not configured.");
+  let guilds = await getCachedUserGuilds(db, userId);
+  if (!guilds && env.DISCORD_BOT) {
+    const raw = await (env.DISCORD_BOT as KVNamespace).get(`user_guilds:${userId}`);
+    if (raw) {
+      try {
+        const legacyGuilds: unknown = JSON.parse(raw);
+        if (Array.isArray(legacyGuilds)) {
+          guilds = legacyGuilds;
+          await setCachedUserGuilds(db, userId, legacyGuilds, Date.now() + 86400_000);
+        }
+      } catch {
+        console.warn(`Failed to migrate legacy Discord guild cache for user ${userId}.`);
+      }
+    }
   }
+  return (guilds || []).filter((guild: any) => {
+    if (guild.owner) return true;
+    const permissions = BigInt(guild.permissions || "0");
+    return (permissions & 0x20n) === 0x20n || (permissions & 0x8n) === 0x8n;
+  });
 }
 
-const BOT_GUILDS_CACHE_KEY = "bot:guilds:cache";
-const BOT_GUILDS_STALE_KEY = "bot:guilds:stale";
 const BOT_GUILDS_CACHE_TTL_MS = 60 * 60 * 1000;
-const BOT_GUILDS_STALE_TTL = 86400;
 const GUILD_CONTROLS_CACHE_TTL_MS = 30 * 60 * 1000;
-const GUILD_CONTROLS_CACHE_TTL = 30 * 60;
 const BOT_GUILDS_CACHE_STATE_KEY = "cache:bot_guilds";
 const dashboardCacheScope = (env: any) =>
   `${env.PUBLIC_ORIGIN || "local"}:${env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "default"}`;
@@ -158,7 +166,6 @@ export async function getGuildControlOptions(
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return { channels: [], roles: [], error: "DISCORD_BOT_TOKEN is not configured." };
 
-  const kv = env.DISCORD_BOT as KVNamespace | undefined;
   const db = getD1Database(env);
   const cacheKey = `guild_controls:${guildId}`;
   const memoryKey = `${dashboardCacheScope(env)}:${cacheKey}`;
@@ -179,12 +186,7 @@ export async function getGuildControlOptions(
   if (!forceRefresh) {
     try {
       let cached: any = null;
-      if (db) {
-        cached = await getMonitorStateValue(db, cacheKey);
-      } else if (kv) {
-        const raw = await withKvMetrics("guild_controls", "get", () => kv.get(cacheKey));
-        cached = raw ? JSON.parse(raw) : null;
-      }
+      if (db) cached = await getMonitorStateValue(db, cacheKey);
       if (Array.isArray(cached?.channels) && Array.isArray(cached?.roles)) {
         stale = { channels: cached.channels, roles: cached.roles };
         const cachedAt = typeof cached.cachedAt === "number" ? cached.cachedAt : Date.now();
@@ -228,15 +230,7 @@ export async function getGuildControlOptions(
       const cachedAt = Date.now();
       guildControlsMemoryCache.set(memoryKey, { value, cachedAt });
       try {
-        if (db) {
-          await setMonitorStateValue(db, cacheKey, { ...value, cachedAt }, cachedAt);
-        } else if (kv) {
-          await withKvMetrics("guild_controls", "put", () =>
-            kv.put(cacheKey, JSON.stringify({ ...value, cachedAt }), {
-              expirationTtl: GUILD_CONTROLS_CACHE_TTL,
-            })
-          );
-        }
+        if (db) await setMonitorStateValue(db, cacheKey, { ...value, cachedAt }, cachedAt);
       } catch (error) {
         console.warn(`Failed to persist dashboard controls for guild ${guildId}:`, error);
       }
@@ -525,39 +519,22 @@ function normalizeBotGuildCache(value: any): BotGuildCache | null {
   return null;
 }
 
-async function readCachedBotGuilds(
-  kv: KVNamespace | undefined,
-  key: string
-): Promise<BotGuildCache | null> {
-  if (!kv) return null;
-  const raw = await withKvMetrics("bot_guilds", "get", () => kv.get(key));
-  if (!raw) return null;
-  try {
-    return normalizeBotGuildCache(JSON.parse(raw));
-  } catch {
-    // Ignore malformed cache
-  }
-  return null;
-}
-
 export async function clearBotGuildsCache(env: any): Promise<void> {
-  const kv = env.DISCORD_BOT as KVNamespace | undefined;
   const db = getD1Database(env);
   const memoryKey = dashboardCacheScope(env);
   botGuildsMemoryCache.delete(memoryKey);
-  if (db) return;
-  if (!kv) return;
-  await Promise.all([
-    kv.delete(BOT_GUILDS_CACHE_KEY).catch(() => null),
-    kv.delete(BOT_GUILDS_STALE_KEY).catch(() => null),
-  ]);
+  if (db) {
+    await db
+      .prepare("DELETE FROM monitor_state WHERE key = ?")
+      .bind(BOT_GUILDS_CACHE_STATE_KEY)
+      .run();
+  }
 }
 
 export async function getBotGuilds(env: any, forceRefresh = false): Promise<BotGuild[]> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return [];
 
-  const kv = env.DISCORD_BOT as KVNamespace | undefined;
   const db = getD1Database(env);
   const memoryKey = dashboardCacheScope(env);
   const dedupKey = `${memoryKey}:${forceRefresh ? "refresh" : "cached"}`;
@@ -578,11 +555,11 @@ export async function getBotGuilds(env: any, forceRefresh = false): Promise<BotG
     let cached = memoryCached || null;
     try {
       if (!cached) {
-        cached = db
-          ? normalizeBotGuildCache(
-              await getMonitorStateValue<unknown>(db, BOT_GUILDS_CACHE_STATE_KEY)
-            )
-          : await readCachedBotGuilds(kv, BOT_GUILDS_CACHE_KEY);
+        if (db) {
+          cached = normalizeBotGuildCache(
+            await getMonitorStateValue<unknown>(db, BOT_GUILDS_CACHE_STATE_KEY)
+          );
+        }
         if (cached) botGuildsMemoryCache.set(memoryKey, cached);
       }
       if (!forceRefresh && cached && Date.now() - cached.fetchedAt < BOT_GUILDS_CACHE_TTL_MS) {
@@ -613,29 +590,14 @@ export async function getBotGuilds(env: any, forceRefresh = false): Promise<BotG
       cached = { guilds, fetchedAt };
       botGuildsMemoryCache.set(memoryKey, cached);
       try {
-        if (db) {
-          await setMonitorStateValue(db, BOT_GUILDS_CACHE_STATE_KEY, cached, fetchedAt);
-        } else if (kv) {
-          await withKvMetrics("bot_guilds", "put", () =>
-            kv.put(BOT_GUILDS_CACHE_KEY, JSON.stringify(cached), {
-              expirationTtl: BOT_GUILDS_STALE_TTL,
-            })
-          );
-        }
+        if (db) await setMonitorStateValue(db, BOT_GUILDS_CACHE_STATE_KEY, cached, fetchedAt);
       } catch (error) {
         console.warn("Failed to persist bot guild cache; using the in-memory result:", error);
       }
       return guilds;
     } catch (error) {
       console.error("Failed to fetch bot guilds:", error);
-      if (!cached && !db && kv) {
-        try {
-          cached = await readCachedBotGuilds(kv, BOT_GUILDS_STALE_KEY);
-        } catch (cacheError) {
-          console.warn("Failed to read stale bot guild cache:", cacheError);
-        }
-      }
-      if (cached && Date.now() - cached.fetchedAt <= BOT_GUILDS_STALE_TTL * 1000) {
+      if (cached && Date.now() - cached.fetchedAt <= BOT_GUILDS_CACHE_TTL_MS) {
         botGuildsMemoryCache.set(memoryKey, cached);
         return cached.guilds;
       }
@@ -847,55 +809,96 @@ export async function handleOAuthCallback(request: Request, env: any): Promise<R
     redirect_uri: redirectUri,
   });
 
-  const tokenRes = await fetch("https://discord.com/api/v10/oauth2/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: tokenParams.toString(),
-  });
+  let tokenRes: Response;
+  try {
+    tokenRes = await fetch("https://discord.com/api/v10/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: tokenParams.toString(),
+    });
+  } catch (error) {
+    console.error("Discord OAuth token exchange request failed:", error);
+    return new Response("Unable to reach Discord to complete sign-in", { status: 502 });
+  }
 
   if (!tokenRes.ok) {
-    const errorText = await tokenRes.text();
+    let errorText = "No response details.";
+    try {
+      errorText = await tokenRes.text();
+    } catch (error) {
+      console.error("Failed to read Discord OAuth token exchange error:", error);
+    }
     return new Response(`Discord OAuth exchange failed: ${errorText}`, { status: 400 });
   }
 
-  const tokenData: any = await tokenRes.json();
+  let tokenData: any;
+  try {
+    tokenData = await tokenRes.json();
+  } catch (error) {
+    console.error("Failed to parse Discord OAuth token response:", error);
+    return new Response("Discord returned an invalid OAuth token response", { status: 502 });
+  }
+  if (typeof tokenData?.access_token !== "string" || !tokenData.access_token) {
+    console.error("Discord OAuth token response is missing an access token");
+    return new Response("Discord returned an invalid OAuth token response", { status: 502 });
+  }
 
-  const userRes = await fetch("https://discord.com/api/v10/users/@me", {
-    headers: { Authorization: `Bearer ${tokenData.access_token}` },
-  });
+  let userRes: Response;
+  try {
+    userRes = await fetch("https://discord.com/api/v10/users/@me", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+  } catch (error) {
+    console.error("Discord OAuth user profile request failed:", error);
+    return new Response("Unable to fetch your Discord profile", { status: 502 });
+  }
 
   if (!userRes.ok) {
     return new Response("Failed to fetch Discord user profile", { status: 500 });
   }
 
-  const userData: any = await userRes.json();
+  let userData: any;
+  try {
+    userData = await userRes.json();
+  } catch (error) {
+    console.error("Failed to parse Discord OAuth user profile:", error);
+    return new Response("Discord returned an invalid user profile", { status: 502 });
+  }
+  if (typeof userData?.id !== "string" || !/^\d+$/.test(userData.id)) {
+    console.error("Discord OAuth user profile is missing a valid user ID");
+    return new Response("Discord returned an invalid user profile", { status: 502 });
+  }
   const avatarUrl = userData.avatar
     ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png?size=64`
     : `https://cdn.discordapp.com/embed/avatars/${(BigInt(userData.id) >> 22n) % 6n}.png`;
 
   if (userData.id === env.DISCORD_PRIMARY_ADMINISTRATOR) {
-    await setCreatorProfileInStore(env, {
-      id: userData.id,
-      username: userData.username || "xchasex",
-      avatarUrl,
-      profileUrl: `https://discord.com/users/${userData.id}`,
-      updatedAt: Date.now(),
-    });
+    try {
+      await setCreatorProfileInStore(env, {
+        id: userData.id,
+        username: userData.username || "xchasex",
+        avatarUrl,
+        profileUrl: `https://discord.com/users/${userData.id}`,
+        updatedAt: Date.now(),
+      });
+    } catch (error) {
+      console.error("Failed to update creator profile after Discord login:", error);
+    }
   }
 
   try {
     const guildsRes = await fetchDiscordWithRetry("https://discord.com/api/v10/users/@me/guilds", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
-    if (guildsRes.ok && env.DISCORD_BOT) {
-      const guildsData = await guildsRes.json();
-      await env.DISCORD_BOT.put(`user_guilds:${userData.id}`, JSON.stringify(guildsData), {
-        expirationTtl: 86400,
-      });
-      await env.DISCORD_BOT.delete(BOT_GUILDS_CACHE_KEY);
+    if (guildsRes.ok) {
+      const guildsData = (await guildsRes.json()) as unknown[];
+      const db = getD1Database(env);
+      if (!db) throw new Error("The D1 database binding (DB) is not configured.");
+      await setCachedUserGuilds(db, userData.id, guildsData, Date.now() + 86400_000);
+      await clearBotGuildsCache(env);
     }
   } catch (err) {
-    console.error("Failed to fetch user guilds:", err);
+    console.error("Failed to fetch or cache user guilds:", err);
   }
 
   const sessionToken = await createSessionToken(
@@ -910,13 +913,24 @@ export async function handleOAuthCallback(request: Request, env: any): Promise<R
     userData.id === env.DISCORD_PRIMARY_ADMINISTRATOR ? "/admin" : "/dashboard";
 
   const handoffId = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(24)));
+  const handoffIssuedAt = Date.now();
   const handoffToken = await signToken(
-    { handoffId, sessionToken, destination, issuedAt: Date.now() },
+    { handoffId, sessionToken, destination, issuedAt: handoffIssuedAt },
     sessionSecret
   );
-  const kv = env.DISCORD_BOT as KVNamespace;
-  if (kv) {
-    await kv.put(`oauth_handoff:${handoffId}`, "1", { expirationTtl: 120 });
+  const db = getD1Database(env);
+  if (!db) {
+    return oauthStateStorageErrorResponse(
+      new OAuthStateStorageError("The D1 database binding (DB) is not configured.")
+    );
+  }
+  try {
+    await createOAuthHandoff(db, handoffId, handoffIssuedAt + 120_000, handoffIssuedAt);
+  } catch (error) {
+    console.error("Failed to persist OAuth handoff in D1:", error);
+    return oauthStateStorageErrorResponse(
+      new OAuthStateStorageError("OAuth handoff could not be stored in D1.")
+    );
   }
 
   const headers = new Headers({
@@ -988,17 +1002,28 @@ export async function handleAuthHandoff(request: Request, env: any): Promise<Res
     });
   }
 
-  const kv = env.DISCORD_BOT as KVNamespace;
-  if (kv) {
-    const key = `oauth_handoff:${parsed.handoffId}`;
-    const valid = await kv.get(key);
-    if (!valid) {
-      return new Response(JSON.stringify({ error: "Handoff already used" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    await kv.delete(key);
+  const db = getD1Database(env);
+  if (!db) {
+    return new Response(JSON.stringify({ error: "OAuth handoff storage is unavailable." }), {
+      status: 503,
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+    });
+  }
+  let handoffValid: boolean;
+  try {
+    handoffValid = await consumeOAuthHandoff(db, parsed.handoffId);
+  } catch (error) {
+    console.error("Failed to consume OAuth handoff from D1:", error);
+    return new Response(JSON.stringify({ error: "OAuth handoff storage is unavailable." }), {
+      status: 503,
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+    });
+  }
+  if (!handoffValid) {
+    return new Response(JSON.stringify({ error: "Handoff already used or expired" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   const origin = getRequestOrigin(request, env);

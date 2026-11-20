@@ -699,17 +699,17 @@ export function AdminBotPage() {
                       <Database className="h-3.5 w-3.5" />
                       Cloudflare D1 Database
                     </span>
-                    <Badge variant={data.environment.d1Bound ? "success" : "warning"}>
-                      {data.environment.d1Bound ? "DB Bound (Primary)" : "KV Fallback"}
+                    <Badge variant={data.environment.d1Bound ? "success" : "destructive"}>
+                      {data.environment.d1Bound ? "DB Bound (Primary)" : "Unavailable"}
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1.5 text-muted-foreground">
                       <Database className="h-3.5 w-3.5" />
-                      Workers KV (TTL Cache)
+                      Workers KV (Legacy Compatibility)
                     </span>
-                    <Badge variant={data.environment.kvBound ? "success" : "destructive"}>
-                      {data.environment.kvBound ? "DISCORD_BOT Bound" : "Unbound"}
+                    <Badge variant={data.environment.kvBound ? "warning" : "success"}>
+                      {data.environment.kvBound ? "Optional Migration Source" : "Not Required"}
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between gap-2">
@@ -718,7 +718,7 @@ export function AdminBotPage() {
                       R2 Media Storage
                     </span>
                     <Badge variant={data.environment.r2Bound ? "success" : "warning"}>
-                      {data.environment.r2Bound ? "everfall-media Bound" : "KV Fallback"}
+                      {data.environment.r2Bound ? "everfall-media Bound" : "Required for media writes"}
                     </Badge>
                   </div>
                 </div>

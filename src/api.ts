@@ -64,6 +64,7 @@ import {
   updateSentListingEmbedForGuild,
 } from "./scraper";
 import { fetchDiscordWithRetry } from "./discord";
+import { getD1Database, reserveTestAlertCooldown } from "./d1";
 import {
   buildBotReadinessChecks,
   checkBotHealthSnapshot,
@@ -745,17 +746,22 @@ export async function handleApiRequest(
       return json({ error: "Save a valid notification channel before sending a test notification." }, 400);
     }
 
-    const kv = env.DISCORD_BOT as KVNamespace | undefined;
-    const cooldownKey = `guild_test_cooldown:${guildId}`;
-    if (kv) {
-      const lastTest = await kv.get(cooldownKey);
-      if (lastTest) {
+    const db = getD1Database(env);
+    if (!db) {
+      return json({ error: "Test notification cooldown storage is not configured." }, 503);
+    }
+    try {
+      const now = Date.now();
+      const reserved = await reserveTestAlertCooldown(db, guildId, now + 15_000, now);
+      if (!reserved) {
         return json(
           { error: "Please wait a few seconds before sending another test notification to this server." },
           429
         );
       }
-      await kv.put(cooldownKey, String(Date.now()), { expirationTtl: 15 });
+    } catch (error) {
+      console.error(`Failed to reserve test notification cooldown for guild ${guildId}:`, error);
+      return json({ error: "Test notification cooldown storage is unavailable." }, 503);
     }
 
     const testPayload = {
@@ -2561,6 +2567,7 @@ export async function handleApiRequest(
       const listingId = imagesReorderMatch[1];
       const r2 = env.MEDIA_BUCKET as R2Bucket | undefined;
       const kv = env.DISCORD_BOT as KVNamespace | undefined;
+      if (!r2) return json({ error: "R2 media storage is not configured." }, 503);
       const snapshot = await getCatalogSnapshot(env);
       const record = snapshot.records.find((r) => r.id === listingId);
       if (!record) return json({ error: "Listing not found." }, 404);
@@ -2655,14 +2662,9 @@ export async function handleApiRequest(
         const key = `media:${listingId}:${newIdx}`;
         const blob = blobMap.get(oldIdx);
         if (blob) {
-          if (r2) {
-            await r2.put(key, blob.data, { httpMetadata: { contentType: blob.contentType } });
-            if (kv) await kv.delete(key).catch(() => null);
-          } else if (kv) {
-            await kv.put(key, blob.data, { metadata: { contentType: blob.contentType } });
-          }
+          await r2.put(key, blob.data, { httpMetadata: { contentType: blob.contentType } });
         } else {
-          if (r2) await r2.delete(key).catch(() => null);
+          await r2.delete(key).catch(() => null);
           if (kv) await kv.delete(key).catch(() => null);
         }
       }
@@ -2682,6 +2684,7 @@ export async function handleApiRequest(
 
       const r2 = env.MEDIA_BUCKET as R2Bucket | undefined;
       const kv = env.DISCORD_BOT as KVNamespace | undefined;
+      if (!r2) return json({ error: "R2 media storage is not configured." }, 503);
       const reqContentType = request.headers.get("content-type") || "";
       let fileBytes: ArrayBuffer | null = null;
       let mimeType = "image/webp";
@@ -2710,14 +2713,8 @@ export async function handleApiRequest(
       }
 
       const key = `media:${listingId}:${slotIndex}`;
-      if (r2) {
-        await r2.put(key, fileBytes, { httpMetadata: { contentType: mimeType } });
-        if (kv) await kv.delete(key).catch(() => null);
-      } else if (kv) {
-        await kv.put(key, fileBytes, { metadata: { contentType: mimeType } });
-      } else {
-        return json({ error: "Neither R2 bucket nor KV storage is bound." }, 500);
-      }
+      await r2.put(key, fileBytes, { httpMetadata: { contentType: mimeType } });
+      if (kv) await kv.delete(key).catch(() => null);
 
       await syncRecordUrlsFromStorage(listingId);
       const nextState = await buildListingImageState(listingId);
@@ -2771,6 +2768,7 @@ export async function handleApiRequest(
       const botTokenConfigured = Boolean(env.DISCORD_BOT_TOKEN);
       const publicKeyConfigured = Boolean(env.DISCORD_PUBLIC_KEY);
       const kvBound = Boolean(env.DISCORD_BOT);
+      const d1Bound = Boolean(getD1Database(env));
 
       const readinessChecks = buildBotReadinessChecks({
         identity,
@@ -2779,7 +2777,7 @@ export async function handleApiRequest(
         expectedInteractionsUrl: interactionsUrl,
         botTokenConfigured,
         publicKeyConfigured,
-        kvBound,
+        d1Bound,
       });
 
       return {
@@ -2805,7 +2803,7 @@ export async function handleApiRequest(
           publicKeyConfigured,
           clientSecretConfigured: Boolean(env.DISCORD_CLIENT_SECRET),
           kvBound,
-          d1Bound: Boolean(env.DB),
+          d1Bound,
           r2Bound: Boolean(env.MEDIA_BUCKET),
           publicOrigin,
           interactionsUrl,
