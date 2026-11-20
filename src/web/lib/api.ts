@@ -8,13 +8,20 @@ import type {
   VehicleMetadataOverride,
 } from "../../shared/features";
 import type {
+  AboutPageContentConfig,
   AnnouncementSectionKey,
   AnnouncementTemplate,
   DiscordEmojiRef,
+  EditableFeatureCard,
+  EditableTextSection,
+  FeaturesPageContentConfig,
   HeroAnimationStyle,
   HeroConfig,
   HeroMessageItem,
+  HomePageContentConfig,
+  LegalPageContentConfig,
   PresentationConfigBundle,
+  SitePagesConfig,
   TemplateCustomSection,
   TemplateSectionCondition,
   WidgetSectionKey,
@@ -28,11 +35,18 @@ import type {
 } from "../../shared/variables";
 
 export type {
+  AboutPageContentConfig,
+  EditableFeatureCard,
+  EditableTextSection,
   EmojiReference,
   ExtractedVehicleMetadata,
   FeatureIconName,
   FeatureSurface,
+  FeaturesPageContentConfig,
+  HomePageContentConfig,
+  LegalPageContentConfig,
   NormalizedListingPresentation,
+  SitePagesConfig,
   VehicleFeature,
   VehicleMetadataOverride,
   AnnouncementSectionKey,
@@ -179,6 +193,7 @@ export interface PublicListingsResponse {
   lastCheckedAt: number | null;
   lastSuccessAt: number | null;
   hero?: HeroConfig;
+  pages?: SitePagesConfig;
 }
 
 export interface PublicStatusResponse {
@@ -197,6 +212,7 @@ export interface PublicStatusResponse {
   availableCount: number;
   soldOutCount: number;
   hero?: HeroConfig;
+  pages?: SitePagesConfig;
 }
 
 export interface PublicPresentationResponse {
@@ -209,6 +225,8 @@ export interface PublicPresentationResponse {
     soldOut: AnnouncementTemplate;
   };
   widgetDefault: WidgetTemplateConfig;
+  hero?: HeroConfig;
+  pages?: SitePagesConfig;
 }
 
 export interface HistoryResponse {
@@ -294,7 +312,7 @@ export interface DeliveryLogEntry {
   guildId: string;
   channelId: string;
   messageId?: string;
-  method: "auto" | "manual" | "test" | "setup";
+  method: "auto" | "manual" | "test" | "setup" | "recovery";
   environment: "production" | "test";
   status: "delivered" | "failed" | "updated";
   httpStatus?: number;
@@ -535,6 +553,7 @@ export interface AdminBotStateResponse {
     publicKeyConfigured: boolean;
     clientSecretConfigured: boolean;
     kvBound: boolean;
+    d1Bound?: boolean;
     r2Bound: boolean;
     publicOrigin: string;
     interactionsUrl: string;
@@ -609,6 +628,58 @@ export interface DispatchEditResponse {
   updatedCount: number;
   skippedCount: number;
   failedCount: number;
+  deliveryLogs: DeliveryLogEntry[];
+}
+
+export interface RecoverableEmbedPreview {
+  guildId: string;
+  channelId: string;
+  messageId: string;
+  jumpUrl: string;
+  authorId: string | null;
+  authorUsername: string | null;
+  isBotAuthor: boolean;
+  createdAt: string | null;
+  createdAtMs: number;
+  editedAt: string | null;
+  title: string;
+  description: string;
+  imageUrl: string | null;
+  componentCount: number;
+  embedCount: number;
+}
+
+export interface RecoverableEmbedConflict {
+  alreadyLinkedListingId: string | null;
+  alreadyLinkedGuildId: string | null;
+  alreadyLinkedChannelId: string | null;
+  guildAlreadyTracksDifferentMessage: {
+    listingId: string;
+    messageId: string;
+    channelId: string;
+  } | null;
+}
+
+export interface RecoverPreviewResponse {
+  ok: boolean;
+  httpStatus: number;
+  preview: RecoverableEmbedPreview;
+  conflicts: RecoverableEmbedConflict;
+  listingName: string;
+  listingIsAvailable: boolean;
+}
+
+export interface RecoverExecuteResponse {
+  ok: boolean;
+  preview: RecoverableEmbedPreview;
+  updatedInPlace: boolean;
+  recoveredMeta: {
+    guildId: string;
+    channelId: string;
+    messageId: string;
+    listingId: string;
+    sentAt: number;
+  };
   deliveryLogs: DeliveryLogEntry[];
 }
 

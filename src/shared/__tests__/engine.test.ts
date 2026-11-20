@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { createLocalD1 } from "../../server";
 import {
   extractVehicleMetadata,
   resolveListingPresentation,
@@ -17,8 +21,10 @@ import {
   computeWidgetContentHash,
   createDefaultPresentationConfig,
   DEFAULT_IN_STOCK_TEMPLATE,
+  DEFAULT_SITE_PAGES_CONFIG,
   DEFAULT_SOLD_OUT_TEMPLATE,
   DEFAULT_WIDGET_TEMPLATE,
+  normalizeSitePagesConfig,
   validateDiscordPayloadLimits,
 } from "../presentation";
 import {
@@ -35,6 +41,12 @@ import { createSessionToken } from "../../admin";
 import { handleApiRequest } from "../../api";
 import {
   getAllWidgetDeployments,
+  getCatalogSnapshot,
+  getDeliveryLogs,
+  getGuildConfig,
+  getGuildSentMessages,
+  getMonitorLogs,
+  getPresentationConfig,
   setGuildConfig,
   setPresentationConfig,
   setWidgetDeployment,
@@ -43,6 +55,9 @@ import {
 import {
   deployStatusWidgetToChannel,
   ingestVerifiedStoreScan,
+  inspectRecoverableDiscordEmbed,
+  parseDiscordMessageReference,
+  recoverDiscordEmbedTracking,
   refreshAllWidgets,
 } from "../../scraper";
 import { DISCORD_SLASH_COMMANDS } from "../slashCommands";
@@ -1047,3 +1062,414 @@ test("Widget updates skip Discord PATCH and KV writes on unchanged/blocked check
     globalThis.fetch = origFetch;
   }
 });
+
+test("D1 performs one-time non-destructive migration from KV and brings routine reads/writes to zero KV ops", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "everfall-d1-test-"));
+  const dbPath = path.join(tmpDir, "test.sqlite");
+  const baseKv = createMemoryKv();
+
+  // Seed legacy KV keys prior to D1 migration
+  await baseKv.put(
+    "listings:snapshot",
+    JSON.stringify({
+      version: 3,
+      records: [
+        {
+          id: "7815819",
+          firstSeenAt: 1_760_000_000_000,
+          lastSeenAt: 1_760_000_120_000,
+          isAvailable: true,
+          payload: { name: "Seraph GTS", description: "Limited coupe", images: [] },
+        },
+      ],
+    })
+  );
+  await baseKv.put("guilds:all", JSON.stringify(["111111111111111111"]));
+  await baseKv.put(
+    "guild:111111111111111111",
+    JSON.stringify({
+      channelId: "222222222222222222",
+      roleIds: ["333333333333333333"],
+      environment: "production",
+    })
+  );
+  await baseKv.put(
+    "guild:111111111111111111:messages",
+    JSON.stringify({
+      "7815819": {
+        listingId: "7815819",
+        channelId: "222222222222222222",
+        messageId: "444444444444444444",
+        sentAt: 1_760_000_010_000,
+      },
+    })
+  );
+  await baseKv.put(
+    "widgets:registry",
+    JSON.stringify({
+      "111111111111111111:555555555555555555": {
+        id: "111111111111111111:555555555555555555",
+        guildId: "111111111111111111",
+        channelId: "555555555555555555",
+        messageId: "666666666666666666",
+        deployedAt: 1_760_000_020_000,
+      },
+    })
+  );
+  await baseKv.put(
+    "monitor:logs",
+    JSON.stringify([
+      {
+        id: "mlog-1",
+        timestamp: Date.now() - 60_000,
+        source: "scrapling",
+        status: "success",
+        httpStatus: 200,
+        cloudflareChallenge: false,
+        authoritative: true,
+        responseLength: 4200,
+        targetUrl: "https://store.everfallcommunity.com",
+        listingCount: 1,
+        newDiscoveries: 0,
+        durationMs: 210,
+        message: "Verified",
+      },
+    ])
+  );
+  await baseKv.put(
+    "dispatch:logs",
+    JSON.stringify([
+      {
+        id: "dlog-1",
+        listingId: "7815819",
+        listingName: "Seraph GTS",
+        guildId: "111111111111111111",
+        channelId: "222222222222222222",
+        messageId: "444444444444444444",
+        method: "auto",
+        environment: "production",
+        status: "delivered",
+        timestamp: 1_760_000_010_000,
+      },
+    ])
+  );
+  const seededPres = createDefaultPresentationConfig();
+  seededPres.widgetDefault.title = "Migrated Board Title";
+  await baseKv.put("admin:presentation_config", JSON.stringify(seededPres));
+
+  let kvReads = 0;
+  let kvWrites = 0;
+  let kvDeletes = 0;
+  const instrumentedKv = {
+    async get(key: string, type?: string) {
+      kvReads++;
+      return baseKv.get(key, type);
+    },
+    async getWithMetadata(key: string) {
+      kvReads++;
+      return baseKv.getWithMetadata(key);
+    },
+    async put(key: string, value: string | ArrayBuffer) {
+      kvWrites++;
+      return baseKv.put(key, value);
+    },
+    async delete(key: string) {
+      kvDeletes++;
+      return baseKv.delete(key);
+    },
+    async list(opts?: { prefix?: string }) {
+      kvReads++;
+      return baseKv.list(opts);
+    },
+  };
+
+  try {
+    const d1 = createLocalD1(dbPath);
+    const env: any = {
+      DB: d1,
+      DISCORD_BOT: instrumentedKv,
+    };
+
+    // First pass triggers lazy migration from KV -> D1
+    const snap1 = await getCatalogSnapshot(env);
+    const guild1 = await getGuildConfig(env, "111111111111111111");
+    const msgs1 = await getGuildSentMessages(env, "111111111111111111");
+    const widgets1 = await getAllWidgetDeployments(env);
+    const mLogs1 = await getMonitorLogs(env);
+    const dLogs1 = await getDeliveryLogs(env);
+    const pres1 = await getPresentationConfig(env);
+
+    assert.equal(snap1.records.length, 1);
+    assert.equal(guild1?.channelId, "222222222222222222");
+    assert.equal(msgs1["7815819"]?.messageId, "444444444444444444");
+    assert.equal(widgets1.length, 1);
+    assert.equal(mLogs1.length, 1);
+    assert.equal(dLogs1.length, 1);
+    assert.equal(pres1.widgetDefault.title, "Migrated Board Title");
+
+    // Verify migration did NOT delete original KV keys (non-destructive safety)
+    assert.equal(kvDeletes, 0);
+    assert.ok(await baseKv.get("listings:snapshot"));
+    assert.ok(await baseKv.get("guild:111111111111111111"));
+    assert.ok(await baseKv.get("widgets:registry"));
+
+    // Reset counters and execute routine reads/writes strictly against D1 -> 0 KV ops!
+    kvReads = 0;
+    kvWrites = 0;
+    kvDeletes = 0;
+
+    await getCatalogSnapshot(env);
+    await getGuildConfig(env, "111111111111111111");
+    await getGuildSentMessages(env, "111111111111111111");
+    await getAllWidgetDeployments(env);
+    await getMonitorLogs(env);
+    await getDeliveryLogs(env);
+    await getPresentationConfig(env);
+    await setGuildConfig(env, "111111111111111111", {
+      channelId: "222222222222222222",
+      roleIds: ["333333333333333333"],
+      environment: "production",
+    });
+
+    assert.equal(kvReads, 0, "Routine D1-backed structured reads must execute zero KV reads");
+    assert.equal(kvWrites, 0, "Routine D1-backed structured writes must execute zero KV writes");
+    assert.equal(kvDeletes, 0, "Routine D1-backed operations must execute zero KV deletes");
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("Legacy Discord embed recovery parses links/IDs, validates authorship & conflicts, and patches legacy messages in place without role pings", async () => {
+  const parsedUrl = parseDiscordMessageReference(
+    "https://canary.discord.com/channels/111111111111111111/222222222222222222/333333333333333333?foo=bar"
+  );
+  assert.deepEqual(parsedUrl, {
+    guildId: "111111111111111111",
+    channelId: "222222222222222222",
+    messageId: "333333333333333333",
+    fromUrl: true,
+  });
+  assert.deepEqual(parseDiscordMessageReference("333333333333333333"), {
+    messageId: "333333333333333333",
+    fromUrl: false,
+  });
+  assert.equal(parseDiscordMessageReference("not-a-snowflake"), null);
+
+  const kv = createMemoryKv();
+  const secret = "test_recovery_secret_0123456789";
+  const env: any = {
+    DISCORD_BOT: kv,
+    DISCORD_BOT_TOKEN: "mock_bot_token",
+    DISCORD_CLIENT_SECRET: secret,
+    DISCORD_PRIMARY_ADMINISTRATOR: "151037568484507648",
+    DISCORD_APPLICATION_ID: "1571958001928245378",
+    PUBLIC_ORIGIN: "https://portal.example.com",
+  };
+
+  await kv.put(
+    "listings:snapshot",
+    JSON.stringify({
+      version: 2,
+      records: [
+        {
+          id: "7815813",
+          firstSeenAt: 1_750_000_000_000,
+          lastSeenAt: 1_750_000_060_000,
+          soldOutAt: 1_750_000_120_000,
+          isAvailable: false,
+          payload: {
+            name: "73C",
+            description: "Quantity-limited coupe",
+            url: "https://store.everfallcommunity.com/package/7815813",
+            images: [],
+          },
+        },
+        {
+          id: "7815819",
+          firstSeenAt: 1_760_000_000_000,
+          lastSeenAt: 1_760_000_060_000,
+          isAvailable: true,
+          payload: { name: "Seraph GTS", description: "Limited coupe", images: [] },
+        },
+      ],
+    })
+  );
+  await setGuildConfig(env, "111111111111111111", {
+    channelId: "222222222222222222",
+    roleIds: ["999999999999999999"],
+    environment: "production",
+  });
+
+  const postedMessages: any[] = [];
+  const patchedPayloads: any[] = [];
+  let simulateLegacyEmbedRejectionFirstPatch = true;
+  let mockAuthorId = "1571958001928245378";
+
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const urlStr = String(input);
+    const method = String(init?.method || "GET").toUpperCase();
+    if (urlStr.endsWith("/users/@me")) {
+      return new Response(JSON.stringify({ id: "1571958001928245378", username: "EverfallBot" }), {
+        status: 200,
+      });
+    }
+    if (urlStr.endsWith("/channels/222222222222222222")) {
+      return new Response(
+        JSON.stringify({ id: "222222222222222222", guild_id: "111111111111111111" }),
+        { status: 200 }
+      );
+    }
+    if (urlStr.includes("/channels/222222222222222222/messages/333333333333333333")) {
+      if (method === "GET") {
+        return new Response(
+          JSON.stringify({
+            id: "333333333333333333",
+            channel_id: "222222222222222222",
+            timestamp: "2026-09-01T12:00:00.000Z",
+            author: { id: mockAuthorId, username: "BotOrUser", bot: true },
+            embeds: [{ title: "73C Release", description: "Old legacy embed" }],
+          }),
+          { status: 200 }
+        );
+      }
+      if (method === "PATCH") {
+        const body = JSON.parse(String(init?.body || "{}"));
+        patchedPayloads.push(body);
+        if (simulateLegacyEmbedRejectionFirstPatch && !("embeds" in body)) {
+          simulateLegacyEmbedRejectionFirstPatch = false;
+          return new Response(
+            JSON.stringify({ message: "Must clear legacy embeds when using IS_COMPONENTS_V2 flag" }),
+            { status: 400 }
+          );
+        }
+        return new Response(JSON.stringify({ id: "333333333333333333" }), { status: 200 });
+      }
+    }
+    if (urlStr.endsWith("/messages") && method === "POST") {
+      postedMessages.push(JSON.parse(String(init?.body || "{}")));
+      return new Response(JSON.stringify({ id: "999" }), { status: 200 });
+    }
+    return new Response("not found", { status: 404 });
+  }) as any;
+
+  try {
+    // 1. Foreign author rejected cleanly with 403
+    mockAuthorId = "777777777777777777";
+    const foreignRes = await inspectRecoverableDiscordEmbed(env, {
+      guildId: "111111111111111111",
+      channelId: "222222222222222222",
+      messageIdOrUrl: "333333333333333333",
+      listingId: "7815813",
+    });
+    assert.equal(foreignRes.ok, false);
+    assert.equal(foreignRes.httpStatus, 403);
+
+    // 2. Bot-owned preview succeeds via HTTP endpoint + detects no conflict initially
+    mockAuthorId = "1571958001928245378";
+    const adminToken = await createSessionToken("151037568484507648", "xchasex", "", secret);
+    const previewReq = new Request(
+      "https://portal.example.com/api/admin/dispatch/recover/preview",
+      {
+        method: "POST",
+        headers: { Cookie: `everfall_session=${adminToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guildId: "111111111111111111",
+          channelId: "222222222222222222",
+          messageIdOrUrl: "https://discord.com/channels/111111111111111111/222222222222222222/333333333333333333",
+          listingId: "7815813",
+        }),
+      }
+    );
+    const previewRes = await handleApiRequest(previewReq, env, new URL(previewReq.url));
+    assert.equal(previewRes?.status, 200);
+    const previewJson: any = await previewRes!.json();
+    assert.equal(previewJson.preview.title, "73C Release");
+
+    // 3. Recovery restores tracking preserving original sentAt & edits legacy message in-place cleanly (with V2 fallback)
+    const recoverReq = new Request("https://portal.example.com/api/admin/dispatch/recover", {
+      method: "POST",
+      headers: { Cookie: `everfall_session=${adminToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        guildId: "111111111111111111",
+        channelId: "222222222222222222",
+        messageIdOrUrl: "333333333333333333",
+        listingId: "7815813",
+        applyTemplateNow: true,
+      }),
+    });
+    const recoverRes = await handleApiRequest(recoverReq, env, new URL(recoverReq.url));
+    assert.equal(recoverRes?.status, 200);
+    assert.equal(postedMessages.length, 0, "Recovery must NEVER repost a new message");
+    assert.equal(patchedPayloads.length, 2, "Legacy embed rejection triggers clean Components V2 retry");
+    assert.deepEqual(patchedPayloads[1].embeds, []);
+    assert.equal(patchedPayloads[1].content, null);
+    assert.deepEqual(patchedPayloads[1].allowed_mentions.roles, [], "Recovery edits must NEVER ping roles");
+
+    const sentMap = await getGuildSentMessages(env, "111111111111111111");
+    assert.equal(sentMap["7815813"]?.messageId, "333333333333333333");
+    assert.equal(sentMap["7815813"]?.sentAt, Date.parse("2026-09-01T12:00:00.000Z"));
+
+    // 4. Attempting to link same message to a different listing without allowOverwrite returns 409 conflict
+    const conflictRes = await recoverDiscordEmbedTracking(env, {
+      guildId: "111111111111111111",
+      channelId: "222222222222222222",
+      messageIdOrUrl: "333333333333333333",
+      listingId: "7815819",
+      allowOverwrite: false,
+    });
+    assert.equal(conflictRes.ok, false);
+    assert.equal(conflictRes.httpStatus, 409);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test("Site pages normalization strips HTML tags and admin partial pages updates preserve unrelated tabs", async () => {
+  const sanitized = normalizeSitePagesConfig({
+    about: {
+      ...DEFAULT_SITE_PAGES_CONFIG.about,
+      badgeText: "<b>Verified</b> Architecture <script>alert(1)</script>",
+      heading: "About <img src=x onerror=alert(1)> Platform",
+    },
+  });
+  assert.doesNotMatch(sanitized.about.badgeText, /<b>|<script>/);
+  assert.match(sanitized.about.badgeText, /Verified Architecture alert\(1\)/);
+  assert.equal(sanitized.features.heading, DEFAULT_SITE_PAGES_CONFIG.features.heading);
+
+  const kv = createMemoryKv();
+  const secret = "test_pages_secret_0123456789";
+  const env: any = {
+    DISCORD_BOT: kv,
+    DISCORD_CLIENT_SECRET: secret,
+    DISCORD_PRIMARY_ADMINISTRATOR: "151037568484507648",
+    PUBLIC_ORIGIN: "https://portal.example.com",
+  };
+  const adminToken = await createSessionToken("151037568484507648", "xchasex", "", secret);
+
+  const saveAboutReq = new Request("https://portal.example.com/api/admin/presentation", {
+    method: "PUT",
+    headers: { Cookie: `everfall_session=${adminToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      pages: {
+        about: {
+          ...DEFAULT_SITE_PAGES_CONFIG.about,
+          heading: "Custom About Heading",
+        },
+      },
+    }),
+  });
+  const saveRes = await handleApiRequest(saveAboutReq, env, new URL(saveAboutReq.url));
+  assert.equal(saveRes?.status, 200);
+
+  const pubStatusRes = await handleApiRequest(
+    new Request("https://portal.example.com/api/public/status"),
+    env,
+    new URL("https://portal.example.com/api/public/status")
+  );
+  const pubStatusJson: any = await pubStatusRes!.json();
+  assert.equal(pubStatusJson.pages.about.heading, "Custom About Heading");
+  assert.equal(pubStatusJson.pages.home.sectionTitle, DEFAULT_SITE_PAGES_CONFIG.home.sectionTitle);
+  assert.equal(pubStatusJson.pages.privacy.heading, DEFAULT_SITE_PAGES_CONFIG.privacy.heading);
+});
+

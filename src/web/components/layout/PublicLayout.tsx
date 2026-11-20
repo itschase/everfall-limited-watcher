@@ -53,6 +53,12 @@ export function PublicLayout({ children }: { children: ReactNode }) {
             >
               Drop History
             </Link>
+            <Link
+              to="/about"
+              className="whitespace-nowrap transition hover:text-white [&.active]:font-semibold [&.active]:text-white"
+            >
+              About
+            </Link>
           </nav>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
@@ -115,6 +121,12 @@ export function PublicLayout({ children }: { children: ReactNode }) {
           >
             Drop History
           </Link>
+          <Link
+            to="/about"
+            className="rounded-md px-3 py-1 transition hover:text-white [&.active]:bg-zinc-900 [&.active]:font-semibold [&.active]:text-white"
+          >
+            About
+          </Link>
         </nav>
       </header>
 
@@ -139,6 +151,9 @@ export function PublicLayout({ children }: { children: ReactNode }) {
             </Link>
             <Link to="/history" className="transition hover:text-white">
               Drop History
+            </Link>
+            <Link to="/about" className="transition hover:text-white">
+              About
             </Link>
             <Link to="/terms-of-service" className="transition hover:text-white">
               Terms of Service

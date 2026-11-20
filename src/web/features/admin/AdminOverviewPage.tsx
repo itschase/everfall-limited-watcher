@@ -179,13 +179,13 @@ export function AdminOverviewPage() {
               </div>
             </Link>
             <Link
-              to="/admin/hero"
+              to="/admin/pages"
               className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-white/20"
             >
               <Sparkles className="h-5 w-5 shrink-0 text-white" />
               <div>
-                <p className="text-sm font-semibold text-white">Homepage Hero</p>
-                <p className="text-xs text-muted-foreground">Configure messages &amp; motion</p>
+                <p className="text-sm font-semibold text-white">Pages &amp; Hero</p>
+                <p className="text-xs text-muted-foreground">Edit Home, Features, About &amp; Legal pages</p>
               </div>
             </Link>
             <Link
@@ -232,48 +232,89 @@ export function AdminOverviewPage() {
               {recentDeliveries.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No notification deliveries logged yet.</p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Vehicle</TableHead>
-                      <TableHead>Guild ID</TableHead>
-                      <TableHead>Method</TableHead>
-                      <TableHead>Environment</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Timestamp</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                <>
+                  {/* Mobile Recent Delivery Cards */}
+                  <div className="space-y-2.5 md:hidden">
                     {recentDeliveries.map((entry) => (
-                      <TableRow key={entry.id}>
-                        <TableCell className="font-medium text-white">{entry.listingName}</TableCell>
-                        <TableCell className="select-text font-mono text-xs text-muted-foreground">
-                          {entry.guildId}
-                        </TableCell>
-                        <TableCell className="capitalize text-xs text-zinc-300">{entry.method}</TableCell>
-                        <TableCell>
-                          <Badge variant={entry.environment === "test" ? "warning" : "secondary"}>
-                            {entry.environment}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
+                      <div
+                        key={entry.id}
+                        className="space-y-1.5 rounded-lg border border-border bg-zinc-950/75 p-3 text-xs"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-medium text-white">{entry.listingName}</span>
                           <Badge
                             variant={
                               entry.status === "delivered" || entry.status === "updated"
                                 ? "success"
                                 : "destructive"
                             }
+                            className="shrink-0"
                           >
                             {entry.status}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground tabular-nums">
-                          {formatLocalDateTime(entry.timestamp)}
-                        </TableCell>
-                      </TableRow>
+                        </div>
+                        <p className="break-all select-text font-mono text-[11px] text-muted-foreground">
+                          Guild {entry.guildId}
+                        </p>
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                          <div className="flex items-center gap-1.5">
+                            <span className="capitalize text-zinc-300">{entry.method}</span>
+                            <Badge variant={entry.environment === "test" ? "warning" : "secondary"}>
+                              {entry.environment}
+                            </Badge>
+                          </div>
+                          <span className="tabular-nums">{formatLocalDateTime(entry.timestamp)}</span>
+                        </div>
+                      </div>
                     ))}
-                  </TableBody>
-                </Table>
+                  </div>
+
+                  {/* Desktop Recent Delivery Table */}
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Vehicle</TableHead>
+                          <TableHead>Guild ID</TableHead>
+                          <TableHead>Method</TableHead>
+                          <TableHead>Environment</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Timestamp</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {recentDeliveries.map((entry) => (
+                          <TableRow key={entry.id}>
+                            <TableCell className="font-medium text-white">{entry.listingName}</TableCell>
+                            <TableCell className="select-text font-mono text-xs text-muted-foreground">
+                              {entry.guildId}
+                            </TableCell>
+                            <TableCell className="capitalize text-xs text-zinc-300">{entry.method}</TableCell>
+                            <TableCell>
+                              <Badge variant={entry.environment === "test" ? "warning" : "secondary"}>
+                                {entry.environment}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  entry.status === "delivered" || entry.status === "updated"
+                                    ? "success"
+                                    : "destructive"
+                                }
+                              >
+                                {entry.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground tabular-nums">
+                              {formatLocalDateTime(entry.timestamp)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>

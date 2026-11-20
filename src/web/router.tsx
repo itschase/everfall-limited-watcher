@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter, Outlet } from "@tanstack/react-router";
 import { HomePage } from "@/features/homepage/HomePage";
 import { FeaturesPage } from "@/features/features/FeaturesPage";
+import { AboutPage } from "@/features/about/AboutPage";
 import { HistoryPage } from "@/features/history/HistoryPage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { TermsPage } from "@/features/legal/TermsPage";
@@ -15,6 +16,7 @@ import { AdminImagesPage } from "@/features/admin/AdminImagesPage";
 import { AdminBotPage } from "@/features/admin/AdminBotPage";
 import { AdminWidgetsPage } from "@/features/admin/AdminWidgetsPage";
 import { AdminMetadataPage } from "@/features/admin/AdminMetadataPage";
+import { AdminPagesPage } from "@/features/admin/AdminPagesPage";
 import { AdminHeroPage } from "@/features/admin/AdminHeroPage";
 
 const rootRoute = createRootRoute({
@@ -31,6 +33,12 @@ const featuresRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/features",
   component: FeaturesPage,
+});
+
+const aboutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/about",
+  component: AboutPage,
 });
 
 const historyRoute = createRoute({
@@ -117,6 +125,12 @@ const adminMetadataRoute = createRoute({
   component: AdminMetadataPage,
 });
 
+const adminPagesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/pages",
+  component: AdminPagesPage,
+});
+
 const adminHeroRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/hero",
@@ -126,6 +140,7 @@ const adminHeroRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   featuresRoute,
+  aboutRoute,
   historyRoute,
   dashboardRoute,
   termsRoute,
@@ -140,6 +155,7 @@ const routeTree = rootRoute.addChildren([
   adminBotRoute,
   adminWidgetsRoute,
   adminMetadataRoute,
+  adminPagesRoute,
   adminHeroRoute,
 ]);
 

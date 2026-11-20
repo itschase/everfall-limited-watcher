@@ -194,6 +194,79 @@ export interface HeroConfig {
   messages: HeroMessageItem[];
 }
 
+export interface EditableFeatureCard {
+  id: string;
+  title: string;
+  description: string;
+}
+
+export interface EditableTextSection {
+  id: string;
+  heading: string;
+  body: string;
+}
+
+export interface HomePageContentConfig {
+  badgeText: string;
+  sectionBadge: string;
+  sectionTitle: string;
+  sectionSubtitle: string;
+  featuresCtaLabel: string;
+  archiveEmptyTitle: string;
+  archiveEmptyDescription: string;
+}
+
+export interface FeaturesPageContentConfig {
+  badgeText: string;
+  heading: string;
+  subheading: string;
+  primaryCtaLabel: string;
+  secondaryCtaLabel: string;
+  capabilitiesHeading: string;
+  capabilitiesSubheading: string;
+  capabilities: EditableFeatureCard[];
+  previewsHeading: string;
+  previewsSubheading: string;
+  workflowHeading: string;
+  workflowSubheading: string;
+  ctaTitle: string;
+  ctaDescription: string;
+}
+
+export interface AboutPageContentConfig {
+  badgeText: string;
+  heading: string;
+  subheading: string;
+  missionHeading: string;
+  missionBody: string;
+  workflowHeading: string;
+  workflowSteps: EditableFeatureCard[];
+  architectureHeading: string;
+  architectureBody: string;
+  disclaimerHeading: string;
+  disclaimerBody: string;
+  primaryCtaLabel: string;
+  secondaryCtaLabel: string;
+}
+
+export interface LegalPageContentConfig {
+  badgeText: string;
+  heading: string;
+  subheading: string;
+  effectiveDate: string;
+  operatorName: string;
+  contactEmail: string;
+  sections: EditableTextSection[];
+}
+
+export interface SitePagesConfig {
+  home: HomePageContentConfig;
+  features: FeaturesPageContentConfig;
+  about: AboutPageContentConfig;
+  privacy: LegalPageContentConfig;
+  terms: LegalPageContentConfig;
+}
+
 export interface PresentationConfigBundle {
   version: number;
   updatedAt: number;
@@ -205,6 +278,7 @@ export interface PresentationConfigBundle {
   widgetDefault: WidgetTemplateConfig;
   widgetTemplates: WidgetTemplateConfig[];
   hero: HeroConfig;
+  pages?: SitePagesConfig;
   recentEmojis: DiscordEmojiRef[];
 }
 
@@ -582,6 +656,194 @@ export function normalizeWidgetTemplateConfig(
   };
 }
 
+export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
+  home: {
+    badgeText: "Independent Everfall Community Monitor",
+    sectionBadge: "Limited Vehicles Archive",
+    sectionTitle: "Verified Release Archive",
+    sectionSubtitle:
+      "Every recorded Everfall limited edition vehicle with normalized features, archived high-res images, and real-time availability status.",
+    featuresCtaLabel: "Explore Features",
+    archiveEmptyTitle: "No Limited Releases Recorded Yet",
+    archiveEmptyDescription:
+      "The monitor is actively checking the Everfall store. New limited vehicles will appear here automatically upon verification.",
+  },
+  features: {
+    badgeText: "Platform Capabilities & Live Previews",
+    heading: "Built for Everfall Collectors and Server Owners",
+    subheading:
+      "Automated limited-vehicle monitoring, permanent multi-angle media archiving, in-place Discord embed synchronization, and live storefront status widgets.",
+    primaryCtaLabel: "Add Bot to Discord",
+    secondaryCtaLabel: "Browse Drop Archive",
+    capabilitiesHeading: "Core Monitoring Capabilities",
+    capabilitiesSubheading:
+      "Engineered to preserve verified availability history even when upstream storefront requests hit temporary bot challenges.",
+    capabilities: [
+      {
+        id: "cap-alerts",
+        title: "Automated Drop Alerts",
+        description:
+          "Detects limited edition releases on the Everfall storefront and dispatches formatted announcement embeds with role mentions to subscribed Discord channels.",
+      },
+      {
+        id: "cap-soldout",
+        title: "In-Place Sold Out Edits",
+        description:
+          "When a limited vehicle leaves the storefront, existing Discord announcements are edited in place to reflect Sold Out status without reposting or re-pinging roles.",
+      },
+      {
+        id: "cap-widget",
+        title: "Live Server Status Widget",
+        description:
+          "Deploy persistent status embeds with /widget or directly from your server settings dashboard. Widgets automatically update whenever meaningful vehicle data changes.",
+      },
+      {
+        id: "cap-media",
+        title: "R2 Media Archiving",
+        description:
+          "Mirrors vehicle gallery screenshots into Cloudflare R2 edge object storage so images stay crisp across embeds and web catalogs even after store packages rotate.",
+      },
+      {
+        id: "cap-features",
+        title: "Normalized Specifications",
+        description:
+          "Extracts and standardizes quantity-limited status, custom engine sounds, customization option counts, garage delivery notes, and trading rules.",
+      },
+      {
+        id: "cap-recovery",
+        title: "Zero-Downtime Resilience",
+        description:
+          "Challenge-protected responses never erase verified drop records or trigger false Sold Out updates; full structured state persists safely in Cloudflare D1.",
+      },
+    ],
+    previewsHeading: "Interactive Discord Output Previews",
+    previewsSubheading:
+      "Inspect how real vehicle drops and status widgets render inside Discord before inviting the bot to your community.",
+    workflowHeading: "Four-Step Verification Pipeline",
+    workflowSubheading:
+      "How Everfall Limited Watcher monitors the storefront, archives assets, and delivers verified notifications.",
+    ctaTitle: "Ready to Track Everfall Drops in Your Server?",
+    ctaDescription:
+      "Invite Everfall Limited Watcher, pick your alert channel, and deploy a live /widget status board in under two minutes.",
+  },
+  about: {
+    badgeText: "About Everfall Limited Watcher",
+    heading: "Reliable Tracking for Everfall Limited Drops",
+    subheading:
+      "An independent community monitoring platform preserving limited-edition vehicle release history, media galleries, and verified Discord notifications.",
+    missionHeading: "Why We Built Everfall Limited Watcher",
+    missionBody:
+      "Quantity-limited vehicles on Everfall sell out or rotate off the public storefront without a permanent historical index. Collectors and community server owners needed a single, dependable source of truth that verifies real store availability, archives multi-angle gallery screenshots, and updates existing Discord posts accurately without spamming channels.",
+    workflowHeading: "End-to-End Architecture & Verification",
+    workflowSteps: [
+      {
+        id: "step-scan",
+        title: "1. Verified Storefront Sweeps",
+        description:
+          "Automated checks run via GitHub Actions and Cloudflare edge workers to inspect the Everfall Limited Cars category while validating genuine storefront markup against challenge pages.",
+      },
+      {
+        id: "step-store",
+        title: "2. Durable D1 & R2 Archiving",
+        description:
+          "Verified vehicle records, availability timelines, delivery audit logs, and guild settings persist in Cloudflare D1 SQLite storage while high-resolution vehicle imagery is archived in R2 object storage.",
+      },
+      {
+        id: "step-sync",
+        title: "3. Smart Discord Synchronization",
+        description:
+          "New releases trigger configured channel alerts with optional role mentions. Stock transitions edit the original message in place, and server /widget boards refresh only when semantic content hashes change.",
+      },
+      {
+        id: "step-recover",
+        title: "4. Continuity & Message Recovery",
+        description:
+          "Server owners control channels, pings, and status widgets from the web dashboard, while legacy bot messages can be relinked by message ID or URL so automatic updates continue seamlessly.",
+      },
+    ],
+    architectureHeading: "Infrastructure & Data Integrity",
+    architectureBody:
+      "Everfall Limited Watcher runs on Cloudflare Workers for low-latency global routing, backed by Cloudflare D1 for structured state and Cloudflare R2 for immutable media assets, with Workers KV reserved strictly for short-lived OAuth and Discord API caches.",
+    disclaimerHeading: "Independent Community Project",
+    disclaimerBody:
+      "Everfall Limited Watcher is an independent utility operated for Everfall players and server communities. It is not affiliated with, endorsed by, or officially connected to Everfall Roleplay, FiveM, Cfx.re, Rockstar Games, Discord Inc., or Tebex.",
+    primaryCtaLabel: "Explore Features",
+    secondaryCtaLabel: "View Drop Archive",
+  },
+  privacy: {
+    badgeText: "Legal & Data Stewardship",
+    heading: "Privacy Policy",
+    subheading:
+      "Transparent documentation of what Discord account, server configuration, and monitoring data Everfall Limited Watcher stores and why.",
+    effectiveDate: "November 2026",
+    operatorName: "Everfall Limited Watcher Operations",
+    contactEmail: "privacy@everfallwatcher.com",
+    sections: [
+      {
+        id: "priv-1",
+        heading: "1. Information Collected via Discord OAuth2",
+        body: "When you sign in to Everfall Limited Watcher using Discord OAuth2 (identify and guilds scopes), we receive your Discord User ID, username, avatar hash, and the list of Discord servers where you hold management permissions. Signed HTTP-only session cookies maintain your authenticated portal session, and short-lived guild caches are held temporarily in Workers KV with automatic expiration.",
+      },
+      {
+        id: "priv-2",
+        heading: "2. Server Configuration, Tracking & Delivery Storage (Cloudflare D1)",
+        body: "When an administrator configures alert channels, role mention IDs, test/production server modes, widget deployments (/widget), or links an existing Discord announcement via message ID/URL for recovery tracking, those identifiers are stored persistently in Cloudflare D1 relational storage along with delivery status logs and vehicle release history.",
+      },
+      {
+        id: "priv-3",
+        heading: "3. Media Archiving & Caching (Cloudflare R2 & Workers KV)",
+        body: "Public storefront vehicle images are archived in Cloudflare R2 object storage so release galleries remain available over time. Workers KV is used strictly for short-lived TTL caches (such as OAuth handoffs, guild channel/role lookups, pending /widget confirmations, and bot health snapshots) rather than long-term structured records.",
+      },
+      {
+        id: "priv-4",
+        heading: "4. Discord Bot Message Inspection & In-Place Editing",
+        body: "The bot only inspects or edits messages inside configured channels—or specific message IDs submitted during administrator embed recovery—to verify bot authorship and apply updated In Stock or Sold Out templates without reading unrelated community chat history.",
+      },
+      {
+        id: "priv-5",
+        heading: "5. Data Retention & Deletion Requests",
+        body: "Server configurations remain active while the bot is connected or until removed via the dashboard. Automated store verification logs are retained on a rolling 7-day window. To request removal of server configuration records or OAuth session caches, contact the operator or remove bot access from your Discord server.",
+      },
+    ],
+  },
+  terms: {
+    badgeText: "Service Agreement & Guidelines",
+    heading: "Terms of Service",
+    subheading:
+      "Conditions governing use of the Everfall Limited Watcher web archive, Discord bot commands, and server notification tools.",
+    effectiveDate: "November 2026",
+    operatorName: "Everfall Limited Watcher Operations",
+    contactEmail: "privacy@everfallwatcher.com",
+    sections: [
+      {
+        id: "terms-1",
+        heading: "1. Independent Community Utility",
+        body: "Everfall Limited Watcher is an independent, fan-operated monitoring utility tracking publicly visible Limited Cars packages on the Everfall Tebex storefront. It is not affiliated with or endorsed by Everfall Roleplay, Tebex, Discord Inc., FiveM, or Rockstar Games.",
+      },
+      {
+        id: "terms-2",
+        heading: "2. Best-Effort Storefront Availability Data",
+        body: "Availability status, vehicle specifications, timestamps, and images are collected on a best-effort automated schedule. Third-party storefront downtime or challenge protections may delay updates, and we do not guarantee purchase availability or pricing accuracy at checkout.",
+      },
+      {
+        id: "terms-3",
+        heading: "3. Authorized Server Administration",
+        body: "You may only configure Discord alert channels, role mentions, embed recovery actions, and /widget deployments for servers where you hold valid administrative or Manage Server permissions. Abuse, automated scraping of private admin routes, or unauthorized probing is prohibited.",
+      },
+      {
+        id: "terms-4",
+        heading: "4. Intellectual Property & Vehicle Media",
+        body: "All trademarks, vehicle screenshots, and game assets referenced in drop listings belong to their respective owners and are displayed strictly for informational community tracking.",
+      },
+      {
+        id: "terms-5",
+        heading: "5. Service Modifications & Limitation of Liability",
+        body: "The service is provided \"as is\" without warranties of uninterrupted uptime. Features, check intervals, or Discord integrations may change or be discontinued at any time without liability.",
+      },
+    ],
+  },
+};
+
 export function createDefaultPresentationConfig(): PresentationConfigBundle {
   return {
     version: 1,
@@ -596,6 +858,7 @@ export function createDefaultPresentationConfig(): PresentationConfigBundle {
       ...DEFAULT_HERO_CONFIG,
       messages: DEFAULT_HERO_CONFIG.messages.map((m) => ({ ...m })),
     },
+    pages: normalizeSitePagesConfig(DEFAULT_SITE_PAGES_CONFIG, DEFAULT_SITE_PAGES_CONFIG),
     recentEmojis: [],
   };
 }
@@ -1736,3 +1999,160 @@ export function getHeroActiveMessages(hero: HeroConfig): HeroMessageItem[] {
   if (fallback) return [fallback];
   return DEFAULT_HERO_CONFIG.messages;
 }
+
+export function sanitizePlainPageText(input: unknown, fallback: string, maxLen = 1200): string {
+  if (typeof input !== "string") return fallback;
+  const stripped = input
+    .replace(/<[^>]*>/g, "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .trim();
+  return stripped ? stripped.slice(0, maxLen) : fallback;
+}
+
+function normalizeFeatureCardsList(
+  incoming: unknown,
+  fallback: EditableFeatureCard[],
+  maxItems = 8
+): EditableFeatureCard[] {
+  if (!Array.isArray(incoming) || incoming.length === 0) {
+    return fallback.map((item) => ({ ...item }));
+  }
+  const normalized: EditableFeatureCard[] = [];
+  for (let i = 0; i < Math.min(incoming.length, maxItems); i++) {
+    const raw = incoming[i] as Record<string, unknown> | null;
+    if (!raw || typeof raw !== "object") continue;
+    const defItem = fallback[i];
+    const title = sanitizePlainPageText(raw.title, defItem?.title || "", 120);
+    const description = sanitizePlainPageText(raw.description, defItem?.description || "", 500);
+    if (!title && !description) continue;
+    normalized.push({
+      id: sanitizePlainPageText(raw.id, defItem?.id || `item-${i + 1}`, 48),
+      title: title || defItem?.title || `Item ${i + 1}`,
+      description: description || defItem?.description || "",
+    });
+  }
+  return normalized.length > 0 ? normalized : fallback.map((item) => ({ ...item }));
+}
+
+function normalizeTextSectionsList(
+  incoming: unknown,
+  fallback: EditableTextSection[],
+  maxItems = 12
+): EditableTextSection[] {
+  if (!Array.isArray(incoming) || incoming.length === 0) {
+    return fallback.map((item) => ({ ...item }));
+  }
+  const normalized: EditableTextSection[] = [];
+  for (let i = 0; i < Math.min(incoming.length, maxItems); i++) {
+    const raw = incoming[i] as Record<string, unknown> | null;
+    if (!raw || typeof raw !== "object") continue;
+    const defItem = fallback[i];
+    const heading = sanitizePlainPageText(raw.heading, defItem?.heading || "", 160);
+    const body = sanitizePlainPageText(raw.body, defItem?.body || "", 2400);
+    if (!heading && !body) continue;
+    normalized.push({
+      id: sanitizePlainPageText(raw.id, defItem?.id || `sec-${i + 1}`, 48),
+      heading: heading || defItem?.heading || `Section ${i + 1}`,
+      body: body || defItem?.body || "",
+    });
+  }
+  return normalized.length > 0 ? normalized : fallback.map((item) => ({ ...item }));
+}
+
+export function normalizeSitePagesConfig(
+  incoming?: Partial<SitePagesConfig> | null,
+  fallback: SitePagesConfig = DEFAULT_SITE_PAGES_CONFIG
+): SitePagesConfig {
+  const src = incoming && typeof incoming === "object" ? incoming : {};
+  const homeSrc = (src.home || {}) as Partial<HomePageContentConfig>;
+  const featSrc = (src.features || {}) as Partial<FeaturesPageContentConfig>;
+  const aboutSrc = (src.about || {}) as Partial<AboutPageContentConfig>;
+  const privSrc = (src.privacy || {}) as Partial<LegalPageContentConfig>;
+  const termsSrc = (src.terms || {}) as Partial<LegalPageContentConfig>;
+
+  return {
+    home: {
+      badgeText: sanitizePlainPageText(homeSrc.badgeText, fallback.home.badgeText, 80),
+      sectionBadge: sanitizePlainPageText(homeSrc.sectionBadge, fallback.home.sectionBadge, 80),
+      sectionTitle: sanitizePlainPageText(homeSrc.sectionTitle, fallback.home.sectionTitle, 120),
+      sectionSubtitle: sanitizePlainPageText(homeSrc.sectionSubtitle, fallback.home.sectionSubtitle, 340),
+      featuresCtaLabel: sanitizePlainPageText(homeSrc.featuresCtaLabel, fallback.home.featuresCtaLabel, 50),
+      archiveEmptyTitle: sanitizePlainPageText(homeSrc.archiveEmptyTitle, fallback.home.archiveEmptyTitle, 120),
+      archiveEmptyDescription: sanitizePlainPageText(
+        homeSrc.archiveEmptyDescription,
+        fallback.home.archiveEmptyDescription,
+        340
+      ),
+    },
+    features: {
+      badgeText: sanitizePlainPageText(featSrc.badgeText, fallback.features.badgeText, 80),
+      heading: sanitizePlainPageText(featSrc.heading, fallback.features.heading, 160),
+      subheading: sanitizePlainPageText(featSrc.subheading, fallback.features.subheading, 400),
+      primaryCtaLabel: sanitizePlainPageText(featSrc.primaryCtaLabel, fallback.features.primaryCtaLabel, 50),
+      secondaryCtaLabel: sanitizePlainPageText(featSrc.secondaryCtaLabel, fallback.features.secondaryCtaLabel, 50),
+      capabilitiesHeading: sanitizePlainPageText(
+        featSrc.capabilitiesHeading,
+        fallback.features.capabilitiesHeading,
+        120
+      ),
+      capabilitiesSubheading: sanitizePlainPageText(
+        featSrc.capabilitiesSubheading,
+        fallback.features.capabilitiesSubheading,
+        340
+      ),
+      capabilities: normalizeFeatureCardsList(featSrc.capabilities, fallback.features.capabilities, 8),
+      previewsHeading: sanitizePlainPageText(featSrc.previewsHeading, fallback.features.previewsHeading, 120),
+      previewsSubheading: sanitizePlainPageText(
+        featSrc.previewsSubheading,
+        fallback.features.previewsSubheading,
+        340
+      ),
+      workflowHeading: sanitizePlainPageText(featSrc.workflowHeading, fallback.features.workflowHeading, 120),
+      workflowSubheading: sanitizePlainPageText(
+        featSrc.workflowSubheading,
+        fallback.features.workflowSubheading,
+        340
+      ),
+      ctaTitle: sanitizePlainPageText(featSrc.ctaTitle, fallback.features.ctaTitle, 140),
+      ctaDescription: sanitizePlainPageText(featSrc.ctaDescription, fallback.features.ctaDescription, 340),
+    },
+    about: {
+      badgeText: sanitizePlainPageText(aboutSrc.badgeText, fallback.about.badgeText, 80),
+      heading: sanitizePlainPageText(aboutSrc.heading, fallback.about.heading, 160),
+      subheading: sanitizePlainPageText(aboutSrc.subheading, fallback.about.subheading, 400),
+      missionHeading: sanitizePlainPageText(aboutSrc.missionHeading, fallback.about.missionHeading, 120),
+      missionBody: sanitizePlainPageText(aboutSrc.missionBody, fallback.about.missionBody, 1200),
+      workflowHeading: sanitizePlainPageText(aboutSrc.workflowHeading, fallback.about.workflowHeading, 120),
+      workflowSteps: normalizeFeatureCardsList(aboutSrc.workflowSteps, fallback.about.workflowSteps, 6),
+      architectureHeading: sanitizePlainPageText(
+        aboutSrc.architectureHeading,
+        fallback.about.architectureHeading,
+        120
+      ),
+      architectureBody: sanitizePlainPageText(aboutSrc.architectureBody, fallback.about.architectureBody, 1200),
+      disclaimerHeading: sanitizePlainPageText(aboutSrc.disclaimerHeading, fallback.about.disclaimerHeading, 120),
+      disclaimerBody: sanitizePlainPageText(aboutSrc.disclaimerBody, fallback.about.disclaimerBody, 1000),
+      primaryCtaLabel: sanitizePlainPageText(aboutSrc.primaryCtaLabel, fallback.about.primaryCtaLabel, 50),
+      secondaryCtaLabel: sanitizePlainPageText(aboutSrc.secondaryCtaLabel, fallback.about.secondaryCtaLabel, 50),
+    },
+    privacy: {
+      badgeText: sanitizePlainPageText(privSrc.badgeText, fallback.privacy.badgeText, 80),
+      heading: sanitizePlainPageText(privSrc.heading, fallback.privacy.heading, 120),
+      subheading: sanitizePlainPageText(privSrc.subheading, fallback.privacy.subheading, 400),
+      effectiveDate: sanitizePlainPageText(privSrc.effectiveDate, fallback.privacy.effectiveDate, 60),
+      operatorName: sanitizePlainPageText(privSrc.operatorName, fallback.privacy.operatorName, 120),
+      contactEmail: sanitizePlainPageText(privSrc.contactEmail, fallback.privacy.contactEmail, 120),
+      sections: normalizeTextSectionsList(privSrc.sections, fallback.privacy.sections, 12),
+    },
+    terms: {
+      badgeText: sanitizePlainPageText(termsSrc.badgeText, fallback.terms.badgeText, 80),
+      heading: sanitizePlainPageText(termsSrc.heading, fallback.terms.heading, 120),
+      subheading: sanitizePlainPageText(termsSrc.subheading, fallback.terms.subheading, 400),
+      effectiveDate: sanitizePlainPageText(termsSrc.effectiveDate, fallback.terms.effectiveDate, 60),
+      operatorName: sanitizePlainPageText(termsSrc.operatorName, fallback.terms.operatorName, 120),
+      contactEmail: sanitizePlainPageText(termsSrc.contactEmail, fallback.terms.contactEmail, 120),
+      sections: normalizeTextSectionsList(termsSrc.sections, fallback.terms.sections, 12),
+    },
+  };
+}
+

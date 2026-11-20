@@ -28,6 +28,7 @@ import {
   purgeListingMediaEdgeCaches,
   purgePublicEdgeCaches,
   setBotCommandSyncMeta,
+  setCreatorProfileInStore,
   setEmbedConfig,
   setGuildConfig,
   setListingOverride,
@@ -53,7 +54,9 @@ import {
   deployStatusWidgetToChannel,
   dispatchListingToGuild,
   ensureHistoricalKnownListingsPreserved,
+  inspectRecoverableDiscordEmbed,
   manualScanStoreOnly,
+  recoverDiscordEmbedTracking,
   refreshAllWidgets,
   refreshWidgetById,
   resolvePublicOrigin,
@@ -85,11 +88,13 @@ import {
   AnnouncementTemplate,
   DEFAULT_HERO_CONFIG,
   DEFAULT_IN_STOCK_TEMPLATE,
+  DEFAULT_SITE_PAGES_CONFIG,
   DEFAULT_SOLD_OUT_TEMPLATE,
   DEFAULT_WIDGET_TEMPLATE,
   DiscordEmojiRef,
   HeroConfig,
   normalizeAnnouncementTemplate,
+  normalizeSitePagesConfig,
   normalizeWidgetTemplateConfig,
   PresentationConfigBundle,
   sanitizeHexColor,
@@ -296,10 +301,7 @@ export async function handleApiRequest(
         avatarUrl: user.avatarUrl || storedCreatorProfile.avatarUrl,
         profileUrl: `https://discord.com/users/${user.id}`,
       };
-      const kv = env.DISCORD_BOT as KVNamespace | undefined;
-      if (kv) {
-        await kv.put("creator:profile", JSON.stringify(creatorProfile));
-      }
+      await setCreatorProfileInStore(env, creatorProfile);
     }
     const appId = botHealth.appId || env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "1571958001928245378";
     const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(appId)}&permissions=${BOT_PERMISSIONS}&integration_type=0&scope=bot+applications.commands`;
@@ -369,6 +371,7 @@ export async function handleApiRequest(
         availableCount: listingSummary.available,
         soldOutCount: listingSummary.soldOut,
         hero: presentationBundle.hero,
+        pages: presentationBundle.pages || DEFAULT_SITE_PAGES_CONFIG,
       },
       25
     );
@@ -407,6 +410,8 @@ export async function handleApiRequest(
           soldOut: bundle.announcements.soldOut,
         },
         widgetDefault: bundle.widgetDefault,
+        hero: bundle.hero,
+        pages: bundle.pages || DEFAULT_SITE_PAGES_CONFIG,
       },
       45
     );
@@ -1644,6 +1649,12 @@ export async function handleApiRequest(
               )
           : current.widgetTemplates,
         hero: sanitizeHeroConfig(body?.hero, current.hero),
+        pages: normalizeSitePagesConfig(
+          body?.pages && typeof body.pages === "object"
+            ? { ...(current.pages || DEFAULT_SITE_PAGES_CONFIG), ...body.pages }
+            : current.pages,
+          current.pages || DEFAULT_SITE_PAGES_CONFIG
+        ),
         recentEmojis: Array.isArray(body?.recentEmojis)
           ? (body.recentEmojis.map(validateEmojiRef).filter(Boolean) as DiscordEmojiRef[]).slice(0, 24)
           : current.recentEmojis,
@@ -2104,6 +2115,95 @@ export async function handleApiRequest(
         updatedCount: results.filter((r) => r.ok).length,
         skippedCount: results.filter((r) => r.skippedNotSent).length,
         failedCount: results.filter((r) => !r.ok && !r.skippedNotSent).length,
+        deliveryLogs,
+      });
+    }
+
+    // 13b. Recover Legacy Untracked Discord Embed (Inspect + Confirm without reposting or pinging)
+    if (method === "POST" && url.pathname === "/api/admin/dispatch/recover/preview") {
+      let body: any = {};
+      try {
+        body = await request.json();
+      } catch {
+        return json({ error: "Invalid JSON payload." }, 400);
+      }
+      const guildId = String(body?.guildId || "").trim();
+      const channelId = String(body?.channelId || "").trim();
+      const listingId = String(body?.listingId || "").trim();
+      const messageIdOrUrl = String(body?.messageIdOrUrl || body?.messageId || "").trim();
+
+      if (!/^\d{17,22}$/.test(guildId)) {
+        return json({ error: "Select a destination Discord server." }, 400);
+      }
+      if (!listingId) {
+        return json({ error: "Select the vehicle listing to link." }, 400);
+      }
+      if (!messageIdOrUrl) {
+        return json({ error: "Enter a Discord Message ID or full Discord message link." }, 400);
+      }
+
+      const inspected = await inspectRecoverableDiscordEmbed(env, {
+        guildId,
+        channelId,
+        messageIdOrUrl,
+        listingId,
+      });
+      if (!inspected.ok) {
+        return json({ ok: false, error: inspected.error || "Embed inspection failed." }, inspected.httpStatus);
+      }
+      return json(inspected);
+    }
+
+    if (method === "POST" && url.pathname === "/api/admin/dispatch/recover") {
+      let body: any = {};
+      try {
+        body = await request.json();
+      } catch {
+        return json({ error: "Invalid JSON payload." }, 400);
+      }
+      const guildId = String(body?.guildId || "").trim();
+      const channelId = String(body?.channelId || "").trim();
+      const listingId = String(body?.listingId || "").trim();
+      const messageIdOrUrl = String(body?.messageIdOrUrl || body?.messageId || "").trim();
+      const allowOverwrite = Boolean(body?.allowOverwrite);
+      const applyTemplateNow = Boolean(body?.applyTemplateNow);
+
+      if (!/^\d{17,22}$/.test(guildId)) {
+        return json({ error: "Select a destination Discord server." }, 400);
+      }
+      if (!listingId) {
+        return json({ error: "Select the vehicle listing to link." }, 400);
+      }
+      if (!messageIdOrUrl) {
+        return json({ error: "Enter a Discord Message ID or full Discord message link." }, 400);
+      }
+
+      const res = await recoverDiscordEmbedTracking(env, {
+        guildId,
+        channelId,
+        messageIdOrUrl,
+        listingId,
+        allowOverwrite,
+        applyTemplateNow,
+      });
+      const deliveryLogs = await getDeliveryLogs(env);
+      if (!res.ok) {
+        return json(
+          {
+            ok: false,
+            error: res.error || "Embed recovery failed.",
+            preview: res.preview,
+            recoveredMeta: res.recoveredMeta,
+            deliveryLogs,
+          },
+          res.httpStatus
+        );
+      }
+      return json({
+        ok: true,
+        preview: res.preview,
+        updatedInPlace: Boolean(res.updatedInPlace),
+        recoveredMeta: res.recoveredMeta,
         deliveryLogs,
       });
     }
@@ -2705,6 +2805,7 @@ export async function handleApiRequest(
           publicKeyConfigured,
           clientSecretConfigured: Boolean(env.DISCORD_CLIENT_SECRET),
           kvBound,
+          d1Bound: Boolean(env.DB),
           r2Bound: Boolean(env.MEDIA_BUCKET),
           publicOrigin,
           interactionsUrl,

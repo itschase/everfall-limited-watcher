@@ -31,6 +31,7 @@ import {
   SCHEDULED_CRON_INTERVAL_MS,
 } from "../../../shared/appConfig";
 import { resolveListingPresentation, sortAndFilterFeatures } from "../../../shared/features";
+import { DEFAULT_SITE_PAGES_CONFIG } from "../../../shared/presentation";
 import { cn, formatLocalDateTime, formatLocalTime, safeExternalUrl } from "@/lib/utils";
 import { useAuthActions, useSession } from "@/features/auth/useAuthActions";
 import { PublicLayout } from "@/components/layout/PublicLayout";
@@ -169,6 +170,8 @@ export function HomePage() {
     listingsData?.lastSuccessAt ||
     listingsData?.monitorStatus?.lastSuccessAt;
   const heroConfig = statusHeartbeat?.hero || listingsData?.hero;
+  const homePageCopy =
+    statusHeartbeat?.pages?.home || listingsData?.pages?.home || DEFAULT_SITE_PAGES_CONFIG.home;
 
   const inviteUrl =
     session?.inviteUrl ||
@@ -214,9 +217,14 @@ export function HomePage() {
         </div>
 
         <div className="relative mx-auto max-w-4xl px-4 py-16 text-center sm:px-6 sm:py-24 lg:px-8">
+          <div className="mb-4 flex justify-center">
+            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3.5 py-1 text-xs font-medium text-zinc-300 backdrop-blur-sm">
+              {homePageCopy.badgeText}
+            </span>
+          </div>
           <AnimatedHero config={heroConfig} />
 
-          <div className="mt-8 flex justify-center">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <a
               href={inviteUrl}
               target="_blank"
@@ -226,6 +234,13 @@ export function HomePage() {
               <Plus className="h-4 w-4" />
               Add to Discord
             </a>
+            <Link
+              to="/features"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary px-5 py-3 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-800 hover:text-white"
+            >
+              {homePageCopy.featuresCtaLabel}
+              <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
 
           {/* Truthful Operational Telemetry Metrics */}
@@ -287,11 +302,14 @@ export function HomePage() {
       <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              Limited Drop History
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+              {homePageCopy.sectionBadge}
+            </p>
+            <h2 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              {homePageCopy.sectionTitle}
             </h2>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              Recent Everfall Limited Edition vehicle discoveries sorted newest first.
+              {homePageCopy.sectionSubtitle}
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2.5">
               <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-zinc-300 tabular-nums">
@@ -348,10 +366,15 @@ export function HomePage() {
           </div>
         ) : filteredListings.length === 0 ? (
           <Card className="mt-8 p-10 text-center">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm font-semibold text-white">
+              {statusFilter === "all" ? homePageCopy.archiveEmptyTitle : "No Matching Releases"}
+            </p>
+            <p className="mt-1.5 text-sm text-muted-foreground">
               {statusFilter === "in_stock"
                 ? `No limited vehicles are currently in stock. Scheduled checks run ${formatScheduledCadence(scheduledIntervalMs).toLowerCase()}.`
-                : "No limited vehicle releases recorded matching this filter."}
+                : statusFilter === "all"
+                  ? homePageCopy.archiveEmptyDescription
+                  : "No limited vehicle releases recorded matching this filter."}
             </p>
           </Card>
         ) : (

@@ -1,12 +1,15 @@
 import {
+  findGuildMessageByMessageId,
   getAllGuildIds,
   getAllWidgetDeployments,
+  getBotHealthSnapshot,
   getCatalogSnapshot,
   getDeliveryLogs,
   getGuildConfig,
   getGuildSentMessages,
   getListingHistory,
   getListingOverridesMap,
+  getListingRecordById,
   getMonitorStatus,
   getPresentationConfig,
   getWidgetDeploymentById,
@@ -27,7 +30,7 @@ import {
   WidgetDeployment,
   WidgetSyncHistoryEntry,
 } from "./kv";
-import { fetchDiscordWithRetry } from "./discord";
+import { fetchDiscordChannelMessage, fetchDiscordWithRetry } from "./discord";
 import { MIN_STORE_CHECK_INTERVAL_MS } from "./shared/appConfig";
 import {
   AnnouncementTemplate,
@@ -721,20 +724,19 @@ export function getKnownCars(): CarListing[] {
 }
 
 export async function getCarPackage(env: any, carId: string): Promise<CarListing | null> {
-  const kv = env.DISCORD_BOT as KVNamespace;
+  const existingRecord = await getListingRecordById(env, carId);
+  if (existingRecord?.payload) {
+    return {
+      ...existingRecord.payload,
+      id: carId,
+      detectedAt: existingRecord.firstSeenAt,
+      lastVerifiedAt: existingRecord.lastVerifiedAt,
+      soldOutAt: existingRecord.soldOutAt,
+      isAvailable: existingRecord.isAvailable !== false,
+    };
+  }
+  const kv = env.DISCORD_BOT as KVNamespace | undefined;
   if (kv) {
-    const listingRaw = await kv.get(`listing:${carId}`);
-    if (listingRaw) {
-      const record = JSON.parse(listingRaw);
-      if (record?.payload) {
-        return {
-          ...record.payload,
-          id: carId,
-          detectedAt: record.firstSeenAt || record.ts,
-          isAvailable: record.isAvailable !== false,
-        };
-      }
-    }
     const pkgRaw = await kv.get(`package:${carId}`);
     if (pkgRaw) return JSON.parse(pkgRaw);
   }
@@ -878,6 +880,27 @@ export async function editDiscordChannelMessage(
   }
 
   let errorBody = await res.text();
+  if (
+    res.status === 400 &&
+    messagePayload?.flags === 32768 &&
+    (/embed/i.test(errorBody) || /content/i.test(errorBody) || /flag/i.test(errorBody))
+  ) {
+    const legacyCleanPayload = { ...messagePayload, content: null, embeds: [] };
+    res = await fetchDiscordWithRetry(endpoint, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify(legacyCleanPayload),
+    });
+    if (res.ok) {
+      try {
+        const json: any = await res.json();
+        return { ok: true, messageId: json?.id || messageId, httpStatus: res.status };
+      } catch {
+        return { ok: true, messageId, httpStatus: res.status };
+      }
+    }
+    errorBody = await res.text();
+  }
   if (res.status === 400 && /emoji/i.test(errorBody)) {
     const fallbackPayload = stripCustomEmojisFromPayload(messagePayload);
     res = await fetchDiscordWithRetry(endpoint, {
@@ -1228,6 +1251,446 @@ export async function updateSoldOutListingEmbeds(
 
   return updatedCount;
 }
+
+export interface ParsedDiscordMessageRef {
+  messageId: string;
+  channelId?: string;
+  guildId?: string;
+  fromUrl: boolean;
+}
+
+export function parseDiscordMessageReference(input: string): ParsedDiscordMessageRef | null {
+  const trimmed = String(input || "").trim();
+  if (!trimmed) return null;
+  if (/^\d{17,22}$/.test(trimmed)) {
+    return { messageId: trimmed, fromUrl: false };
+  }
+  const urlMatch = trimmed.match(
+    /^https?:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/channels\/(\d{17,22})\/(\d{17,22})\/(\d{17,22})(?:[/?#].*)?$/i
+  );
+  if (urlMatch) {
+    return {
+      guildId: urlMatch[1],
+      channelId: urlMatch[2],
+      messageId: urlMatch[3],
+      fromUrl: true,
+    };
+  }
+  return null;
+}
+
+export interface RecoverableEmbedPreview {
+  messageId: string;
+  channelId: string;
+  guildId: string;
+  jumpUrl: string;
+  authorId: string;
+  authorUsername: string;
+  authorIsBot: boolean;
+  sentAt: number;
+  editedAt?: number | null;
+  title: string;
+  description: string;
+  accentColorHex: string | null;
+  imageUrl: string | null;
+  embedCount: number;
+  componentCount: number;
+  isComponentsV2: boolean;
+  isAlreadySoldOutLook: boolean;
+}
+
+export interface RecoverableEmbedConflict {
+  messageAlreadyLinkedToListingId?: string;
+  messageAlreadyLinkedToGuildId?: string;
+  listingAlreadyHasMessageId?: string;
+  listingAlreadyHasChannelId?: string;
+}
+
+function extractPreviewFromDiscordMessage(
+  msg: any,
+  guildId: string,
+  channelId: string
+): RecoverableEmbedPreview {
+  const embeds = Array.isArray(msg?.embeds) ? msg.embeds : [];
+  const components = Array.isArray(msg?.components) ? msg.components : [];
+  const firstEmbed = embeds[0] || null;
+  const isComponentsV2 = Boolean(msg?.flags && (Number(msg.flags) & (1 << 15)) === 1 << 15);
+
+  let v2TextParts: string[] = [];
+  let v2ImageUrl: string | null = null;
+  let v2AccentHex: string | null = null;
+  for (const top of components) {
+    if (top?.type === 17) {
+      if (typeof top.accent_color === "number") {
+        v2AccentHex = `#${top.accent_color.toString(16).padStart(6, "0").toUpperCase()}`;
+      }
+      if (Array.isArray(top.components)) {
+        for (const inner of top.components) {
+          if (inner?.type === 10 && typeof inner.content === "string") {
+            v2TextParts.push(inner.content);
+          } else if (inner?.type === 12 && Array.isArray(inner.items) && !v2ImageUrl) {
+            const firstUrl = inner.items[0]?.media?.url;
+            if (typeof firstUrl === "string") v2ImageUrl = firstUrl;
+          }
+        }
+      }
+    } else if (top?.type === 10 && typeof top.content === "string") {
+      v2TextParts.push(top.content);
+    }
+  }
+
+  const combinedV2 = v2TextParts.join("\n\n").trim();
+  const titleLineMatch = combinedV2.match(/^#\s+(.+)$/m);
+  const title =
+    String(firstEmbed?.title || titleLineMatch?.[1] || "").trim() ||
+    "Untitled Bot Announcement";
+  const description =
+    String(
+      firstEmbed?.description ||
+        combinedV2.replace(/^#\s+.+\n*/m, "").trim() ||
+        msg?.content ||
+        ""
+    )
+      .trim()
+      .slice(0, 600);
+  const imageUrl =
+    firstEmbed?.image?.url ||
+    firstEmbed?.thumbnail?.url ||
+    v2ImageUrl ||
+    null;
+  const accentColorHex =
+    typeof firstEmbed?.color === "number"
+      ? `#${firstEmbed.color.toString(16).padStart(6, "0").toUpperCase()}`
+      : v2AccentHex;
+
+  const sentAt = msg?.timestamp ? Date.parse(msg.timestamp) || Date.now() : Date.now();
+  const editedAt = msg?.edited_timestamp ? Date.parse(msg.edited_timestamp) || null : null;
+  const fullText = `${title}\n${description}`;
+  const isAlreadySoldOutLook = /sold\s*out/i.test(fullText);
+
+  return {
+    messageId: String(msg.id),
+    channelId: String(msg.channel_id || channelId),
+    guildId,
+    jumpUrl: `https://discord.com/channels/${guildId}/${String(msg.channel_id || channelId)}/${String(msg.id)}`,
+    authorId: String(msg?.author?.id || ""),
+    authorUsername: String(msg?.author?.username || "Unknown"),
+    authorIsBot: Boolean(msg?.author?.bot),
+    sentAt,
+    editedAt,
+    title,
+    description,
+    accentColorHex,
+    imageUrl,
+    embedCount: embeds.length,
+    componentCount: components.length,
+    isComponentsV2,
+    isAlreadySoldOutLook,
+  };
+}
+
+async function resolveExpectedBotUserId(env: any): Promise<string | null> {
+  const cached = await getBotHealthSnapshot(env);
+  if (cached?.appId && /^\d{17,22}$/.test(cached.appId)) {
+    // Health snapshot appId may equal bot user id in Discord, still double-check /users/@me when token available
+  }
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return null;
+  try {
+    const res = await fetchDiscordWithRetry("https://discord.com/api/v10/users/@me", {
+      headers: { Authorization: `Bot ${token}` },
+    });
+    if (res.ok) {
+      const user: any = await res.json();
+      if (user?.id) return String(user.id);
+    }
+  } catch {
+    // Ignore transient failure
+  }
+  return null;
+}
+
+export async function inspectRecoverableDiscordEmbed(
+  env: any,
+  params: {
+    guildId: string;
+    channelId: string;
+    messageIdOrUrl: string;
+    listingId: string;
+  }
+): Promise<{
+  ok: boolean;
+  httpStatus: number;
+  error?: string;
+  preview?: RecoverableEmbedPreview;
+  conflicts?: RecoverableEmbedConflict;
+  listingName?: string;
+  listingIsAvailable?: boolean;
+}> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) {
+    return { ok: false, httpStatus: 400, error: "DISCORD_BOT_TOKEN is not configured." };
+  }
+
+  const parsedRef = parseDiscordMessageReference(params.messageIdOrUrl);
+  if (!parsedRef) {
+    return {
+      ok: false,
+      httpStatus: 400,
+      error: "Enter a valid Discord Message ID (17–22 digits) or full Discord message link.",
+    };
+  }
+
+  if (parsedRef.guildId && parsedRef.guildId !== params.guildId) {
+    return {
+      ok: false,
+      httpStatus: 400,
+      error: `Message link belongs to server ${parsedRef.guildId}, which does not match the selected destination server (${params.guildId}).`,
+    };
+  }
+
+  const effectiveChannelId = (parsedRef.channelId || params.channelId || "").trim();
+  if (!/^\d{17,22}$/.test(effectiveChannelId)) {
+    return {
+      ok: false,
+      httpStatus: 400,
+      error: "Valid Discord Channel ID is required.",
+    };
+  }
+
+  const listing = await getListingRecordById(env, params.listingId);
+  if (!listing) {
+    return {
+      ok: false,
+      httpStatus: 404,
+      error: "Selected vehicle listing was not found in the database.",
+    };
+  }
+
+  // Verify the channel belongs to the selected guild
+  try {
+    const chRes = await fetchDiscordWithRetry(
+      `https://discord.com/api/v10/channels/${effectiveChannelId}`,
+      { headers: { Authorization: `Bot ${token}` } }
+    );
+    if (chRes.ok) {
+      const chJson: any = await chRes.json();
+      if (chJson?.guild_id && String(chJson.guild_id) !== params.guildId) {
+        return {
+          ok: false,
+          httpStatus: 400,
+          error: `Channel ${effectiveChannelId} belongs to a different server (${chJson.guild_id}), not ${params.guildId}.`,
+        };
+      }
+    } else if (chRes.status === 404 || chRes.status === 403) {
+      return {
+        ok: false,
+        httpStatus: chRes.status,
+        error:
+          chRes.status === 403
+            ? "Bot cannot access that Discord channel (HTTP 403). Check View Channel & Read Message History permissions."
+            : "Target Discord channel not found (HTTP 404).",
+      };
+    }
+  } catch {
+    // Non-fatal fallback; message endpoint check follows immediately
+  }
+
+  const msgRes = await fetchDiscordChannelMessage(token, effectiveChannelId, parsedRef.messageId);
+  if (!msgRes.ok || !msgRes.message) {
+    return {
+      ok: false,
+      httpStatus: msgRes.httpStatus || 502,
+      error: msgRes.error || "Could not retrieve message from Discord.",
+    };
+  }
+
+  const msg = msgRes.message;
+  const expectedAppId = String(env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "").trim();
+  const botUserId = await resolveExpectedBotUserId(env);
+  const authorId = String(msg?.author?.id || "");
+  const msgAppId = String(msg?.application_id || "");
+
+  const isOwnedByOurBot =
+    (botUserId && authorId === botUserId) ||
+    (expectedAppId && (msgAppId === expectedAppId || authorId === expectedAppId));
+
+  if (!isOwnedByOurBot) {
+    return {
+      ok: false,
+      httpStatus: 403,
+      error: `Cannot recover message: it was posted by ${msg?.author?.username || authorId || "another author"}, not our bot. Discord only allows a bot to edit its own messages.`,
+    };
+  }
+
+  const preview = extractPreviewFromDiscordMessage(msg, params.guildId, effectiveChannelId);
+  const conflicts: RecoverableEmbedConflict = {};
+
+  const existingByMsg = await findGuildMessageByMessageId(env, preview.messageId);
+  if (
+    existingByMsg &&
+    (existingByMsg.guildId !== params.guildId || existingByMsg.meta.listingId !== params.listingId)
+  ) {
+    conflicts.messageAlreadyLinkedToGuildId = existingByMsg.guildId;
+    conflicts.messageAlreadyLinkedToListingId = existingByMsg.meta.listingId;
+  }
+
+  const sentMap = await getGuildSentMessages(env, params.guildId);
+  const existingForListing = sentMap[params.listingId];
+  if (existingForListing?.messageId && existingForListing.messageId !== preview.messageId) {
+    conflicts.listingAlreadyHasMessageId = existingForListing.messageId;
+    conflicts.listingAlreadyHasChannelId = existingForListing.channelId;
+  }
+
+  return {
+    ok: true,
+    httpStatus: 200,
+    preview,
+    conflicts,
+    listingName: listing.payload?.name || `Limited Vehicle #${listing.id}`,
+    listingIsAvailable: listing.isAvailable,
+  };
+}
+
+export async function recoverDiscordEmbedTracking(
+  env: any,
+  params: {
+    guildId: string;
+    channelId: string;
+    messageIdOrUrl: string;
+    listingId: string;
+    allowOverwrite?: boolean;
+    applyTemplateNow?: boolean;
+  }
+): Promise<{
+  ok: boolean;
+  httpStatus: number;
+  error?: string;
+  preview?: RecoverableEmbedPreview;
+  updatedInPlace?: boolean;
+  recoveredMeta?: {
+    guildId: string;
+    channelId: string;
+    messageId: string;
+    listingId: string;
+    sentAt: number;
+  };
+}> {
+  const inspection = await inspectRecoverableDiscordEmbed(env, {
+    guildId: params.guildId,
+    channelId: params.channelId,
+    messageIdOrUrl: params.messageIdOrUrl,
+    listingId: params.listingId,
+  });
+
+  if (!inspection.ok || !inspection.preview) {
+    return {
+      ok: false,
+      httpStatus: inspection.httpStatus,
+      error: inspection.error || "Embed inspection failed.",
+    };
+  }
+
+  const conflicts = inspection.conflicts || {};
+  const hasConflict = Boolean(
+    conflicts.messageAlreadyLinkedToListingId || conflicts.listingAlreadyHasMessageId
+  );
+  if (hasConflict && !params.allowOverwrite) {
+    const reasons: string[] = [];
+    if (conflicts.messageAlreadyLinkedToListingId) {
+      reasons.push(
+        `Message ID ${inspection.preview.messageId} is already linked to listing #${conflicts.messageAlreadyLinkedToListingId}`
+      );
+    }
+    if (conflicts.listingAlreadyHasMessageId) {
+      reasons.push(
+        `Listing #${params.listingId} already tracks message ID ${conflicts.listingAlreadyHasMessageId} in this server`
+      );
+    }
+    return {
+      ok: false,
+      httpStatus: 409,
+      error: `${reasons.join("; ")}. Enable overwrite confirmation to relink safely.`,
+      preview: inspection.preview,
+    };
+  }
+
+  const preview = inspection.preview;
+  const record = await getListingRecordById(env, params.listingId);
+  if (!record) {
+    return { ok: false, httpStatus: 404, error: "Listing not found." };
+  }
+
+  const cfg = await getGuildConfig(env, params.guildId);
+  const environment = cfg?.environment === "test" ? "test" : "production";
+
+  await markListingSentToGuild(env, params.guildId, params.listingId, {
+    channelId: preview.channelId,
+    messageId: preview.messageId,
+    sentAtOverride: preview.sentAt,
+    isSoldOutRendered: preview.isAlreadySoldOutLook,
+  });
+
+  if (params.applyTemplateNow) {
+    const car: CarListing = {
+      ...record.payload,
+      id: record.id,
+      detectedAt: record.firstSeenAt,
+      lastVerifiedAt: record.lastVerifiedAt,
+      soldOutAt: record.soldOutAt,
+      isAvailable: record.isAvailable,
+    };
+    const editRes = await updateSentListingEmbedForGuild(env, car, params.guildId, {
+      overrideChannelId: preview.channelId,
+      overrideMessageId: preview.messageId,
+    });
+    if (!editRes.ok) {
+      return {
+        ok: false,
+        httpStatus: 502,
+        error: `Tracking restored for message ${preview.messageId}, but immediate in-place template edit failed: ${editRes.error || "Unknown Discord error"}`,
+        preview,
+        updatedInPlace: false,
+        recoveredMeta: {
+          guildId: params.guildId,
+          channelId: preview.channelId,
+          messageId: preview.messageId,
+          listingId: params.listingId,
+          sentAt: preview.sentAt,
+        },
+      };
+    }
+  } else {
+    await appendDeliveryLog(env, {
+      id: crypto.randomUUID(),
+      listingId: params.listingId,
+      listingName: record.payload?.name || `Limited Vehicle #${params.listingId}`,
+      guildId: params.guildId,
+      channelId: preview.channelId,
+      messageId: preview.messageId,
+      method: "recovery",
+      environment,
+      status: "updated",
+      httpStatus: 200,
+      timestamp: Date.now(),
+    });
+  }
+
+  return {
+    ok: true,
+    httpStatus: 200,
+    preview,
+    updatedInPlace: Boolean(params.applyTemplateNow),
+    recoveredMeta: {
+      guildId: params.guildId,
+      channelId: preview.channelId,
+      messageId: preview.messageId,
+      listingId: params.listingId,
+      sentAt: preview.sentAt,
+    },
+  };
+}
+
 
 export async function buildWidgetMessagePayload(
   env: any,

@@ -297,34 +297,52 @@ export function AdminWidgetsPage() {
                   No status widgets have been deployed yet. Admins can run <code>/widget</code> in Discord or click <strong>Deploy Widget</strong> above.
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Server &amp; Channel</TableHead>
-                      <TableHead>Template Preset</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Last Sync</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                <>
+                  {/* Mobile Widget Cards */}
+                  <div className="space-y-3 md:hidden">
                     {widgets.map((w) => {
                       const guild = guildMap.get(w.guildId);
                       const channelName = guild?.channels.find((c) => c.id === w.channelId)?.name;
                       const busy = busyWidgetId === w.id;
                       const jumpUrl = `https://discord.com/channels/${w.guildId}/${w.channelId}/${w.messageId}`;
                       return (
-                        <TableRow key={w.id}>
-                          <TableCell>
-                            <p className="font-semibold text-white">
-                              {guild?.name || `Server ${w.guildId}`}
-                            </p>
-                            <p className="select-text font-mono text-[11px] text-muted-foreground">
-                              {channelName ? `#${channelName}` : `Ch ${w.channelId}`} &bull; Msg{" "}
-                              {w.messageId.slice(-6)}
-                            </p>
-                          </TableCell>
-                          <TableCell>
+                        <div
+                          key={w.id}
+                          className="space-y-3 rounded-lg border border-border bg-zinc-950/75 p-3.5 text-xs"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-white">
+                                {guild?.name || `Server ${w.guildId}`}
+                              </p>
+                              <p className="mt-0.5 truncate select-text font-mono text-[11px] text-muted-foreground">
+                                {channelName ? `#${channelName}` : `Ch ${w.channelId}`} &bull; Msg {w.messageId.slice(-6)}
+                              </p>
+                            </div>
+                            <Badge
+                              variant={
+                                w.lastSyncStatus === "error"
+                                  ? "destructive"
+                                  : w.lastSyncStatus === "skipped"
+                                    ? "secondary"
+                                    : "success"
+                              }
+                              className="shrink-0"
+                            >
+                              {w.lastSyncStatus === "error"
+                                ? "Error"
+                                : w.lastSyncStatus === "skipped"
+                                  ? "Up to Date"
+                                  : "Synced"}
+                            </Badge>
+                          </div>
+
+                          {w.lastSyncError && (
+                            <p className="break-words text-[11px] text-red-300">{w.lastSyncError}</p>
+                          )}
+
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Template Preset</Label>
                             <Select
                               value={w.templateId || "default"}
                               disabled={busy || assignTemplateMutation.isPending}
@@ -333,7 +351,7 @@ export function AdminWidgetsPage() {
                                 assignTemplateMutation.mutate({ widgetId: w.id, templateId: tplId });
                               }}
                             >
-                              <SelectTrigger className="h-8 w-44 text-xs">
+                              <SelectTrigger className="h-8 w-full text-xs">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -344,99 +362,224 @@ export function AdminWidgetsPage() {
                                 ))}
                               </SelectContent>
                             </Select>
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-1">
-                              <Badge
-                                variant={
-                                  w.lastSyncStatus === "error"
-                                    ? "destructive"
-                                    : w.lastSyncStatus === "skipped"
-                                      ? "secondary"
-                                      : "success"
-                                }
-                              >
-                                {w.lastSyncStatus === "error"
-                                  ? "Error"
-                                  : w.lastSyncStatus === "skipped"
-                                    ? "Up to Date"
-                                    : "Synced"}
-                              </Badge>
-                              {w.lastSyncError && (
-                                <p className="max-w-[200px] truncate text-[11px] text-red-300">
-                                  {w.lastSyncError}
-                                </p>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[11px] text-muted-foreground tabular-nums">
+                            <span>Last sync:</span>
+                            <span>
+                              {w.lastSyncedAt
+                                ? formatLocalTime(w.lastSyncedAt)
+                                : formatLocalTime(w.deployedAt)}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-1.5 border-t border-border/70 pt-2.5">
+                            <a
+                              href={jumpUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-secondary px-2 text-[11px] font-medium text-zinc-200 transition hover:bg-zinc-800 hover:text-white"
+                            >
+                              Open
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={busy || refreshSingleMutation.isPending}
+                              onClick={() => {
+                                setBusyWidgetId(w.id);
+                                refreshSingleMutation.mutate(w.id);
+                              }}
+                              className="h-7 px-2 text-[11px]"
+                            >
+                              {busy ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3 w-3" />
                               )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground tabular-nums">
-                            {w.lastSyncedAt
-                              ? formatLocalTime(w.lastSyncedAt)
-                              : formatLocalTime(w.deployedAt)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
-                              <a
-                                href={jumpUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-secondary px-2 text-[11px] font-medium text-zinc-200 transition hover:bg-zinc-800 hover:text-white"
-                              >
-                                Open
-                                <ExternalLink className="h-3 w-3" />
-                              </a>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                disabled={busy || refreshSingleMutation.isPending}
-                                onClick={() => {
-                                  setBusyWidgetId(w.id);
-                                  refreshSingleMutation.mutate(w.id);
-                                }}
-                                className="h-7 px-2 text-[11px]"
-                              >
-                                {busy ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <RefreshCw className="h-3 w-3" />
-                                )}
-                                Refresh
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setMoveTarget(w);
-                                  setMoveChannelId(w.channelId);
-                                }}
-                                className="h-7 px-2 text-[11px]"
-                              >
-                                <ArrowRightLeft className="h-3 w-3" />
-                                Move
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setHistoryTarget(w)}
-                                className="h-7 px-2 text-[11px]"
-                              >
-                                <History className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setDeleteTarget(w)}
-                                className="h-7 px-2 text-[11px] text-red-400 hover:bg-red-950/40 hover:text-red-300"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
+                              Refresh
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setMoveTarget(w);
+                                setMoveChannelId(w.channelId);
+                              }}
+                              className="h-7 px-2 text-[11px]"
+                            >
+                              <ArrowRightLeft className="h-3 w-3" />
+                              Move
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setHistoryTarget(w)}
+                              aria-label="Sync History"
+                              className="h-7 px-2 text-[11px]"
+                            >
+                              <History className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setDeleteTarget(w)}
+                              aria-label="Remove Widget"
+                              className="h-7 px-2 text-[11px] text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
                       );
                     })}
-                  </TableBody>
-                </Table>
+                  </div>
+
+                  {/* Desktop Widget Table */}
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Server &amp; Channel</TableHead>
+                          <TableHead>Template Preset</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Last Sync</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {widgets.map((w) => {
+                          const guild = guildMap.get(w.guildId);
+                          const channelName = guild?.channels.find((c) => c.id === w.channelId)?.name;
+                          const busy = busyWidgetId === w.id;
+                          const jumpUrl = `https://discord.com/channels/${w.guildId}/${w.channelId}/${w.messageId}`;
+                          return (
+                            <TableRow key={w.id}>
+                              <TableCell>
+                                <p className="font-semibold text-white">
+                                  {guild?.name || `Server ${w.guildId}`}
+                                </p>
+                                <p className="select-text font-mono text-[11px] text-muted-foreground">
+                                  {channelName ? `#${channelName}` : `Ch ${w.channelId}`} &bull; Msg{" "}
+                                  {w.messageId.slice(-6)}
+                                </p>
+                              </TableCell>
+                              <TableCell>
+                                <Select
+                                  value={w.templateId || "default"}
+                                  disabled={busy || assignTemplateMutation.isPending}
+                                  onValueChange={(tplId) => {
+                                    setBusyWidgetId(w.id);
+                                    assignTemplateMutation.mutate({ widgetId: w.id, templateId: tplId });
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 w-44 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {templateOptions.map((tpl) => (
+                                      <SelectItem key={tpl.id} value={tpl.id}>
+                                        {tpl.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <Badge
+                                    variant={
+                                      w.lastSyncStatus === "error"
+                                        ? "destructive"
+                                        : w.lastSyncStatus === "skipped"
+                                          ? "secondary"
+                                          : "success"
+                                    }
+                                  >
+                                    {w.lastSyncStatus === "error"
+                                      ? "Error"
+                                      : w.lastSyncStatus === "skipped"
+                                        ? "Up to Date"
+                                        : "Synced"}
+                                  </Badge>
+                                  {w.lastSyncError && (
+                                    <p className="max-w-[200px] truncate text-[11px] text-red-300">
+                                      {w.lastSyncError}
+                                    </p>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground tabular-nums">
+                                {w.lastSyncedAt
+                                  ? formatLocalTime(w.lastSyncedAt)
+                                  : formatLocalTime(w.deployedAt)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                                  <a
+                                    href={jumpUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-secondary px-2 text-[11px] font-medium text-zinc-200 transition hover:bg-zinc-800 hover:text-white"
+                                  >
+                                    Open
+                                    <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    disabled={busy || refreshSingleMutation.isPending}
+                                    onClick={() => {
+                                      setBusyWidgetId(w.id);
+                                      refreshSingleMutation.mutate(w.id);
+                                    }}
+                                    className="h-7 px-2 text-[11px]"
+                                  >
+                                    {busy ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <RefreshCw className="h-3 w-3" />
+                                    )}
+                                    Refresh
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setMoveTarget(w);
+                                      setMoveChannelId(w.channelId);
+                                    }}
+                                    className="h-7 px-2 text-[11px]"
+                                  >
+                                    <ArrowRightLeft className="h-3 w-3" />
+                                    Move
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setHistoryTarget(w)}
+                                    className="h-7 px-2 text-[11px]"
+                                  >
+                                    <History className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setDeleteTarget(w)}
+                                    className="h-7 px-2 text-[11px] text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>

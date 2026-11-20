@@ -114,122 +114,216 @@ export function AdminServersPage() {
             No connected Discord servers found.
           </div>
         ) : (
-          <Table containerClassName="thin-scrollbar max-h-[520px] overflow-y-auto overflow-x-auto">
-            <TableHeader className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
-              <TableRow>
-                <TableHead>Server</TableHead>
-                <TableHead>Environment</TableHead>
-                <TableHead>Configuration</TableHead>
-                <TableHead>Widget</TableHead>
-                <TableHead>Mention Roles</TableHead>
-                <TableHead className="text-right">Details</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            {/* Mobile Server Cards */}
+            <div className="divide-y divide-border md:hidden">
               {guilds
                 .slice((serverPage - 1) * serverPageSize, serverPage * serverPageSize)
                 .map((guild) => (
-                  <TableRow
+                  <div
                     key={guild.id}
-                    onClick={() => {
-                      const sel = typeof window !== "undefined" ? window.getSelection()?.toString() : "";
-                      if (!sel?.trim()) setSelectedGuild(guild);
-                    }}
-                    className="cursor-pointer hover:bg-zinc-900/75"
+                    onClick={() => setSelectedGuild(guild)}
+                    className="space-y-3 p-4 cursor-pointer active:bg-zinc-900/70"
                   >
-                    <TableCell>
-                      <div className="flex items-center gap-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-3">
                         {guild.iconUrl ? (
-                          <img src={guild.iconUrl} alt="" className="h-8 w-8 rounded-lg" />
+                          <img src={guild.iconUrl} alt="" className="h-9 w-9 shrink-0 rounded-lg" />
                         ) : (
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-xs font-bold text-white">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-xs font-bold text-white">
                             {guild.name.slice(0, 2).toUpperCase()}
                           </div>
                         )}
-                        <div>
-                          <p className="font-semibold text-white">{guild.name}</p>
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-white">{guild.name}</p>
                           <div
                             className="mt-0.5 flex items-center gap-1.5"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <span className="select-text font-mono text-[11px] text-muted-foreground">
+                            <span className="truncate select-text font-mono text-[11px] text-muted-foreground">
                               {guild.id}
                             </span>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  onClick={() => void copyId(guild.id, "Server ID")}
-                                  aria-label={`Copy server ID ${guild.id}`}
-                                  className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
-                                >
-                                  {copiedId === guild.id ? (
-                                    <Check className="h-3 w-3 text-emerald-400" />
-                                  ) : (
-                                    <Copy className="h-3 w-3" />
-                                  )}
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>Copy Server ID</TooltipContent>
-                            </Tooltip>
+                            <button
+                              type="button"
+                              onClick={() => void copyId(guild.id, "Server ID")}
+                              aria-label={`Copy server ID ${guild.id}`}
+                              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-white cursor-pointer"
+                            >
+                              {copiedId === guild.id ? (
+                                <Check className="h-3 w-3 text-emerald-400" />
+                              ) : (
+                                <Copy className="h-3 w-3" />
+                              )}
+                            </button>
                           </div>
                         </div>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={guild.environment === "test" ? "warning" : "secondary"}>
-                        {guild.environment === "test" ? "Test Server" : "Production"}
+                      <Badge variant={guild.environment === "test" ? "warning" : "secondary"} className="shrink-0">
+                        {guild.environment === "test" ? "Test" : "Prod"}
                       </Badge>
-                    </TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs" onClick={(e) => e.stopPropagation()}>
                       {guild.configured ? (
-                        <div className="inline-flex items-center gap-1.5">
+                        <div className="inline-flex items-center gap-1">
                           <Badge variant="success" className="font-mono">
-                            #<span className="select-text cursor-text">{guild.channelId}</span>
+                            #<span className="select-text">{guild.channelId}</span>
                           </Badge>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                onClick={() => void copyId(guild.channelId, "Channel ID")}
-                                aria-label={`Copy channel ID ${guild.channelId}`}
-                                className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
-                              >
-                                {copiedId === guild.channelId ? (
-                                  <Check className="h-3 w-3 text-emerald-400" />
-                                ) : (
-                                  <Copy className="h-3 w-3" />
-                                )}
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent>Copy Channel ID</TooltipContent>
-                          </Tooltip>
+                          <button
+                            type="button"
+                            onClick={() => void copyId(guild.channelId, "Channel ID")}
+                            aria-label={`Copy channel ID ${guild.channelId}`}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-white cursor-pointer"
+                          >
+                            {copiedId === guild.channelId ? (
+                              <Check className="h-3 w-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                          </button>
                         </div>
                       ) : (
                         <Badge variant="secondary">Channel Not Set</Badge>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      {guild.widget ? (
+                      {guild.widget && (
                         <Badge variant={guild.widget.lastSyncStatus === "error" ? "destructive" : "info"}>
                           {guild.widget.lastSyncStatus === "error" ? "Widget Error" : "Live Widget"}
                         </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
                       )}
-                    </TableCell>
-                    <TableCell className="text-xs text-zinc-300 tabular-nums">
-                      {guild.roleIds.length > 0 ? `${guild.roleIds.length} role(s)` : "None"}
-                    </TableCell>
-                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <span className="text-muted-foreground tabular-nums">
+                        {guild.roleIds.length > 0 ? `${guild.roleIds.length} role(s)` : "No mention roles"}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
                       <Button variant="outline" size="sm" onClick={() => setSelectedGuild(guild)}>
                         Inspect Logs
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </div>
+                  </div>
                 ))}
-            </TableBody>
-          </Table>
+            </div>
+
+            {/* Desktop Server Table */}
+            <div className="hidden md:block">
+              <Table containerClassName="thin-scrollbar max-h-[520px] overflow-y-auto overflow-x-auto">
+                <TableHeader className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
+                  <TableRow>
+                    <TableHead>Server</TableHead>
+                    <TableHead>Environment</TableHead>
+                    <TableHead>Configuration</TableHead>
+                    <TableHead>Widget</TableHead>
+                    <TableHead>Mention Roles</TableHead>
+                    <TableHead className="text-right">Details</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {guilds
+                    .slice((serverPage - 1) * serverPageSize, serverPage * serverPageSize)
+                    .map((guild) => (
+                      <TableRow
+                        key={guild.id}
+                        onClick={() => {
+                          const sel = typeof window !== "undefined" ? window.getSelection()?.toString() : "";
+                          if (!sel?.trim()) setSelectedGuild(guild);
+                        }}
+                        className="cursor-pointer hover:bg-zinc-900/75"
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            {guild.iconUrl ? (
+                              <img src={guild.iconUrl} alt="" className="h-8 w-8 rounded-lg" />
+                            ) : (
+                              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-xs font-bold text-white">
+                                {guild.name.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <div>
+                              <p className="font-semibold text-white">{guild.name}</p>
+                              <div
+                                className="mt-0.5 flex items-center gap-1.5"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <span className="select-text font-mono text-[11px] text-muted-foreground">
+                                  {guild.id}
+                                </span>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() => void copyId(guild.id, "Server ID")}
+                                      aria-label={`Copy server ID ${guild.id}`}
+                                      className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
+                                    >
+                                      {copiedId === guild.id ? (
+                                        <Check className="h-3 w-3 text-emerald-400" />
+                                      ) : (
+                                        <Copy className="h-3 w-3" />
+                                      )}
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Copy Server ID</TooltipContent>
+                                </Tooltip>
+                              </div>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={guild.environment === "test" ? "warning" : "secondary"}>
+                            {guild.environment === "test" ? "Test Server" : "Production"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          {guild.configured ? (
+                            <div className="inline-flex items-center gap-1.5">
+                              <Badge variant="success" className="font-mono">
+                                #<span className="select-text cursor-text">{guild.channelId}</span>
+                              </Badge>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    onClick={() => void copyId(guild.channelId, "Channel ID")}
+                                    aria-label={`Copy channel ID ${guild.channelId}`}
+                                    className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
+                                  >
+                                    {copiedId === guild.channelId ? (
+                                      <Check className="h-3 w-3 text-emerald-400" />
+                                    ) : (
+                                      <Copy className="h-3 w-3" />
+                                    )}
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Copy Channel ID</TooltipContent>
+                              </Tooltip>
+                            </div>
+                          ) : (
+                            <Badge variant="secondary">Channel Not Set</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {guild.widget ? (
+                            <Badge variant={guild.widget.lastSyncStatus === "error" ? "destructive" : "info"}>
+                              {guild.widget.lastSyncStatus === "error" ? "Widget Error" : "Live Widget"}
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs text-zinc-300 tabular-nums">
+                          {guild.roleIds.length > 0 ? `${guild.roleIds.length} role(s)` : "None"}
+                        </TableCell>
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                          <Button variant="outline" size="sm" onClick={() => setSelectedGuild(guild)}>
+                            Inspect Logs
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
 
         {/* Server List Pagination */}

@@ -2,10 +2,12 @@
 
 import {
   getAllGuildIds,
+  getCreatorProfileFromStore,
   getGuildConfig,
   getEmbedConfig,
   getListingHistory,
   getMonitorStatus,
+  setCreatorProfileInStore,
   setEmbedConfig,
   setGuildConfig,
   EmbedConfig,
@@ -397,22 +399,14 @@ export async function getCreatorProfile(
     profileUrl,
   };
 
-  const kv = env.DISCORD_BOT as KVNamespace;
-  if (kv) {
-    const cached = await kv.get("creator:profile");
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (parsed && (!parsed.id || parsed.id === primaryAdministratorId)) {
-          return {
-            id: primaryAdministratorId,
-            username: parsed.username || "xchasex",
-            avatarUrl: parsed.avatarUrl || defaultAvatar,
-            profileUrl,
-          };
-        }
-      } catch {}
-    }
+  const cachedProfile = await getCreatorProfileFromStore(env);
+  if (cachedProfile && (!cachedProfile.id || cachedProfile.id === primaryAdministratorId)) {
+    return {
+      id: primaryAdministratorId,
+      username: cachedProfile.username || "xchasex",
+      avatarUrl: cachedProfile.avatarUrl || defaultAvatar,
+      profileUrl,
+    };
   }
 
   const token = env.DISCORD_BOT_TOKEN;
@@ -434,9 +428,7 @@ export async function getCreatorProfile(
         avatarUrl,
         profileUrl,
       };
-      if (kv) {
-        await kv.put("creator:profile", JSON.stringify(profile));
-      }
+      await setCreatorProfileInStore(env, profile);
       return profile;
     }
   } catch (err) {
@@ -718,17 +710,14 @@ export async function handleOAuthCallback(request: Request, env: any): Promise<R
     ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png?size=64`
     : `https://cdn.discordapp.com/embed/avatars/${(BigInt(userData.id) >> 22n) % 6n}.png`;
 
-  if (userData.id === env.DISCORD_PRIMARY_ADMINISTRATOR && env.DISCORD_BOT) {
-    await env.DISCORD_BOT.put(
-      "creator:profile",
-      JSON.stringify({
-        id: userData.id,
-        username: userData.username || "xchasex",
-        avatarUrl,
-        profileUrl: `https://discord.com/users/${userData.id}`,
-        updatedAt: Date.now(),
-      })
-    );
+  if (userData.id === env.DISCORD_PRIMARY_ADMINISTRATOR) {
+    await setCreatorProfileInStore(env, {
+      id: userData.id,
+      username: userData.username || "xchasex",
+      avatarUrl,
+      profileUrl: `https://discord.com/users/${userData.id}`,
+      updatedAt: Date.now(),
+    });
   }
 
   try {

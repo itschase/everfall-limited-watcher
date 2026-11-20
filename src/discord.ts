@@ -58,3 +58,51 @@ export async function fetchDiscordWithRetry(
     await sleep(delayMs);
   }
 }
+
+export async function fetchDiscordChannelMessage(
+  token: string,
+  channelId: string,
+  messageId: string
+): Promise<{ ok: boolean; httpStatus: number; message?: any; error?: string }> {
+  if (!token || !channelId || !messageId) {
+    return {
+      ok: false,
+      httpStatus: 400,
+      error: "Bot token, channelId, and messageId are required.",
+    };
+  }
+  try {
+    const res = await fetchDiscordWithRetry(
+      `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bot ${token}` },
+      }
+    );
+    if (res.ok) {
+      const message = await res.json();
+      return { ok: true, httpStatus: res.status, message };
+    }
+    const errText = await res.text().catch(() => "");
+    let friendly = `Discord API returned HTTP ${res.status}.`;
+    if (res.status === 404) {
+      friendly =
+        "Discord message not found (HTTP 404). Verify the message ID and channel ID are correct and the message was not deleted.";
+    } else if (res.status === 403) {
+      friendly =
+        "Bot lacks Read Message History / View Channel permission (HTTP 403) in that channel.";
+    } else if (res.status === 400) {
+      friendly = "Invalid Discord Channel ID or Message ID format (HTTP 400).";
+    } else if (errText) {
+      friendly = `Discord API ${res.status}: ${errText.slice(0, 180)}`;
+    }
+    return { ok: false, httpStatus: res.status, error: friendly };
+  } catch (err: any) {
+    return {
+      ok: false,
+      httpStatus: 502,
+      error: err?.message || "Network error querying Discord message API.",
+    };
+  }
+}
+

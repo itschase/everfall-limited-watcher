@@ -38,6 +38,7 @@ import {
 import { resolveListingPresentation, sortAndFilterFeatures } from "../../../shared/features";
 import {
   DEFAULT_IN_STOCK_TEMPLATE,
+  DEFAULT_SITE_PAGES_CONFIG,
   DEFAULT_SOLD_OUT_TEMPLATE,
   DEFAULT_WIDGET_TEMPLATE,
 } from "../../../shared/presentation";
@@ -235,6 +236,10 @@ export function FeaturesPage() {
     presentationData?.announcements?.soldOut || DEFAULT_SOLD_OUT_TEMPLATE;
   const widgetTemplate =
     presentationData?.widgetDefault || DEFAULT_WIDGET_TEMPLATE;
+  const featuresCopy =
+    presentationData?.pages?.features ||
+    statusHeartbeat?.pages?.features ||
+    DEFAULT_SITE_PAGES_CONFIG.features;
   const monitorStatus =
     statusHeartbeat?.monitorStatus || listingsData?.monitorStatus || null;
 
@@ -316,15 +321,15 @@ export function FeaturesPage() {
         <div className="relative mx-auto max-w-5xl px-4 py-16 text-center sm:px-6 sm:py-24 lg:px-8">
           <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3.5 py-1 text-xs font-medium text-zinc-300 backdrop-blur-sm">
             <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-            Discord Notification Architecture &amp; Server Controls
+            {featuresCopy.badgeText}
           </span>
 
           <h1 className="mt-5 text-3xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-[3.25rem] lg:leading-[1.12]">
-            Everything You Need to Track Everfall Limited Drops
+            {featuresCopy.heading}
           </h1>
 
           <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-zinc-300 sm:text-lg">
-            Inspect exact Discord alert previews, understand how stock status evolves without message spam, and configure server channels, role pings, and live status boards cleanly.
+            {featuresCopy.subheading}
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3.5">
@@ -335,7 +340,7 @@ export function FeaturesPage() {
               className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-zinc-200 sm:w-auto"
             >
               <Plus className="h-4 w-4" />
-              Add to Discord
+              {featuresCopy.primaryCtaLabel}
             </a>
             <button
               type="button"
@@ -343,7 +348,7 @@ export function FeaturesPage() {
               className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-secondary px-6 py-3 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-800 hover:text-white cursor-pointer sm:w-auto"
             >
               <Eye className="h-4 w-4 text-zinc-300" />
-              Explore Notifications
+              {featuresCopy.secondaryCtaLabel}
             </button>
           </div>
         </div>
@@ -361,10 +366,10 @@ export function FeaturesPage() {
                 Live Discord Notification Preview
               </p>
               <h2 className="mt-1.5 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                See What Your Server Receives
+                {featuresCopy.previewsHeading}
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Rendered directly from Everfall Limited Watcher&apos;s active presentation engine and newest tracked vehicle data—no static mockups.
+                {featuresCopy.previewsSubheading}
               </p>
             </div>
 
@@ -599,10 +604,10 @@ export function FeaturesPage() {
               In-Place Lifecycle Tracking
             </p>
             <h2 className="mt-1.5 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              One Announcement. Always Up to Date.
+              {featuresCopy.workflowHeading}
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              Instead of flooding channels with redundant &ldquo;now sold out&rdquo; reposts, Everfall Limited Watcher stores Discord message IDs per server and updates original announcements cleanly in place.
+              {featuresCopy.workflowSubheading}
             </p>
           </div>
 
@@ -1067,10 +1072,10 @@ export function FeaturesPage() {
                 Built for Reliability
               </p>
               <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                Designed Around Real Storefront Constraints
+                {featuresCopy.capabilitiesHeading}
               </h2>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                Edge-cached public endpoints, Cloudflare Workers runtime, KV snapshot consistency, and strict guild isolation keep every server fast, private, and reliable.
+                {featuresCopy.capabilitiesSubheading}
               </p>
               {monitorStatus?.checkedAt && (
                 <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-zinc-300 tabular-nums">
@@ -1081,22 +1086,21 @@ export function FeaturesPage() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:col-span-8">
-              {PLATFORM_HIGHLIGHTS.map((item) => {
-                const Icon = item.icon;
+              {featuresCopy.capabilities.map((cap, idx) => {
+                const Icon =
+                  PLATFORM_HIGHLIGHTS[idx % PLATFORM_HIGHLIGHTS.length]?.icon || ShieldCheck;
                 return (
                   <div
-                    key={item.title}
+                    key={cap.id}
                     className="flex items-start gap-3.5 rounded-xl border border-border/80 bg-card/60 p-4 transition hover:border-zinc-700"
                   >
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-zinc-950">
                       <Icon className="h-4 w-4 text-zinc-200" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-semibold text-white">
-                        {item.title}
-                      </h3>
+                      <h3 className="text-sm font-semibold text-white">{cap.title}</h3>
                       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                        {item.description}
+                        {cap.description}
                       </p>
                     </div>
                   </div>
@@ -1120,10 +1124,10 @@ export function FeaturesPage() {
       <section className="border-t border-border bg-zinc-950">
         <div className="mx-auto max-w-4xl px-4 py-16 text-center sm:px-6 lg:px-8">
           <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            Bring Everfall Limited Watcher to Your Server
+            {featuresCopy.ctaTitle}
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-            Free for Discord communities—set up your drop channel in seconds with <code className="font-mono text-zinc-200">/setup</code> or launch a live board with <code className="font-mono text-zinc-200">/widget</code>.
+            {featuresCopy.ctaDescription}
           </p>
 
           <div className="mt-7 flex flex-wrap items-center justify-center gap-3.5">
@@ -1134,7 +1138,7 @@ export function FeaturesPage() {
               className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-zinc-200 sm:w-auto"
             >
               <Plus className="h-4 w-4" />
-              Add to Discord
+              {featuresCopy.primaryCtaLabel}
             </a>
             <Link
               to="/history"

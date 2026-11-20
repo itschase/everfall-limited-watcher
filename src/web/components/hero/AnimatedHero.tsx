@@ -4,6 +4,8 @@ import { DEFAULT_HERO_CONFIG, getHeroActiveMessages } from "../../../shared/pres
 import { cn } from "@/lib/utils";
 
 const SCRAMBLE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%@";
+const HIGHLIGHT_GRADIENT_CLASS =
+  "bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent";
 
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState<boolean>(() => {
@@ -28,11 +30,13 @@ function DecryptingTextLine({
   durationMs,
   activeKey,
   reducedMotion,
+  isHighlight = false,
 }: {
   targetText: string;
   durationMs: number;
   activeKey: string;
   reducedMotion: boolean;
+  isHighlight?: boolean;
 }) {
   const [displayed, setDisplayed] = useState<string>(targetText);
   const timerRef = useRef<number | null>(null);
@@ -88,7 +92,33 @@ function DecryptingTextLine({
     };
   }, [targetText, durationMs, activeKey, reducedMotion]);
 
-  return <span>{displayed}</span>;
+  if (reducedMotion) {
+    return (
+      <span className={cn("whitespace-pre-line", isHighlight && HIGHLIGHT_GRADIENT_CLASS)}>
+        {targetText}
+      </span>
+    );
+  }
+
+  return (
+    <span className="relative inline-block max-w-full align-top">
+      {/* Invisible settled text reserves final box width and height so scrambling never shifts layout */}
+      <span
+        aria-hidden="true"
+        className="invisible block whitespace-pre-line select-none pointer-events-none"
+      >
+        {targetText}
+      </span>
+      <span
+        className={cn(
+          "absolute inset-0 block whitespace-pre-line text-center",
+          isHighlight && HIGHLIGHT_GRADIENT_CLASS
+        )}
+      >
+        {displayed}
+      </span>
+    </span>
+  );
 }
 
 function renderTokenizedText(
@@ -97,9 +127,14 @@ function renderTokenizedText(
   durationMs: number,
   delayMs: number,
   activeKey: string,
-  reducedMotion: boolean
+  reducedMotion: boolean,
+  isHighlight = false
 ) {
-  if (reducedMotion) return <span>{text}</span>;
+  const leafClass = isHighlight ? HIGHLIGHT_GRADIENT_CLASS : undefined;
+
+  if (reducedMotion) {
+    return <span className={cn("whitespace-pre-line", leafClass)}>{text}</span>;
+  }
 
   if (style === "decrypting_text") {
     return (
@@ -108,58 +143,107 @@ function renderTokenizedText(
         durationMs={durationMs}
         activeKey={activeKey}
         reducedMotion={reducedMotion}
+        isHighlight={isHighlight}
       />
     );
   }
 
   if (style === "character_reveal") {
-    const chars = Array.from(text);
+    const lines = text.split("\n");
     const stepDelay = Math.max(8, Math.min(45, Math.round((delayMs || 60) / 3)));
+    let charCounter = 0;
+
     return (
       <>
-        {chars.map((char, idx) => (
-          <span
-            key={`${activeKey}-c-${idx}`}
-            className="animate-hero-token inline-block whitespace-pre"
-            style={
-              {
-                "--hero-duration": `${Math.max(220, durationMs)}ms`,
-                animationDelay: `${idx * stepDelay}ms`,
-              } as React.CSSProperties
-            }
-          >
-            {char}
-          </span>
-        ))}
+        {lines.map((line, lineIdx) => {
+          const segments = line.split(/(\s+)/);
+          return (
+            <span key={`${activeKey}-line-${lineIdx}`}>
+              {segments.map((segment, segIdx) => {
+                if (!segment) return null;
+                if (/^\s+$/.test(segment)) {
+                  const spaceIdx = charCounter++;
+                  return (
+                    <span
+                      key={`${activeKey}-sp-${lineIdx}-${segIdx}-${spaceIdx}`}
+                      className="whitespace-pre"
+                    >
+                      {segment}
+                    </span>
+                  );
+                }
+                const chars = Array.from(segment);
+                return (
+                  <span
+                    key={`${activeKey}-wd-${lineIdx}-${segIdx}`}
+                    className="inline-block whitespace-nowrap"
+                  >
+                    {chars.map((char, chIdx) => {
+                      const globalIdx = charCounter++;
+                      return (
+                        <span
+                          key={`${activeKey}-c-${lineIdx}-${segIdx}-${chIdx}`}
+                          className={cn("animate-hero-token inline-block", leafClass)}
+                          style={
+                            {
+                              "--hero-duration": `${Math.max(220, durationMs)}ms`,
+                              animationDelay: `${globalIdx * stepDelay}ms`,
+                            } as React.CSSProperties
+                          }
+                        >
+                          {char}
+                        </span>
+                      );
+                    })}
+                  </span>
+                );
+              })}
+              {lineIdx < lines.length - 1 ? <br /> : null}
+            </span>
+          );
+        })}
       </>
     );
   }
 
   if (style === "word_stagger") {
-    const words = text.split(" ");
+    const lines = text.split("\n");
     const stepDelay = Math.max(25, Math.min(200, delayMs || 60));
+    let wordCounter = 0;
+
     return (
       <>
-        {words.map((word, idx) => (
-          <span
-            key={`${activeKey}-w-${idx}`}
-            className="animate-hero-token inline-block"
-            style={
-              {
-                "--hero-duration": `${Math.max(260, durationMs)}ms`,
-                animationDelay: `${idx * stepDelay}ms`,
-              } as React.CSSProperties
-            }
-          >
-            {word}
-            {idx < words.length - 1 ? "\u00A0" : ""}
-          </span>
-        ))}
+        {lines.map((line, lineIdx) => {
+          const words = line.trim().length > 0 ? line.split(" ") : [];
+          return (
+            <span key={`${activeKey}-wl-${lineIdx}`}>
+              {words.map((word, idx) => {
+                const globalIdx = wordCounter++;
+                return (
+                  <span
+                    key={`${activeKey}-w-${lineIdx}-${idx}`}
+                    className={cn("animate-hero-token inline-block whitespace-nowrap", leafClass)}
+                    style={
+                      {
+                        "--hero-duration": `${Math.max(260, durationMs)}ms`,
+                        animationDelay: `${globalIdx * stepDelay}ms`,
+                      } as React.CSSProperties
+                    }
+                  >
+                    {word}
+                    {idx < words.length - 1 ? "\u00A0" : ""}
+                  </span>
+                );
+              })}
+              {lineIdx < lines.length - 1 ? <br /> : null}
+            </span>
+          );
+        })}
       </>
     );
   }
 
-  return <span>{text}</span>;
+  return <span className={cn("whitespace-pre-line", leafClass)}>{text}</span>;
 }
 
 export function AnimatedHero({
@@ -232,6 +316,8 @@ export function AnimatedHero({
   const durationMs = effective.durationMs || 650;
   const delayMs = effective.delayMs || 60;
   const subtitle = currentMessage.subtext?.trim() || effective.secondaryDescription;
+  const primaryText = (currentMessage.text || "").trim();
+  const highlightText = (currentMessage.highlightText || "").trim();
 
   return (
     <div
@@ -246,30 +332,38 @@ export function AnimatedHero({
         style={{ "--hero-duration": `${durationMs}ms` } as React.CSSProperties}
       >
         <h1 className={cn("font-extrabold tracking-tight text-white", headingSizeClass)}>
-          {renderTokenizedText(
-            currentMessage.text,
-            effective.animationStyle,
-            durationMs,
-            delayMs,
-            animationKey,
-            reducedMotion
-          )}
-          {currentMessage.highlightText && (
+          {primaryText
+            ? renderTokenizedText(
+                primaryText,
+                effective.animationStyle,
+                durationMs,
+                delayMs,
+                animationKey,
+                reducedMotion,
+                false
+              )
+            : null}
+          {highlightText ? (
             <>
-              {" "}
-              <br className="hidden sm:inline" />
-              <span className="bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
+              {primaryText ? (
+                <>
+                  {" "}
+                  <br className="hidden sm:inline" />
+                </>
+              ) : null}
+              <span className="inline">
                 {renderTokenizedText(
-                  currentMessage.highlightText,
+                  highlightText,
                   effective.animationStyle,
                   durationMs,
                   delayMs,
                   `${animationKey}-hl`,
-                  reducedMotion
+                  reducedMotion,
+                  true
                 )}
               </span>
             </>
-          )}
+          ) : null}
         </h1>
 
         <p

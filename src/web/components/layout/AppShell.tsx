@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
   Bot,
+  FileText,
   FlaskConical,
   History,
   Home,
@@ -17,7 +18,6 @@ import {
   Server,
   Shield,
   SlidersHorizontal,
-  Sparkles,
 } from "lucide-react";
 import { useAuthActions, useSession, useSessionSync } from "@/features/auth/useAuthActions";
 import { cn } from "@/lib/utils";
@@ -46,7 +46,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Vehicle Metadata", to: "/admin/metadata", icon: SlidersHorizontal },
   { label: "Image Manager", to: "/admin/images", icon: Images },
   { label: "Embed Manager", to: "/admin/embeds", icon: Palette },
-  { label: "Homepage Hero", to: "/admin/hero", icon: Sparkles },
+  { label: "Pages", to: "/admin/pages", icon: FileText },
   { label: "Store Monitoring", to: "/admin/monitor", icon: Activity },
   { label: "Dispatch & Deliveries", to: "/admin/dispatch", icon: Send },
   { label: "Testing", to: "/admin/testing", icon: FlaskConical },
@@ -136,6 +136,7 @@ export function AppShell({
 
   const isActivePath = (item: NavItem) => {
     if (item.exact) return location.pathname === item.to;
+    if (item.to === "/admin/pages" && location.pathname === "/admin/hero") return true;
     return location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
   };
 

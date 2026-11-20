@@ -27,6 +27,11 @@ crons = []
 binding = "DISCORD_BOT"
 id = "41d8c9dce7f34af28156a5a0d3233bfb"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "everfall-watcher-db"
+database_id = "REPLACE_WITH_PRODUCTION_D1_DATABASE_ID"
+
 [[r2_buckets]]
 binding = "MEDIA_BUCKET"
 bucket_name = "everfall-media"
@@ -36,7 +41,8 @@ enabled = true
 invocation_logs = true
 
 # Staging environment (deployed on push to staging branch)
-# Configure staging secrets in Cloudflare Dashboard for everfall-limited-watcher-staging.
+# Configure staging secrets in Cloudflare Dashboard for everfall-limited-watcher-staging
+# and provision dedicated staging KV, D1, and R2 resources so staging never touches production state.
 [env.staging]
 name = "everfall-limited-watcher-staging"
 
@@ -52,8 +58,13 @@ crons = []
 
 [[env.staging.kv_namespaces]]
 binding = "DISCORD_BOT"
-id = "41d8c9dce7f34af28156a5a0d3233bfb"
+id = "REPLACE_WITH_STAGING_KV_NAMESPACE_ID"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "everfall-watcher-staging-db"
+database_id = "REPLACE_WITH_STAGING_D1_DATABASE_ID"
 
 [[env.staging.r2_buckets]]
 binding = "MEDIA_BUCKET"
-bucket_name = "everfall-media"
+bucket_name = "everfall-media-staging"

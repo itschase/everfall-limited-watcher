@@ -7,15 +7,25 @@ import {
   ChevronRight,
   Copy,
   Edit3,
+  ExternalLink,
+  History,
   LayoutPanelTop,
+  Link2,
   Loader2,
   RefreshCw,
+  Search,
   Send,
+  ShieldCheck,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { apiFetch, DeliveryLogEntry } from "@/lib/api";
-import { formatLocalDateTime, formatLocalTime } from "@/lib/utils";
+import {
+  apiFetch,
+  DeliveryLogEntry,
+  RecoverExecuteResponse,
+  RecoverPreviewResponse,
+} from "@/lib/api";
+import { formatLocalDateTime, formatLocalTime, safeExternalUrl } from "@/lib/utils";
 import { ADMIN_OVERVIEW_KEY, useAdminOverview } from "./useAdminOverview";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +40,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -63,6 +75,17 @@ export function AdminDispatchPage() {
   const [inspectDelivery, setInspectDelivery] = useState<DeliveryLogEntry | null>(null);
   const [editingGuildId, setEditingGuildId] = useState<string | null>(null);
   const [removingWidgetGuildId, setRemovingWidgetGuildId] = useState<string | null>(null);
+
+  // Recover Existing Embed dialog state
+  const [recoverOpen, setRecoverOpen] = useState(false);
+  const [recoverMessageRef, setRecoverMessageRef] = useState("");
+  const [recoverGuildId, setRecoverGuildId] = useState("");
+  const [recoverChannelId, setRecoverChannelId] = useState("");
+  const [recoverListingId, setRecoverListingId] = useState("");
+  const [recoverPreview, setRecoverPreview] = useState<RecoverPreviewResponse | null>(null);
+  const [recoverError, setRecoverError] = useState<string | null>(null);
+  const [recoverAllowOverwrite, setRecoverAllowOverwrite] = useState(false);
+  const [recoverApplyTemplate, setRecoverApplyTemplate] = useState(true);
 
   const listings = data?.listings || [];
   const connectedGuilds = data?.connectedGuilds || [];
@@ -183,6 +206,101 @@ export function AdminDispatchPage() {
     },
   });
 
+  const recoverPreviewMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<RecoverPreviewResponse>("/api/admin/dispatch/recover/preview", {
+        method: "POST",
+        body: JSON.stringify({
+          guildId: recoverGuildId,
+          channelId: recoverChannelId.trim(),
+          messageIdOrUrl: recoverMessageRef.trim(),
+          listingId: recoverListingId,
+        }),
+      }),
+    onSuccess: (res) => {
+      setRecoverError(null);
+      setRecoverPreview(res);
+      setRecoverAllowOverwrite(false);
+      if (res.preview?.channelId) {
+        setRecoverChannelId(res.preview.channelId);
+      }
+      if (res.preview?.guildId) {
+        setRecoverGuildId(res.preview.guildId);
+      }
+    },
+    onError: (err: Error) => {
+      setRecoverPreview(null);
+      setRecoverError(err.message || "Failed to inspect Discord message.");
+    },
+  });
+
+  const recoverExecuteMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<RecoverExecuteResponse>("/api/admin/dispatch/recover", {
+        method: "POST",
+        body: JSON.stringify({
+          guildId: recoverGuildId,
+          channelId: recoverChannelId.trim(),
+          messageIdOrUrl: recoverMessageRef.trim(),
+          listingId: recoverListingId,
+          allowOverwrite: recoverAllowOverwrite,
+          applyTemplateNow: recoverApplyTemplate,
+        }),
+      }),
+    onSuccess: (res) => {
+      setRecoverOpen(false);
+      setRecoverPreview(null);
+      setRecoverError(null);
+      setRecoverMessageRef("");
+      void queryClient.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });
+      toast.success(
+        res.updatedInPlace
+          ? `Recovered & updated embed #${res.recoveredMeta.messageId.slice(-6)} in place.`
+          : `Restored persistent tracking for message #${res.recoveredMeta.messageId.slice(-6)}.`
+      );
+    },
+    onError: (err: Error) => {
+      setRecoverError(err.message || "Failed to recover Discord embed.");
+    },
+  });
+
+  const openRecoverDialog = (opts?: {
+    guildId?: string;
+    channelId?: string;
+    listingId?: string;
+  }) => {
+    const targetGuildId =
+      opts?.guildId || configuredGuilds[0]?.id || connectedGuilds[0]?.id || "";
+    const targetGuild = connectedGuilds.find((g) => g.id === targetGuildId);
+    const targetChannelId = opts?.channelId || targetGuild?.channelId || "";
+    const targetListingId = opts?.listingId || selectedListing?.id || listings[0]?.id || "";
+    setRecoverGuildId(targetGuildId);
+    setRecoverChannelId(targetChannelId);
+    setRecoverListingId(targetListingId);
+    setRecoverMessageRef("");
+    setRecoverPreview(null);
+    setRecoverError(null);
+    setRecoverAllowOverwrite(false);
+    setRecoverApplyTemplate(true);
+    setRecoverOpen(true);
+  };
+
+  const handleRecoverInputChange = (val: string) => {
+    setRecoverMessageRef(val);
+    setRecoverPreview(null);
+    setRecoverError(null);
+    const urlMatch = val
+      .trim()
+      .match(/^https?:\/\/(?:(?:ptb|canary)\.)?discord\.com\/channels\/(\d{17,22})\/(\d{17,22})\/(\d{17,22})/i);
+    if (urlMatch) {
+      const [, parsedGuildId, parsedChannelId] = urlMatch;
+      if (connectedGuilds.some((g) => g.id === parsedGuildId)) {
+        setRecoverGuildId(parsedGuildId);
+      }
+      setRecoverChannelId(parsedChannelId);
+    }
+  };
+
   const toggleGuild = (guildId: string) => {
     setSelectedGuildIds((prev) =>
       prev.includes(guildId) ? prev.filter((id) => id !== guildId) : [...prev, guildId]
@@ -216,7 +334,18 @@ export function AdminDispatchPage() {
     <AppShell
       requireAdmin
       title="Dispatch & Deliveries"
-      description="Publish drop embeds, edit already-deployed Discord messages in-place (including Sold Out updates), and manage live server status widgets."
+      description="Publish drop embeds, edit already-deployed Discord messages in-place (including Sold Out updates), recover untracked announcements, and manage live server status widgets."
+      actions={
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={isLoading || listings.length === 0 || connectedGuilds.length === 0}
+          onClick={() => openRecoverDialog()}
+        >
+          <Link2 className="h-3.5 w-3.5" />
+          Recover Existing Embed
+        </Button>
+      }
     >
       {isLoading ? (
         <div className="space-y-6">
@@ -396,7 +525,7 @@ export function AdminDispatchPage() {
                             {needsSoldOutSync && (
                               <Badge variant="warning">Needs Sold-Out Edit</Badge>
                             )}
-                            {selectedListing && (sentMeta?.messageId || alreadySent) && (
+                            {selectedListing && (sentMeta?.messageId || alreadySent) ? (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
@@ -425,7 +554,24 @@ export function AdminDispatchPage() {
                                   Edit this server&apos;s deployed Discord embed in-place with current stock &amp; R2 images
                                 </TooltipContent>
                               </Tooltip>
-                            )}
+                            ) : selectedListing ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  openRecoverDialog({
+                                    guildId: guild.id,
+                                    channelId: guild.channelId,
+                                    listingId: selectedListing.id,
+                                  })
+                                }
+                                className="h-7 px-2 text-[11px] text-zinc-300 hover:text-white"
+                              >
+                                <Link2 className="h-3 w-3" />
+                                Recover Embed
+                              </Button>
+                            ) : null}
                           </div>
                         </div>
                       );
@@ -506,36 +652,33 @@ export function AdminDispatchPage() {
                   No server administrators have deployed a <code className="text-zinc-200">/widget</code> embed yet.
                 </p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Server</TableHead>
-                      <TableHead>Channel &amp; Message ID</TableHead>
-                      <TableHead>Sync Status</TableHead>
-                      <TableHead>Last Synced</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                <>
+                  {/* Mobile Cards */}
+                  <div className="space-y-3 md:hidden">
                     {deployedWidgets.map((guild) => {
                       const w = guild.widget!;
                       const isRemoving =
                         removingWidgetGuildId === guild.id && removeWidgetMutation.isPending;
                       return (
-                        <TableRow key={`widget-${guild.id}`}>
-                          <TableCell className="font-medium text-white">{guild.name}</TableCell>
-                          <TableCell className="select-text font-mono text-xs text-muted-foreground">
-                            #{w.channelId} &bull; Msg {w.messageId}
-                          </TableCell>
-                          <TableCell>
+                        <div
+                          key={`m-widget-${guild.id}`}
+                          className="space-y-2 rounded-lg border border-border bg-zinc-950 p-3.5 text-xs"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold text-white">{guild.name}</p>
                             <Badge variant={w.lastSyncStatus === "error" ? "destructive" : "success"}>
                               {w.lastSyncStatus === "error" ? "Sync Error" : "Live Synced"}
                             </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground tabular-nums">
-                            {w.lastSyncedAt ? formatLocalTime(w.lastSyncedAt) : formatLocalTime(w.deployedAt)}
-                          </TableCell>
-                          <TableCell className="text-right">
+                          </div>
+                          <p className="select-text break-all font-mono text-[11px] text-muted-foreground">
+                            #{w.channelId} &bull; Msg {w.messageId}
+                          </p>
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-[11px] text-muted-foreground tabular-nums">
+                              {w.lastSyncedAt
+                                ? formatLocalTime(w.lastSyncedAt)
+                                : formatLocalTime(w.deployedAt)}
+                            </span>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -553,12 +696,71 @@ export function AdminDispatchPage() {
                               )}
                               Remove
                             </Button>
-                          </TableCell>
-                        </TableRow>
+                          </div>
+                        </div>
                       );
                     })}
-                  </TableBody>
-                </Table>
+                  </div>
+
+                  {/* Desktop Table */}
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Server</TableHead>
+                          <TableHead>Channel &amp; Message ID</TableHead>
+                          <TableHead>Sync Status</TableHead>
+                          <TableHead>Last Synced</TableHead>
+                          <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {deployedWidgets.map((guild) => {
+                          const w = guild.widget!;
+                          const isRemoving =
+                            removingWidgetGuildId === guild.id && removeWidgetMutation.isPending;
+                          return (
+                            <TableRow key={`widget-${guild.id}`}>
+                              <TableCell className="font-medium text-white">{guild.name}</TableCell>
+                              <TableCell className="select-text font-mono text-xs text-muted-foreground">
+                                #{w.channelId} &bull; Msg {w.messageId}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={w.lastSyncStatus === "error" ? "destructive" : "success"}>
+                                  {w.lastSyncStatus === "error" ? "Sync Error" : "Live Synced"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground tabular-nums">
+                                {w.lastSyncedAt
+                                  ? formatLocalTime(w.lastSyncedAt)
+                                  : formatLocalTime(w.deployedAt)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={isRemoving}
+                                  onClick={() => {
+                                    setRemovingWidgetGuildId(guild.id);
+                                    removeWidgetMutation.mutate(guild.id);
+                                  }}
+                                  className="h-7 px-2 text-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                                >
+                                  {isRemoving ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  )}
+                                  Remove
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -575,65 +777,106 @@ export function AdminDispatchPage() {
               {deliveryLogs.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No deliveries recorded yet.</p>
               ) : (
-                <div className="rounded-lg border border-border bg-zinc-950/40">
-                  <Table containerClassName="thin-scrollbar max-h-[470px] overflow-y-auto overflow-x-auto">
-                    <TableHeader className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
-                      <TableRow>
-                        <TableHead>Vehicle</TableHead>
-                        <TableHead>Guild / Message ID</TableHead>
-                        <TableHead>Method</TableHead>
-                        <TableHead>Environment</TableHead>
-                        <TableHead>Result</TableHead>
-                        <TableHead>Time</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pagedDeliveryLogs.map((log) => (
-                        <TableRow
-                          key={log.id}
-                          onClick={() => handleRowClick(() => setInspectDelivery(log))}
-                          className="cursor-pointer hover:bg-zinc-900/75"
-                        >
-                          <TableCell className="font-medium text-white py-2.5">
-                            {log.listingName}
-                          </TableCell>
-                          <TableCell className="select-text font-mono text-xs text-muted-foreground py-2.5">
+                <>
+                  {/* Mobile Card List */}
+                  <div className="space-y-2.5 md:hidden">
+                    {pagedDeliveryLogs.map((log) => (
+                      <button
+                        key={`m-log-${log.id}`}
+                        type="button"
+                        onClick={() => setInspectDelivery(log)}
+                        className="w-full space-y-2 rounded-lg border border-border bg-zinc-950 p-3.5 text-left text-xs transition hover:border-zinc-700 cursor-pointer"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-semibold text-white">{log.listingName}</span>
+                          {log.status === "delivered" ? (
+                            <Badge variant="success">Delivered</Badge>
+                          ) : log.status === "updated" ? (
+                            <Badge variant="info">Updated</Badge>
+                          ) : (
+                            <Badge variant="destructive">Failed</Badge>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <Badge variant={log.environment === "test" ? "warning" : "secondary"}>
+                            {log.environment}
+                          </Badge>
+                          <Badge variant="outline" className="capitalize">
+                            {log.method}
+                          </Badge>
+                          <span className="font-mono">
                             {log.guildId}
                             {log.messageId ? ` • #${log.messageId.slice(-6)}` : ""}
-                          </TableCell>
-                          <TableCell className="capitalize text-xs text-zinc-300 py-2.5">
-                            {log.method}
-                          </TableCell>
-                          <TableCell className="py-2.5">
-                            <Badge variant={log.environment === "test" ? "warning" : "secondary"}>
-                              {log.environment}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="py-2.5">
-                            {log.status === "delivered" ? (
-                              <span className="inline-flex items-center gap-1 text-xs text-emerald-300">
-                                <CheckCircle2 className="h-3.5 w-3.5" />
-                                Delivered
-                              </span>
-                            ) : log.status === "updated" ? (
-                              <span className="inline-flex items-center gap-1 text-xs text-sky-300">
-                                <Edit3 className="h-3.5 w-3.5" />
-                                Embed Updated
-                              </span>
-                            ) : (
-                              <span className="text-xs text-red-400">
-                                {log.error || "Failed"}
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell className="select-text text-xs text-muted-foreground tabular-nums py-2.5">
-                            {formatLocalDateTime(log.timestamp)}
-                          </TableCell>
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground tabular-nums">
+                          {formatLocalDateTime(log.timestamp)}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Desktop Table */}
+                  <div className="hidden rounded-lg border border-border bg-zinc-950/40 md:block">
+                    <Table containerClassName="thin-scrollbar max-h-[470px] overflow-y-auto overflow-x-auto">
+                      <TableHeader className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
+                        <TableRow>
+                          <TableHead>Vehicle</TableHead>
+                          <TableHead>Guild / Message ID</TableHead>
+                          <TableHead>Method</TableHead>
+                          <TableHead>Environment</TableHead>
+                          <TableHead>Result</TableHead>
+                          <TableHead>Time</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {pagedDeliveryLogs.map((log) => (
+                          <TableRow
+                            key={log.id}
+                            onClick={() => handleRowClick(() => setInspectDelivery(log))}
+                            className="cursor-pointer hover:bg-zinc-900/75"
+                          >
+                            <TableCell className="font-medium text-white py-2.5">
+                              {log.listingName}
+                            </TableCell>
+                            <TableCell className="select-text font-mono text-xs text-muted-foreground py-2.5">
+                              {log.guildId}
+                              {log.messageId ? ` • #${log.messageId.slice(-6)}` : ""}
+                            </TableCell>
+                            <TableCell className="capitalize text-xs text-zinc-300 py-2.5">
+                              {log.method}
+                            </TableCell>
+                            <TableCell className="py-2.5">
+                              <Badge variant={log.environment === "test" ? "warning" : "secondary"}>
+                                {log.environment}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="py-2.5">
+                              {log.status === "delivered" ? (
+                                <span className="inline-flex items-center gap-1 text-xs text-emerald-300">
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                  Delivered
+                                </span>
+                              ) : log.status === "updated" ? (
+                                <span className="inline-flex items-center gap-1 text-xs text-sky-300">
+                                  <Edit3 className="h-3.5 w-3.5" />
+                                  Embed Updated
+                                </span>
+                              ) : (
+                                <span className="text-xs text-red-400">
+                                  {log.error || "Failed"}
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="select-text text-xs text-muted-foreground tabular-nums py-2.5">
+                              {formatLocalDateTime(log.timestamp)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
               )}
 
               {/* Delivery Logs Pagination (40 per page) */}
@@ -815,9 +1058,9 @@ export function AdminDispatchPage() {
                   <Copy className="h-3.5 w-3.5" />
                   Copy JSON
                 </Button>
-                {inspectDelivery.messageId &&
-                  inspectDelivery.method !== "test" &&
-                  listings.some((l) => l.id === inspectDelivery.listingId) && (
+                  {listings.some((l) => l.id === inspectDelivery.listingId) &&
+                  inspectDelivery.messageId &&
+                  inspectDelivery.method !== "test" && (
                     <Button
                       size="sm"
                       disabled={editEmbedMutation.isPending}
@@ -842,6 +1085,295 @@ export function AdminDispatchPage() {
             </div>
           </DialogContent>
         )}
+      </Dialog>
+
+      {/* Recover Existing Embed Dialog */}
+      <Dialog open={recoverOpen} onOpenChange={setRecoverOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-4 w-4 text-zinc-300" />
+              Recover Existing Discord Embed
+            </DialogTitle>
+            <DialogDescription>
+              Re-link an older bot message by Discord Message Link or Message ID so future stock edits update that exact message in place—with zero reposts and zero role pings.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="thin-scrollbar max-h-[70vh] space-y-4 overflow-y-auto pr-1 text-xs">
+            <div className="space-y-1.5">
+              <Label htmlFor="recover-msg-ref">Discord Message Link or Message ID</Label>
+              <Input
+                id="recover-msg-ref"
+                value={recoverMessageRef}
+                onChange={(e) => handleRecoverInputChange(e.target.value)}
+                placeholder="https://discord.com/channels/guildId/channelId/messageId  or  13581..."
+                className="font-mono text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Pasting a full Discord message URL automatically prefills the server &amp; channel fields below.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Destination Server</Label>
+                <Select
+                  value={recoverGuildId}
+                  onValueChange={(gid) => {
+                    setRecoverGuildId(gid);
+                    const g = connectedGuilds.find((item) => item.id === gid);
+                    if (g?.channelId) setRecoverChannelId(g.channelId);
+                    setRecoverPreview(null);
+                    setRecoverError(null);
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Choose Discord server" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {connectedGuilds.map((g) => (
+                      <SelectItem key={`rec-g-${g.id}`} value={g.id}>
+                        {g.name} ({g.environment})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="recover-channel-id">Channel ID</Label>
+                <Input
+                  id="recover-channel-id"
+                  value={recoverChannelId}
+                  onChange={(e) => {
+                    setRecoverChannelId(e.target.value);
+                    setRecoverPreview(null);
+                    setRecoverError(null);
+                  }}
+                  placeholder="123456789012345678"
+                  className="h-9 font-mono text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Associated Vehicle Listing</Label>
+              <Select
+                value={recoverListingId}
+                onValueChange={(lid) => {
+                  setRecoverListingId(lid);
+                  setRecoverPreview(null);
+                  setRecoverError(null);
+                }}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Choose vehicle listing" />
+                </SelectTrigger>
+                <SelectContent>
+                  {listings.map((item) => (
+                    <SelectItem key={`rec-l-${item.id}`} value={item.id}>
+                      {item.name} (#{item.id}) — {item.isAvailable ? "In Stock" : "Sold Out"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={
+                  !recoverMessageRef.trim() ||
+                  !recoverGuildId ||
+                  !recoverListingId ||
+                  recoverPreviewMutation.isPending
+                }
+                onClick={() => recoverPreviewMutation.mutate()}
+              >
+                {recoverPreviewMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Inspecting Discord Message...
+                  </>
+                ) : (
+                  <>
+                    <Search className="h-3.5 w-3.5" />
+                    Fetch &amp; Preview Message
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {recoverError && (
+              <div className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-950/35 p-3 text-red-200">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                <div className="space-y-0.5">
+                  <p className="font-semibold">Unable to Recover Message</p>
+                  <p className="text-[11px] leading-relaxed">{recoverError}</p>
+                </div>
+              </div>
+            )}
+
+            {recoverPreview && (
+              <div className="space-y-3 rounded-xl border border-border bg-zinc-950 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-300">
+                    <ShieldCheck className="h-4 w-4" />
+                    Verified Bot Message (#{recoverPreview.preview.messageId.slice(-6)})
+                  </span>
+                  {safeExternalUrl(recoverPreview.preview.jumpUrl) && (
+                    <a
+                      href={safeExternalUrl(recoverPreview.preview.jumpUrl)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] text-zinc-200 underline decoration-zinc-600 hover:text-white"
+                    >
+                      Open in Discord
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
+
+                <div className="grid gap-2 rounded-lg border border-border/80 bg-zinc-900/50 p-3 sm:grid-cols-2">
+                  <div>
+                    <span className="text-muted-foreground">Author</span>
+                    <p className="mt-0.5 font-medium text-white">
+                      {recoverPreview.preview.authorUsername || "Everfall Bot"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Original Post Date</span>
+                    <p className="mt-0.5 font-medium text-white tabular-nums">
+                      {formatLocalDateTime(recoverPreview.preview.createdAtMs)}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Target Channel</span>
+                    <p className="mt-0.5 select-text font-mono text-zinc-200">
+                      #{recoverPreview.preview.channelId}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Target Vehicle State</span>
+                    <p className="mt-0.5 font-medium text-white">
+                      {recoverPreview.listingName} (
+                      {recoverPreview.listingIsAvailable ? "In Stock" : "Sold Out"})
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+                  <p className="font-semibold text-white">
+                    {recoverPreview.preview.title || "Original Discord Embed"}
+                  </p>
+                  {recoverPreview.preview.description && (
+                    <p className="line-clamp-4 whitespace-pre-line text-[11px] leading-relaxed text-zinc-300">
+                      {recoverPreview.preview.description}
+                    </p>
+                  )}
+                  {recoverPreview.preview.imageUrl &&
+                    safeExternalUrl(recoverPreview.preview.imageUrl) && (
+                      <img
+                        src={safeExternalUrl(recoverPreview.preview.imageUrl)!}
+                        alt=""
+                        referrerPolicy="no-referrer"
+                        className="max-h-36 w-full rounded border border-border object-cover"
+                      />
+                    )}
+                </div>
+
+                {(recoverPreview.conflicts.alreadyLinkedListingId ||
+                  recoverPreview.conflicts.guildAlreadyTracksDifferentMessage) && (
+                  <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-950/35 p-3 text-amber-200">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                      <div className="space-y-1 text-[11px]">
+                        <p className="font-semibold text-amber-100">
+                          Existing Tracking Conflict Detected
+                        </p>
+                        {recoverPreview.conflicts.alreadyLinkedListingId && (
+                          <p>
+                            This Discord message is already linked to listing{" "}
+                            <code className="text-white">
+                              #{recoverPreview.conflicts.alreadyLinkedListingId}
+                            </code>
+                            .
+                          </p>
+                        )}
+                        {recoverPreview.conflicts.guildAlreadyTracksDifferentMessage && (
+                          <p>
+                            This server already tracks message{" "}
+                            <code className="text-white">
+                              #
+                              {
+                                recoverPreview.conflicts.guildAlreadyTracksDifferentMessage
+                                  .messageId
+                              }
+                            </code>{" "}
+                            for this listing.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <label className="flex cursor-pointer items-center gap-2 rounded border border-amber-500/30 bg-zinc-950/70 px-2.5 py-2 text-[11px] text-amber-100">
+                      <input
+                        type="checkbox"
+                        checked={recoverAllowOverwrite}
+                        onChange={(e) => setRecoverAllowOverwrite(e.target.checked)}
+                        className="h-3.5 w-3.5 accent-white"
+                      />
+                      <span>Overwrite existing message tracking record for this pairing</span>
+                    </label>
+                  </div>
+                )}
+
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-zinc-900/50 px-3 py-2.5 text-zinc-200">
+                  <input
+                    type="checkbox"
+                    checked={recoverApplyTemplate}
+                    onChange={(e) => setRecoverApplyTemplate(e.target.checked)}
+                    className="h-4 w-4 accent-white"
+                  />
+                  <span>
+                    Apply current{" "}
+                    <strong className="text-white">
+                      {recoverPreview.listingIsAvailable ? "In Stock" : "Sold Out"}
+                    </strong>{" "}
+                    template immediately (edits this message in-place; never reposts or pings roles)
+                  </span>
+                </label>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecoverOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                !recoverPreview ||
+                recoverExecuteMutation.isPending ||
+                ((Boolean(recoverPreview.conflicts.alreadyLinkedListingId) ||
+                  Boolean(recoverPreview.conflicts.guildAlreadyTracksDifferentMessage)) &&
+                  !recoverAllowOverwrite)
+              }
+              onClick={() => recoverExecuteMutation.mutate()}
+            >
+              {recoverExecuteMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Recovering Embed...
+                </>
+              ) : (
+                "Recover Tracking"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </AppShell>
   );

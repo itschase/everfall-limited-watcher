@@ -465,110 +465,169 @@ export function AdminMonitorPage() {
                 No store check records match this filter yet.
               </div>
             ) : (
-              <div className="rounded-lg border border-border bg-zinc-950/40">
-                <Table containerClassName="thin-scrollbar max-h-[470px] overflow-y-auto overflow-x-auto">
-                  <TableHeader className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
-                    <TableRow>
-                      <TableHead>Timestamp</TableHead>
-                      <TableHead>Trigger / Runner</TableHead>
-                      <TableHead>Outcome</TableHead>
-                      <TableHead>Response</TableHead>
-                      <TableHead>Activity</TableHead>
-                      <TableHead>Result</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pagedLogs.map((entry) => (
-                      <TableRow
-                        key={entry.id}
-                        onClick={() => handleRowClick(() => setInspectLog(entry))}
-                        className="cursor-pointer hover:bg-zinc-900/75"
-                      >
-                        <TableCell className="select-text whitespace-nowrap text-xs text-zinc-200 tabular-nums py-2.5">
-                          {formatLocalDateTime(entry.timestamp)}
-                        </TableCell>
-                        <TableCell className="py-2.5">
-                          <div className="flex flex-col gap-0.5">
-                            <Badge variant="secondary" className="w-fit">
-                              {formatSourceLabel(entry.source)}
-                            </Badge>
-                            {entry.runner && (
-                              <span className="select-text text-[10px] text-muted-foreground truncate max-w-[140px]">
-                                {entry.runner}
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-2.5">
-                          {entry.status === "success" ? (
-                            <Badge variant="success">Success</Badge>
-                          ) : entry.status === "blocked" ? (
-                            <Badge variant="warning">CF Challenge</Badge>
-                          ) : (
-                            <Badge variant="destructive">Failed</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="select-text whitespace-nowrap font-mono text-xs text-zinc-300 tabular-nums py-2.5">
+              <>
+                {/* Mobile Log Cards */}
+                <div className="space-y-2.5 md:hidden">
+                  {pagedLogs.map((entry) => (
+                    <div
+                      key={`m-mon-${entry.id}`}
+                      onClick={() => handleRowClick(() => setInspectLog(entry))}
+                      className="cursor-pointer space-y-2 rounded-lg border border-border bg-zinc-950 p-3.5 text-xs transition hover:border-zinc-700"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <Badge variant="secondary">{formatSourceLabel(entry.source)}</Badge>
+                          <p className="mt-1 select-text text-[11px] text-muted-foreground tabular-nums">
+                            {formatLocalDateTime(entry.timestamp)}
+                          </p>
+                        </div>
+                        {entry.status === "success" ? (
+                          <Badge variant="success">Success</Badge>
+                        ) : entry.status === "blocked" ? (
+                          <Badge variant="warning">CF Challenge</Badge>
+                        ) : (
+                          <Badge variant="destructive">Failed</Badge>
+                        )}
+                      </div>
+                      <p className="select-text break-words text-xs text-zinc-200">{entry.message}</p>
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-2">
+                        <span className="font-mono text-[11px] text-zinc-300 tabular-nums">
                           {entry.httpStatus ? `HTTP ${entry.httpStatus}` : "Err"} &bull;{" "}
                           {formatBytes(entry.responseLength)} &bull; {entry.durationMs}ms
-                        </TableCell>
-                        <TableCell className="py-2.5">
-                          <div className="flex flex-wrap items-center gap-1 text-[11px] tabular-nums">
-                            <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
-                              {entry.listingCount} active
-                            </Badge>
-                            {entry.newDiscoveries > 0 && (
-                              <Badge variant="success" className="px-1.5 py-0 text-[10px]">
-                                +{entry.newDiscoveries} new
-                              </Badge>
-                            )}
-                            {(entry.soldOutListingIds?.length || 0) > 0 && (
-                              <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
-                                {entry.soldOutListingIds?.length} sold out
-                              </Badge>
-                            )}
-                            {(entry.dispatchedDrops || 0) > 0 && (
-                              <Badge variant="info" className="px-1.5 py-0 text-[10px]">
-                                {entry.dispatchedDrops} sent
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="select-text max-w-[230px] truncate text-xs text-muted-foreground py-2.5">
-                          {entry.message}
-                        </TableCell>
-                        <TableCell className="text-right py-2.5" onClick={(e) => e.stopPropagation()}>
-                          <div className="inline-flex items-center gap-1">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  aria-label="Copy log telemetry"
-                                  onClick={() => void copyMonitorLog(entry)}
-                                  className="h-7 px-2"
-                                >
-                                  <Copy className="h-3.5 w-3.5" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Copy log telemetry JSON</TooltipContent>
-                            </Tooltip>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setInspectLog(entry)}
-                              className="h-7 px-2.5 text-xs"
-                            >
-                              Inspect
-                            </Button>
-                          </div>
-                        </TableCell>
+                        </span>
+                        <div
+                          className="flex items-center gap-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label="Copy log telemetry"
+                            onClick={() => void copyMonitorLog(entry)}
+                            className="h-7 px-2"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setInspectLog(entry)}
+                            className="h-7 px-2.5 text-xs"
+                          >
+                            Inspect
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table */}
+                <div className="hidden rounded-lg border border-border bg-zinc-950/40 md:block">
+                  <Table containerClassName="thin-scrollbar max-h-[470px] overflow-y-auto overflow-x-auto">
+                    <TableHeader className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
+                      <TableRow>
+                        <TableHead>Timestamp</TableHead>
+                        <TableHead>Trigger / Runner</TableHead>
+                        <TableHead>Outcome</TableHead>
+                        <TableHead>Response</TableHead>
+                        <TableHead>Activity</TableHead>
+                        <TableHead>Result</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {pagedLogs.map((entry) => (
+                        <TableRow
+                          key={entry.id}
+                          onClick={() => handleRowClick(() => setInspectLog(entry))}
+                          className="cursor-pointer hover:bg-zinc-900/75"
+                        >
+                          <TableCell className="select-text whitespace-nowrap text-xs text-zinc-200 tabular-nums py-2.5">
+                            {formatLocalDateTime(entry.timestamp)}
+                          </TableCell>
+                          <TableCell className="py-2.5">
+                            <div className="flex flex-col gap-0.5">
+                              <Badge variant="secondary" className="w-fit">
+                                {formatSourceLabel(entry.source)}
+                              </Badge>
+                              {entry.runner && (
+                                <span className="select-text text-[10px] text-muted-foreground truncate max-w-[140px]">
+                                  {entry.runner}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-2.5">
+                            {entry.status === "success" ? (
+                              <Badge variant="success">Success</Badge>
+                            ) : entry.status === "blocked" ? (
+                              <Badge variant="warning">CF Challenge</Badge>
+                            ) : (
+                              <Badge variant="destructive">Failed</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="select-text whitespace-nowrap font-mono text-xs text-zinc-300 tabular-nums py-2.5">
+                            {entry.httpStatus ? `HTTP ${entry.httpStatus}` : "Err"} &bull;{" "}
+                            {formatBytes(entry.responseLength)} &bull; {entry.durationMs}ms
+                          </TableCell>
+                          <TableCell className="py-2.5">
+                            <div className="flex flex-wrap items-center gap-1 text-[11px] tabular-nums">
+                              <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                                {entry.listingCount} active
+                              </Badge>
+                              {entry.newDiscoveries > 0 && (
+                                <Badge variant="success" className="px-1.5 py-0 text-[10px]">
+                                  +{entry.newDiscoveries} new
+                                </Badge>
+                              )}
+                              {(entry.soldOutListingIds?.length || 0) > 0 && (
+                                <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
+                                  {entry.soldOutListingIds?.length} sold out
+                                </Badge>
+                              )}
+                              {(entry.dispatchedDrops || 0) > 0 && (
+                                <Badge variant="info" className="px-1.5 py-0 text-[10px]">
+                                  {entry.dispatchedDrops} sent
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="select-text max-w-[230px] truncate text-xs text-muted-foreground py-2.5">
+                            {entry.message}
+                          </TableCell>
+                          <TableCell className="text-right py-2.5" onClick={(e) => e.stopPropagation()}>
+                            <div className="inline-flex items-center gap-1">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    aria-label="Copy log telemetry"
+                                    onClick={() => void copyMonitorLog(entry)}
+                                    className="h-7 px-2"
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Copy log telemetry JSON</TooltipContent>
+                              </Tooltip>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setInspectLog(entry)}
+                                className="h-7 px-2.5 text-xs"
+                              >
+                                Inspect
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
 
             {/* Pagination Controls (up to 40 results per page) */}
@@ -632,52 +691,46 @@ export function AdminMonitorPage() {
                 ))}
               </div>
             ) : (
-              <Table containerClassName="thin-scrollbar max-h-[470px] overflow-y-auto overflow-x-auto">
-                <TableHeader className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
-                  <TableRow>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead>Stock</TableHead>
-                    <TableHead>Metadata Readiness</TableHead>
-                    <TableHead>HTTP Status</TableHead>
-                    <TableHead>Last Verified</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <>
+                {/* Mobile Tracked Listings Cards */}
+                <div className="space-y-2.5 md:hidden">
                   {listings.map((item) => (
-                    <TableRow
-                      key={item.id}
+                    <div
+                      key={`m-item-${item.id}`}
                       onClick={() => handleRowClick(() => setInspectItem(item))}
-                      className="cursor-pointer hover:bg-zinc-900/75"
+                      className="cursor-pointer space-y-2 rounded-lg border border-border bg-zinc-950 p-3.5 text-xs transition hover:border-zinc-700"
                     >
-                      <TableCell className="py-2.5">
-                        <p className="font-semibold text-white">{item.name}</p>
-                        <p className="font-mono text-[11px] text-muted-foreground">
-                          #<span className="select-text cursor-text">{item.id}</span>
-                        </p>
-                      </TableCell>
-                      <TableCell className="py-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-white">{item.name}</p>
+                          <p className="select-text font-mono text-[11px] text-muted-foreground">
+                            #{item.id}
+                          </p>
+                        </div>
                         <Badge variant={item.isAvailable ? "success" : "destructive"}>
                           {item.isAvailable ? "In Stock" : "Sold Out"}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="py-2.5">
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <Badge variant={item.readiness === "ready" ? "success" : "warning"}>
-                          {item.readiness === "ready" ? "Ready to Publish" : "Incomplete"}
+                          {item.readiness === "ready" ? "Ready" : "Incomplete"}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="select-text font-mono text-xs text-zinc-300 py-2.5">
-                        {item.lastHttpStatus ? `HTTP ${item.lastHttpStatus}` : "Unknown"}
-                      </TableCell>
-                      <TableCell className="select-text text-xs text-muted-foreground tabular-nums py-2.5">
-                        {formatLocalDateTime(item.lastVerifiedAt)}
-                      </TableCell>
-                      <TableCell className="text-right py-2.5" onClick={(e) => e.stopPropagation()}>
-                        <div className="inline-flex items-center gap-1.5">
+                        <span className="font-mono text-[11px] text-zinc-300">
+                          {item.lastHttpStatus ? `HTTP ${item.lastHttpStatus}` : "Unknown"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 border-t border-border/70 pt-2">
+                        <span className="text-[11px] text-muted-foreground tabular-nums">
+                          {formatLocalDateTime(item.lastVerifiedAt)}
+                        </span>
+                        <div
+                          className="flex items-center gap-1.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <Button variant="outline" size="sm" asChild className="h-7 px-2 text-xs">
                             <a href={`/admin/images?listingId=${encodeURIComponent(item.id)}`}>
                               <Images className="h-3 w-3" />
-                              Edit Images
+                              Images
                             </a>
                           </Button>
                           <Button
@@ -689,11 +742,77 @@ export function AdminMonitorPage() {
                             Inspect
                           </Button>
                         </div>
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+
+                {/* Desktop Table */}
+                <div className="hidden md:block">
+                  <Table containerClassName="thin-scrollbar max-h-[470px] overflow-y-auto overflow-x-auto">
+                    <TableHeader className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
+                      <TableRow>
+                        <TableHead>Vehicle</TableHead>
+                        <TableHead>Stock</TableHead>
+                        <TableHead>Metadata Readiness</TableHead>
+                        <TableHead>HTTP Status</TableHead>
+                        <TableHead>Last Verified</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {listings.map((item) => (
+                        <TableRow
+                          key={item.id}
+                          onClick={() => handleRowClick(() => setInspectItem(item))}
+                          className="cursor-pointer hover:bg-zinc-900/75"
+                        >
+                          <TableCell className="py-2.5">
+                            <p className="font-semibold text-white">{item.name}</p>
+                            <p className="font-mono text-[11px] text-muted-foreground">
+                              #<span className="select-text cursor-text">{item.id}</span>
+                            </p>
+                          </TableCell>
+                          <TableCell className="py-2.5">
+                            <Badge variant={item.isAvailable ? "success" : "destructive"}>
+                              {item.isAvailable ? "In Stock" : "Sold Out"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-2.5">
+                            <Badge variant={item.readiness === "ready" ? "success" : "warning"}>
+                              {item.readiness === "ready" ? "Ready to Publish" : "Incomplete"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="select-text font-mono text-xs text-zinc-300 py-2.5">
+                            {item.lastHttpStatus ? `HTTP ${item.lastHttpStatus}` : "Unknown"}
+                          </TableCell>
+                          <TableCell className="select-text text-xs text-muted-foreground tabular-nums py-2.5">
+                            {formatLocalDateTime(item.lastVerifiedAt)}
+                          </TableCell>
+                          <TableCell className="text-right py-2.5" onClick={(e) => e.stopPropagation()}>
+                            <div className="inline-flex items-center gap-1.5">
+                              <Button variant="outline" size="sm" asChild className="h-7 px-2 text-xs">
+                                <a href={`/admin/images?listingId=${encodeURIComponent(item.id)}`}>
+                                  <Images className="h-3 w-3" />
+                                  Edit Images
+                                </a>
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setInspectItem(item)}
+                                className="h-7 px-2 text-xs"
+                              >
+                                Inspect
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>

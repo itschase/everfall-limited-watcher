@@ -697,7 +697,16 @@ export function AdminBotPage() {
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1.5 text-muted-foreground">
                       <Database className="h-3.5 w-3.5" />
-                      Workers KV Binding
+                      Cloudflare D1 Database
+                    </span>
+                    <Badge variant={data.environment.d1Bound ? "success" : "warning"}>
+                      {data.environment.d1Bound ? "DB Bound (Primary)" : "KV Fallback"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      <Database className="h-3.5 w-3.5" />
+                      Workers KV (TTL Cache)
                     </span>
                     <Badge variant={data.environment.kvBound ? "success" : "destructive"}>
                       {data.environment.kvBound ? "DISCORD_BOT Bound" : "Unbound"}
@@ -869,29 +878,24 @@ export function AdminBotPage() {
                   No connected Discord servers reported by bot token.
                 </p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Server</TableHead>
-                      <TableHead>/widget Availability</TableHead>
-                      <TableHead>Guild Scope</TableHead>
-                      <TableHead>Diagnostic Detail</TableHead>
-                      <TableHead className="text-right">Instant Controls</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                <>
+                  {/* Mobile Per-Server Availability Cards */}
+                  <div className="space-y-3 md:hidden">
                     {data.availability.map((row) => {
                       const inviteUrl = guildInviteMap.get(row.guildId);
                       const busy = activeGuildId === row.guildId && guildCommandMutation.isPending;
                       return (
-                        <TableRow key={row.guildId}>
-                          <TableCell>
-                            <p className="font-medium text-white">{row.guildName}</p>
-                            <p className="select-text font-mono text-[11px] text-muted-foreground">
-                              {row.guildId}
-                            </p>
-                          </TableCell>
-                          <TableCell>
+                        <div
+                          key={row.guildId}
+                          className="space-y-2.5 rounded-lg border border-border bg-zinc-950/75 p-3.5 text-xs"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-white">{row.guildName}</p>
+                              <p className="truncate select-text font-mono text-[11px] text-muted-foreground">
+                                {row.guildId}
+                              </p>
+                            </div>
                             <Badge
                               variant={
                                 row.widgetStatus === "available_global" ||
@@ -901,88 +905,204 @@ export function AdminBotPage() {
                                     ? "destructive"
                                     : "warning"
                               }
+                              className="shrink-0"
                             >
                               {row.widgetStatus === "available_global"
-                                ? "Available (Global)"
+                                ? "Global"
                                 : row.widgetStatus === "available_guild"
                                   ? row.guildWidgetOutdated
-                                    ? "Guild Override (Outdated)"
-                                    : "Available (Guild)"
+                                    ? "Outdated Guild"
+                                    : "Guild"
                                   : row.widgetStatus === "duplicate_conflict"
-                                    ? "Duplicate (Global + Guild)"
+                                    ? "Duplicate"
                                     : row.widgetStatus === "missing_scope"
-                                      ? "Missing OAuth Scope"
+                                      ? "Missing Scope"
                                       : row.widgetStatus === "missing_command"
                                         ? "Missing /widget"
                                         : "Error"}
                             </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs text-zinc-300 tabular-nums">
+                          </div>
+                          <p className="text-[11px] text-zinc-300 tabular-nums">
+                            Scope:{" "}
                             {row.hasCommandsScope
                               ? `${row.guildCommandCount} guild override(s)`
                               : "No commands scope (403)"}
-                          </TableCell>
-                          <TableCell className="max-w-xs text-xs text-muted-foreground">
-                            {row.detail}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
-                              {inviteUrl && (
-                                <a
-                                  href={inviteUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-secondary px-2 text-[11px] font-medium text-zinc-200 transition hover:bg-zinc-800 hover:text-white"
-                                >
-                                  Re-invite
-                                  <ExternalLink className="h-3 w-3" />
-                                </a>
+                          </p>
+                          <p className="break-words text-[11px] text-muted-foreground">{row.detail}</p>
+                          <div className="flex flex-wrap items-center gap-1.5 border-t border-border/70 pt-2">
+                            {inviteUrl && (
+                              <a
+                                href={inviteUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-secondary px-2 text-[11px] font-medium text-zinc-200 transition hover:bg-zinc-800 hover:text-white"
+                              >
+                                Re-invite
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={busy || anyMutating || !row.hasCommandsScope}
+                              onClick={() => {
+                                setActiveGuildId(row.guildId);
+                                guildCommandMutation.mutate({
+                                  guildId: row.guildId,
+                                  action: "sync",
+                                });
+                              }}
+                              className="h-7 px-2 text-[11px]"
+                            >
+                              {busy ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Terminal className="h-3 w-3" />
                               )}
+                              Sync Guild
+                            </Button>
+                            {row.guildCommandCount > 0 && (
                               <Button
                                 size="sm"
-                                variant="secondary"
-                                disabled={busy || anyMutating || !row.hasCommandsScope}
+                                variant="ghost"
+                                disabled={busy || anyMutating}
                                 onClick={() => {
                                   setActiveGuildId(row.guildId);
                                   guildCommandMutation.mutate({
                                     guildId: row.guildId,
-                                    action: "sync",
+                                    action: "clear",
                                   });
                                 }}
-                                className="h-7 px-2 text-[11px]"
+                                className="h-7 px-2 text-[11px] text-red-400 hover:bg-red-950/40 hover:text-red-300"
                               >
-                                {busy ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <Terminal className="h-3 w-3" />
-                                )}
-                                Sync Guild
+                                <Trash2 className="h-3 w-3" />
+                                Clear
                               </Button>
-                              {row.guildCommandCount > 0 && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  disabled={busy || anyMutating}
-                                  onClick={() => {
-                                    setActiveGuildId(row.guildId);
-                                    guildCommandMutation.mutate({
-                                      guildId: row.guildId,
-                                      action: "clear",
-                                    });
-                                  }}
-                                  className="h-7 px-2 text-[11px] text-red-400 hover:bg-red-950/40 hover:text-red-300"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                  Clear
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
+                            )}
+                          </div>
+                        </div>
                       );
                     })}
-                  </TableBody>
-                </Table>
+                  </div>
+
+                  {/* Desktop Per-Server Availability Table */}
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Server</TableHead>
+                          <TableHead>/widget Availability</TableHead>
+                          <TableHead>Guild Scope</TableHead>
+                          <TableHead>Diagnostic Detail</TableHead>
+                          <TableHead className="text-right">Instant Controls</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {data.availability.map((row) => {
+                          const inviteUrl = guildInviteMap.get(row.guildId);
+                          const busy = activeGuildId === row.guildId && guildCommandMutation.isPending;
+                          return (
+                            <TableRow key={row.guildId}>
+                              <TableCell>
+                                <p className="font-medium text-white">{row.guildName}</p>
+                                <p className="select-text font-mono text-[11px] text-muted-foreground">
+                                  {row.guildId}
+                                </p>
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={
+                                    row.widgetStatus === "available_global" ||
+                                    (row.widgetStatus === "available_guild" && !row.guildWidgetOutdated)
+                                      ? "success"
+                                      : row.widgetStatus === "missing_scope"
+                                        ? "destructive"
+                                        : "warning"
+                                  }
+                                >
+                                  {row.widgetStatus === "available_global"
+                                    ? "Available (Global)"
+                                    : row.widgetStatus === "available_guild"
+                                      ? row.guildWidgetOutdated
+                                        ? "Guild Override (Outdated)"
+                                        : "Available (Guild)"
+                                      : row.widgetStatus === "duplicate_conflict"
+                                        ? "Duplicate (Global + Guild)"
+                                        : row.widgetStatus === "missing_scope"
+                                          ? "Missing OAuth Scope"
+                                          : row.widgetStatus === "missing_command"
+                                            ? "Missing /widget"
+                                            : "Error"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs text-zinc-300 tabular-nums">
+                                {row.hasCommandsScope
+                                  ? `${row.guildCommandCount} guild override(s)`
+                                  : "No commands scope (403)"}
+                              </TableCell>
+                              <TableCell className="max-w-xs text-xs text-muted-foreground">
+                                {row.detail}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                                  {inviteUrl && (
+                                    <a
+                                      href={inviteUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-secondary px-2 text-[11px] font-medium text-zinc-200 transition hover:bg-zinc-800 hover:text-white"
+                                    >
+                                      Re-invite
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    disabled={busy || anyMutating || !row.hasCommandsScope}
+                                    onClick={() => {
+                                      setActiveGuildId(row.guildId);
+                                      guildCommandMutation.mutate({
+                                        guildId: row.guildId,
+                                        action: "sync",
+                                      });
+                                    }}
+                                    className="h-7 px-2 text-[11px]"
+                                  >
+                                    {busy ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Terminal className="h-3 w-3" />
+                                    )}
+                                    Sync Guild
+                                  </Button>
+                                  {row.guildCommandCount > 0 && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      disabled={busy || anyMutating}
+                                      onClick={() => {
+                                        setActiveGuildId(row.guildId);
+                                        guildCommandMutation.mutate({
+                                          guildId: row.guildId,
+                                          action: "clear",
+                                        });
+                                      }}
+                                      className="h-7 px-2 text-[11px] text-red-400 hover:bg-red-950/40 hover:text-red-300"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                      Clear
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -1028,79 +1148,135 @@ export function AdminBotPage() {
               </Badge>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Command</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Access</TableHead>
-                    <TableHead>Options</TableHead>
-                    <TableHead>Live Discord ID</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.comparisons.map((cmd) => (
-                    <TableRow
-                      key={cmd.name}
-                      onClick={() => {
-                        if (window.getSelection()?.toString().trim()) return;
-                        setSelectedCommand(cmd);
-                      }}
-                      className="cursor-pointer transition-colors hover:bg-zinc-900/70"
-                    >
-                      <TableCell className="select-text font-mono text-sm font-semibold text-white">
+              {/* Mobile Slash Command Cards */}
+              <div className="space-y-3 md:hidden">
+                {data.comparisons.map((cmd) => (
+                  <div
+                    key={cmd.name}
+                    onClick={() => setSelectedCommand(cmd)}
+                    className="space-y-2 rounded-lg border border-border bg-zinc-950/75 p-3.5 text-xs cursor-pointer active:bg-zinc-900/70"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="select-text font-mono text-sm font-semibold text-white">
                         /{cmd.name}
-                      </TableCell>
-                      <TableCell className="max-w-sm text-xs text-zinc-300">
-                        <p className="line-clamp-2">{cmd.description}</p>
-                        {cmd.diffReason && (
-                          <p className="mt-1 text-[11px] text-amber-300">Diff: {cmd.diffReason}</p>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={cmd.defaultMemberPermissions ? "secondary" : "outline"}>
-                          {cmd.defaultMemberPermissions ? "Manage Server" : "Everyone"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {cmd.options.length === 0 ? (
-                          <span>None</span>
-                        ) : (
-                          cmd.options.map((o) => (
-                            <span
-                              key={o.name}
-                              className="mr-1.5 inline-block rounded border border-border bg-zinc-950 px-1.5 py-0.5 font-mono text-[11px] text-zinc-300"
-                            >
-                              {o.name}:{OPTION_TYPE_LABELS[o.type] || `#${o.type}`}
-                            </span>
-                          ))
-                        )}
-                      </TableCell>
-                      <TableCell className="select-text font-mono text-xs text-muted-foreground">
-                        {cmd.liveId || "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            cmd.syncState === "synced"
-                              ? "success"
-                              : cmd.syncState === "outdated"
-                                ? "warning"
-                                : "destructive"
-                          }
-                        >
-                          {cmd.syncState === "synced"
-                            ? "Synced"
+                      </span>
+                      <Badge
+                        variant={
+                          cmd.syncState === "synced"
+                            ? "success"
                             : cmd.syncState === "outdated"
-                              ? "Outdated"
-                              : "Missing"}
-                        </Badge>
-                      </TableCell>
+                              ? "warning"
+                              : "destructive"
+                        }
+                        className="shrink-0"
+                      >
+                        {cmd.syncState === "synced"
+                          ? "Synced"
+                          : cmd.syncState === "outdated"
+                            ? "Outdated"
+                            : "Missing"}
+                      </Badge>
+                    </div>
+                    <p className="text-zinc-300 leading-relaxed">{cmd.description}</p>
+                    {cmd.diffReason && (
+                      <p className="break-words text-[11px] text-amber-300">Diff: {cmd.diffReason}</p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <Badge variant={cmd.defaultMemberPermissions ? "secondary" : "outline"}>
+                        {cmd.defaultMemberPermissions ? "Manage Server" : "Everyone"}
+                      </Badge>
+                      {cmd.options.map((o) => (
+                        <span
+                          key={o.name}
+                          className="inline-block rounded border border-border bg-zinc-950 px-1.5 py-0.5 font-mono text-[11px] text-zinc-300"
+                        >
+                          {o.name}:{OPTION_TYPE_LABELS[o.type] || `#${o.type}`}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="break-all select-text font-mono text-[11px] text-muted-foreground">
+                      Live ID: {cmd.liveId || "—"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Slash Command Table */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Command</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Access</TableHead>
+                      <TableHead>Options</TableHead>
+                      <TableHead>Live Discord ID</TableHead>
+                      <TableHead>Status</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {data.comparisons.map((cmd) => (
+                      <TableRow
+                        key={cmd.name}
+                        onClick={() => {
+                          if (window.getSelection()?.toString().trim()) return;
+                          setSelectedCommand(cmd);
+                        }}
+                        className="cursor-pointer transition-colors hover:bg-zinc-900/70"
+                      >
+                        <TableCell className="select-text font-mono text-sm font-semibold text-white">
+                          /{cmd.name}
+                        </TableCell>
+                        <TableCell className="max-w-sm text-xs text-zinc-300">
+                          <p className="line-clamp-2">{cmd.description}</p>
+                          {cmd.diffReason && (
+                            <p className="mt-1 text-[11px] text-amber-300">Diff: {cmd.diffReason}</p>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={cmd.defaultMemberPermissions ? "secondary" : "outline"}>
+                            {cmd.defaultMemberPermissions ? "Manage Server" : "Everyone"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {cmd.options.length === 0 ? (
+                            <span>None</span>
+                          ) : (
+                            cmd.options.map((o) => (
+                              <span
+                                key={o.name}
+                                className="mr-1.5 inline-block rounded border border-border bg-zinc-950 px-1.5 py-0.5 font-mono text-[11px] text-zinc-300"
+                              >
+                                {o.name}:{OPTION_TYPE_LABELS[o.type] || `#${o.type}`}
+                              </span>
+                            ))
+                          )}
+                        </TableCell>
+                        <TableCell className="select-text font-mono text-xs text-muted-foreground">
+                          {cmd.liveId || "—"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              cmd.syncState === "synced"
+                                ? "success"
+                                : cmd.syncState === "outdated"
+                                  ? "warning"
+                                  : "destructive"
+                            }
+                          >
+                            {cmd.syncState === "synced"
+                              ? "Synced"
+                              : cmd.syncState === "outdated"
+                                ? "Outdated"
+                                : "Missing"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
 
               {data.extraRemoteCommands.length > 0 && (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
