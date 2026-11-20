@@ -1,4 +1,9 @@
 import {
+  CHECK_INTERVAL_LABEL,
+  STORE_CATEGORY_URL as SHARED_STORE_CATEGORY_URL,
+  STORE_HOME_URL as SHARED_STORE_HOME_URL,
+} from "./appConfig";
+import {
   DEFAULT_FEATURE_ORDER,
   EmojiReference,
   ListingSourceInput,
@@ -7,8 +12,66 @@ import {
   VehicleFeature,
   VehicleMetadataOverride,
 } from "./features";
+import {
+  neutralizeDiscordMentions,
+  resolveTemplateVariables,
+  TemplateVariableValues,
+} from "./variables";
 
 export type DiscordEmojiRef = EmojiReference;
+
+export type TemplateSectionCondition =
+  | "always"
+  | "in_stock_only"
+  | "sold_out_only"
+  | "when_features_present"
+  | "when_trading_present"
+  | "when_delivery_present"
+  | "when_in_stock_any"
+  | "when_all_sold_out";
+
+export interface TemplateCustomSection {
+  id: string;
+  title: string;
+  content: string;
+  enabled: boolean;
+  condition: TemplateSectionCondition;
+  inline?: boolean;
+}
+
+export type AnnouncementSectionKey =
+  | "header"
+  | "status"
+  | "features"
+  | "description"
+  | "trading_delivery"
+  | "timestamps"
+  | "custom_sections";
+
+export const DEFAULT_ANNOUNCEMENT_SECTION_ORDER: AnnouncementSectionKey[] = [
+  "header",
+  "status",
+  "features",
+  "description",
+  "trading_delivery",
+  "timestamps",
+  "custom_sections",
+];
+
+export type WidgetSectionKey =
+  | "subtitle"
+  | "intro"
+  | "timestamps"
+  | "stale_warning"
+  | "custom_sections";
+
+export const DEFAULT_WIDGET_SECTION_ORDER: WidgetSectionKey[] = [
+  "subtitle",
+  "intro",
+  "timestamps",
+  "stale_warning",
+  "custom_sections",
+];
 
 export interface AnnouncementTemplate {
   accentColor: string;
@@ -23,10 +86,17 @@ export interface AnnouncementTemplate {
   featureOrder: string[];
   featureStyle: "inline_badges" | "bullet_list";
   showTradingInfo: boolean;
+  tradingLabel?: string;
   showDeliveryInfo: boolean;
+  deliveryLabel?: string;
   showDetectionTime: boolean;
+  firstDetectedLabel?: string;
   showLastVerified: boolean;
+  lastVerifiedLabel?: string;
   showSoldOutTime: boolean;
+  soldOutLabel?: string;
+  sectionOrder?: AnnouncementSectionKey[];
+  customSections?: TemplateCustomSection[];
   galleryMode: "all_gallery" | "primary_only" | "custom_slot" | "none";
   primaryImageSlot: number;
   footerText: string;
@@ -34,7 +104,12 @@ export interface AnnouncementTemplate {
   showStoreButton: boolean;
   storeButtonLabel: string;
   storeButtonEmoji?: DiscordEmojiRef | null;
-  storeButtonUrlMode: "listing" | "category" | "store_home" | "website";
+  storeButtonUrlMode: "listing" | "category" | "store_home" | "website" | "custom";
+  customButtonUrl?: string;
+  showSecondaryButton?: boolean;
+  secondaryButtonLabel?: string;
+  secondaryButtonUrlMode?: "listing" | "category" | "store_home" | "website" | "custom";
+  secondaryCustomButtonUrl?: string;
 }
 
 export interface WidgetTemplateConfig {
@@ -62,9 +137,22 @@ export interface WidgetTemplateConfig {
   featureOrder: string[];
   featureLabelOverrides: Record<string, string>;
   hiddenFeatureKeys: string[];
+  // Independent timestamp & monitoring toggles + editable labels
+  showLastStoreCheck?: boolean;
+  lastStoreCheckLabel?: string;
+  showLastVerifiedStock?: boolean;
+  lastVerifiedStockLabel?: string;
+  showMonitorState?: boolean;
+  monitorStateLabel?: string;
+  showLastUpdated?: boolean;
+  lastUpdatedLabel?: string;
+  showEmbedTimestamp?: boolean;
+  // Backward-compatible summary flag (derived automatically when independent toggles are present)
   showTimestamps: boolean;
   showStaleWarning: boolean;
   staleWarningText: string;
+  sectionOrder?: WidgetSectionKey[];
+  customSections?: TemplateCustomSection[];
   emptyStateMessage: string;
   footerText: string;
   footerEmoji?: DiscordEmojiRef | null;
@@ -74,6 +162,7 @@ export interface WidgetTemplateConfig {
   websiteButtonEmoji?: DiscordEmojiRef | null;
   storeButtonLabel: string;
   storeButtonEmoji?: DiscordEmojiRef | null;
+  customStoreButtonUrl?: string;
 }
 
 export type HeroAnimationStyle =
@@ -119,8 +208,8 @@ export interface PresentationConfigBundle {
   recentEmojis: DiscordEmojiRef[];
 }
 
-export const STORE_CATEGORY_URL = "https://store.everfallcommunity.com/category/limited-cars";
-export const STORE_HOME_URL = "https://store.everfallcommunity.com/";
+export const STORE_CATEGORY_URL = SHARED_STORE_CATEGORY_URL;
+export const STORE_HOME_URL = SHARED_STORE_HOME_URL;
 
 export const DEFAULT_IN_STOCK_TEMPLATE: AnnouncementTemplate = {
   accentColor: "#F59E0B",
@@ -140,10 +229,17 @@ export const DEFAULT_IN_STOCK_TEMPLATE: AnnouncementTemplate = {
   featureOrder: [...DEFAULT_FEATURE_ORDER],
   featureStyle: "inline_badges",
   showTradingInfo: true,
+  tradingLabel: "Trading",
   showDeliveryInfo: true,
+  deliveryLabel: "Delivery",
   showDetectionTime: true,
+  firstDetectedLabel: "First Detected",
   showLastVerified: true,
+  lastVerifiedLabel: "Last Verified",
   showSoldOutTime: false,
+  soldOutLabel: "Confirmed Sold Out",
+  sectionOrder: [...DEFAULT_ANNOUNCEMENT_SECTION_ORDER],
+  customSections: [],
   galleryMode: "all_gallery",
   primaryImageSlot: 0,
   footerText: "Everfall Limited Watcher • Verified Drop Alert",
@@ -157,6 +253,11 @@ export const DEFAULT_IN_STOCK_TEMPLATE: AnnouncementTemplate = {
     source: "application",
   },
   storeButtonUrlMode: "listing",
+  customButtonUrl: "",
+  showSecondaryButton: false,
+  secondaryButtonLabel: "View Archive Portal",
+  secondaryButtonUrlMode: "website",
+  secondaryCustomButtonUrl: "",
 };
 
 export const DEFAULT_SOLD_OUT_TEMPLATE: AnnouncementTemplate = {
@@ -172,10 +273,17 @@ export const DEFAULT_SOLD_OUT_TEMPLATE: AnnouncementTemplate = {
   featureOrder: [...DEFAULT_FEATURE_ORDER],
   featureStyle: "inline_badges",
   showTradingInfo: true,
+  tradingLabel: "Trading",
   showDeliveryInfo: false,
+  deliveryLabel: "Delivery",
   showDetectionTime: true,
+  firstDetectedLabel: "First Detected",
   showLastVerified: true,
+  lastVerifiedLabel: "Last Verified",
   showSoldOutTime: true,
+  soldOutLabel: "Confirmed Sold Out",
+  sectionOrder: [...DEFAULT_ANNOUNCEMENT_SECTION_ORDER],
+  customSections: [],
   galleryMode: "all_gallery",
   primaryImageSlot: 0,
   footerText: "Everfall Limited Watcher • Archived Sold Out Listing",
@@ -184,6 +292,11 @@ export const DEFAULT_SOLD_OUT_TEMPLATE: AnnouncementTemplate = {
   storeButtonLabel: "Open Everfall Store",
   storeButtonEmoji: null,
   storeButtonUrlMode: "store_home",
+  customButtonUrl: "",
+  showSecondaryButton: false,
+  secondaryButtonLabel: "View Archive Portal",
+  secondaryButtonUrlMode: "website",
+  secondaryCustomButtonUrl: "",
 };
 
 export const DEFAULT_WIDGET_TEMPLATE: WidgetTemplateConfig = {
@@ -216,9 +329,20 @@ export const DEFAULT_WIDGET_TEMPLATE: WidgetTemplateConfig = {
   featureOrder: [...DEFAULT_FEATURE_ORDER],
   featureLabelOverrides: {},
   hiddenFeatureKeys: [],
+  showLastStoreCheck: true,
+  lastStoreCheckLabel: "Last Store Check",
+  showLastVerifiedStock: true,
+  lastVerifiedStockLabel: "Last Verified Stock",
+  showMonitorState: true,
+  monitorStateLabel: "Monitor State",
+  showLastUpdated: true,
+  lastUpdatedLabel: "Widget Last Updated",
+  showEmbedTimestamp: true,
   showTimestamps: true,
   showStaleWarning: true,
   staleWarningText: "Latest store check could not verify live stock; showing last verified history.",
+  sectionOrder: [...DEFAULT_WIDGET_SECTION_ORDER],
+  customSections: [],
   emptyStateMessage: "No limited vehicles have been recorded in the store catalog yet.",
   footerText: "Everfall Limited Watcher • Live Status Widget",
   footerEmoji: null,
@@ -228,6 +352,7 @@ export const DEFAULT_WIDGET_TEMPLATE: WidgetTemplateConfig = {
   websiteButtonEmoji: null,
   storeButtonLabel: "Everfall Store",
   storeButtonEmoji: null,
+  customStoreButtonUrl: "",
 };
 
 export const DEFAULT_HERO_CONFIG: HeroConfig = {
@@ -271,20 +396,201 @@ export const DEFAULT_HERO_CONFIG: HeroConfig = {
   ],
 };
 
+function normalizeSectionOrder<T extends string>(
+  incoming: unknown,
+  defaults: readonly T[]
+): T[] {
+  const validSet = new Set<string>(defaults);
+  const seen = new Set<T>();
+  const out: T[] = [];
+  if (Array.isArray(incoming)) {
+    for (const item of incoming) {
+      const s = String(item || "") as T;
+      if (validSet.has(s) && !seen.has(s)) {
+        seen.add(s);
+        out.push(s);
+      }
+    }
+  }
+  for (const def of defaults) {
+    if (!seen.has(def)) out.push(def);
+  }
+  return out;
+}
+
+const VALID_SECTION_CONDITIONS = new Set<TemplateSectionCondition>([
+  "always",
+  "in_stock_only",
+  "sold_out_only",
+  "when_features_present",
+  "when_trading_present",
+  "when_delivery_present",
+  "when_in_stock_any",
+  "when_all_sold_out",
+]);
+
+export function normalizeCustomSections(raw: unknown): TemplateCustomSection[] {
+  if (!Array.isArray(raw)) return [];
+  const out: TemplateCustomSection[] = [];
+  for (let i = 0; i < Math.min(raw.length, 8); i++) {
+    const item = raw[i];
+    if (!item || typeof item !== "object") continue;
+    const obj = item as Record<string, unknown>;
+    const title = String(obj.title || "").trim().slice(0, 80);
+    const content = String(obj.content || "").trim().slice(0, 1000);
+    if (!title && !content) continue;
+    const conditionRaw = String(obj.condition || "always") as TemplateSectionCondition;
+    out.push({
+      id: String(obj.id || `section-${i + 1}`).trim().slice(0, 48),
+      title,
+      content,
+      enabled: obj.enabled !== false,
+      condition: VALID_SECTION_CONDITIONS.has(conditionRaw) ? conditionRaw : "always",
+      inline: Boolean(obj.inline),
+    });
+  }
+  return out;
+}
+
+export function normalizeAnnouncementTemplate(
+  incoming?: Partial<AnnouncementTemplate> | null,
+  fallback: AnnouncementTemplate = DEFAULT_IN_STOCK_TEMPLATE
+): AnnouncementTemplate {
+  const base = fallback;
+  const merged = incoming && typeof incoming === "object" ? { ...base, ...incoming } : { ...base };
+  return {
+    ...merged,
+    tradingLabel: String(merged.tradingLabel || base.tradingLabel || "Trading").trim().slice(0, 50) || "Trading",
+    deliveryLabel: String(merged.deliveryLabel || base.deliveryLabel || "Delivery").trim().slice(0, 50) || "Delivery",
+    firstDetectedLabel:
+      String(merged.firstDetectedLabel || base.firstDetectedLabel || "First Detected").trim().slice(0, 50) ||
+      "First Detected",
+    lastVerifiedLabel:
+      String(merged.lastVerifiedLabel || base.lastVerifiedLabel || "Last Verified").trim().slice(0, 50) ||
+      "Last Verified",
+    soldOutLabel:
+      String(merged.soldOutLabel || base.soldOutLabel || "Confirmed Sold Out").trim().slice(0, 50) ||
+      "Confirmed Sold Out",
+    featureOrder:
+      Array.isArray(merged.featureOrder) && merged.featureOrder.length > 0
+        ? merged.featureOrder
+        : [...base.featureOrder],
+    sectionOrder: normalizeSectionOrder(merged.sectionOrder, DEFAULT_ANNOUNCEMENT_SECTION_ORDER),
+    customSections: normalizeCustomSections(merged.customSections),
+    customButtonUrl: typeof merged.customButtonUrl === "string" ? merged.customButtonUrl.trim().slice(0, 300) : "",
+    showSecondaryButton: Boolean(merged.showSecondaryButton),
+    secondaryButtonLabel:
+      typeof merged.secondaryButtonLabel === "string"
+        ? merged.secondaryButtonLabel.trim().slice(0, 80)
+        : base.secondaryButtonLabel || "View Archive Portal",
+    secondaryButtonUrlMode:
+      merged.secondaryButtonUrlMode === "listing" ||
+      merged.secondaryButtonUrlMode === "category" ||
+      merged.secondaryButtonUrlMode === "store_home" ||
+      merged.secondaryButtonUrlMode === "website" ||
+      merged.secondaryButtonUrlMode === "custom"
+        ? merged.secondaryButtonUrlMode
+        : base.secondaryButtonUrlMode || "website",
+    secondaryCustomButtonUrl:
+      typeof merged.secondaryCustomButtonUrl === "string"
+        ? merged.secondaryCustomButtonUrl.trim().slice(0, 300)
+        : "",
+  };
+}
+
+export function normalizeWidgetTemplateConfig(
+  incoming?: Partial<WidgetTemplateConfig> | null,
+  fallback: WidgetTemplateConfig = DEFAULT_WIDGET_TEMPLATE
+): WidgetTemplateConfig {
+  const base = fallback;
+  const raw = incoming && typeof incoming === "object" ? incoming : {};
+  const hasExplicitIndependent =
+    typeof raw.showLastStoreCheck === "boolean" ||
+    typeof raw.showLastVerifiedStock === "boolean" ||
+    typeof raw.showMonitorState === "boolean" ||
+    typeof raw.showLastUpdated === "boolean";
+
+  const legacyAllOn = raw.showTimestamps !== undefined ? raw.showTimestamps !== false : base.showTimestamps !== false;
+
+  const showLastStoreCheck =
+    typeof raw.showLastStoreCheck === "boolean"
+      ? raw.showLastStoreCheck
+      : hasExplicitIndependent
+        ? base.showLastStoreCheck !== false
+        : legacyAllOn;
+  const showLastVerifiedStock =
+    typeof raw.showLastVerifiedStock === "boolean"
+      ? raw.showLastVerifiedStock
+      : hasExplicitIndependent
+        ? base.showLastVerifiedStock !== false
+        : legacyAllOn;
+  const showMonitorState =
+    typeof raw.showMonitorState === "boolean"
+      ? raw.showMonitorState
+      : hasExplicitIndependent
+        ? base.showMonitorState !== false
+        : legacyAllOn;
+  const showLastUpdated =
+    typeof raw.showLastUpdated === "boolean"
+      ? raw.showLastUpdated
+      : hasExplicitIndependent
+        ? base.showLastUpdated !== false
+        : legacyAllOn;
+  const showEmbedTimestamp =
+    typeof raw.showEmbedTimestamp === "boolean"
+      ? raw.showEmbedTimestamp
+      : base.showEmbedTimestamp !== false;
+
+  const showTimestamps = Boolean(
+    showLastStoreCheck || showLastVerifiedStock || showMonitorState || showLastUpdated
+  );
+
+  return {
+    ...base,
+    ...raw,
+    featureOrder:
+      Array.isArray(raw.featureOrder) && raw.featureOrder.length > 0
+        ? raw.featureOrder
+        : [...base.featureOrder],
+    featureLabelOverrides: raw.featureLabelOverrides || base.featureLabelOverrides || {},
+    hiddenFeatureKeys: Array.isArray(raw.hiddenFeatureKeys)
+      ? raw.hiddenFeatureKeys
+      : [...(base.hiddenFeatureKeys || [])],
+    showLastStoreCheck,
+    lastStoreCheckLabel:
+      String(raw.lastStoreCheckLabel ?? base.lastStoreCheckLabel ?? "Last Store Check").trim().slice(0, 60) ||
+      "Last Store Check",
+    showLastVerifiedStock,
+    lastVerifiedStockLabel:
+      String(raw.lastVerifiedStockLabel ?? base.lastVerifiedStockLabel ?? "Last Verified Stock")
+        .trim()
+        .slice(0, 60) || "Last Verified Stock",
+    showMonitorState,
+    monitorStateLabel:
+      String(raw.monitorStateLabel ?? base.monitorStateLabel ?? "Monitor State").trim().slice(0, 60) ||
+      "Monitor State",
+    showLastUpdated,
+    lastUpdatedLabel:
+      String(raw.lastUpdatedLabel ?? base.lastUpdatedLabel ?? "Widget Last Updated").trim().slice(0, 60) ||
+      "Widget Last Updated",
+    showEmbedTimestamp,
+    showTimestamps,
+    sectionOrder: normalizeSectionOrder(raw.sectionOrder, DEFAULT_WIDGET_SECTION_ORDER),
+    customSections: normalizeCustomSections(raw.customSections),
+    customStoreButtonUrl:
+      typeof raw.customStoreButtonUrl === "string" ? raw.customStoreButtonUrl.trim().slice(0, 300) : "",
+  };
+}
+
 export function createDefaultPresentationConfig(): PresentationConfigBundle {
   return {
     version: 1,
     updatedAt: Date.now(),
     announcements: {
-      inStock: { ...DEFAULT_IN_STOCK_TEMPLATE, featureOrder: [...DEFAULT_IN_STOCK_TEMPLATE.featureOrder] },
-      soldOut: { ...DEFAULT_SOLD_OUT_TEMPLATE, featureOrder: [...DEFAULT_SOLD_OUT_TEMPLATE.featureOrder] },
+      inStock: normalizeAnnouncementTemplate(DEFAULT_IN_STOCK_TEMPLATE, DEFAULT_IN_STOCK_TEMPLATE),
+      soldOut: normalizeAnnouncementTemplate(DEFAULT_SOLD_OUT_TEMPLATE, DEFAULT_SOLD_OUT_TEMPLATE),
     },
-    widgetDefault: {
-      ...DEFAULT_WIDGET_TEMPLATE,
-      featureOrder: [...DEFAULT_WIDGET_TEMPLATE.featureOrder],
-      featureLabelOverrides: {},
-      hiddenFeatureKeys: [],
-    },
+    widgetDefault: normalizeWidgetTemplateConfig(DEFAULT_WIDGET_TEMPLATE, DEFAULT_WIDGET_TEMPLATE),
     widgetTemplates: [],
     hero: {
       ...DEFAULT_HERO_CONFIG,
@@ -334,7 +640,6 @@ export function validateEmojiRef(raw: unknown): DiscordEmojiRef | null {
   }
 
   const name = String(obj.name || "").trim();
-  // Reject HTML injection or oversized junk for unicode strings
   if (!name || name.length > 24 || /<|>|javascript:/i.test(name)) return null;
   return {
     kind: "unicode",
@@ -454,6 +759,37 @@ export function formatFeaturesText(
     .join("  •  ");
 }
 
+function matchesSectionCondition(
+  condition: TemplateSectionCondition,
+  ctx: {
+    isSoldOut: boolean;
+    hasFeatures: boolean;
+    hasTrading: boolean;
+    hasDelivery: boolean;
+    activeCount: number;
+  }
+): boolean {
+  switch (condition) {
+    case "in_stock_only":
+      return !ctx.isSoldOut;
+    case "sold_out_only":
+      return ctx.isSoldOut;
+    case "when_features_present":
+      return ctx.hasFeatures;
+    case "when_trading_present":
+      return ctx.hasTrading;
+    case "when_delivery_present":
+      return ctx.hasDelivery;
+    case "when_in_stock_any":
+      return ctx.activeCount > 0;
+    case "when_all_sold_out":
+      return ctx.activeCount === 0;
+    case "always":
+    default:
+      return true;
+  }
+}
+
 export interface BuildCarDropPayloadParams {
   car: ListingSourceInput & {
     isAvailable?: boolean;
@@ -468,13 +804,19 @@ export interface BuildCarDropPayloadParams {
   isTest?: boolean;
   isUpdate?: boolean;
   fallbackStoreEmojiId?: string;
+  monitorStatus?: {
+    checkedAt?: number;
+    lastSuccessAt?: number;
+    lastSource?: string;
+    authoritative?: boolean;
+  } | null;
 }
 
 export function buildCarDropPayload(params: BuildCarDropPayloadParams) {
   const { car, override, isTest = false, isUpdate = false } = params;
   const isSoldOut = car.isAvailable === false;
   const defaultTpl = isSoldOut ? DEFAULT_SOLD_OUT_TEMPLATE : DEFAULT_IN_STOCK_TEMPLATE;
-  const tpl: AnnouncementTemplate = params.template || defaultTpl;
+  const tpl = normalizeAnnouncementTemplate(params.template, defaultTpl);
   const surface = isSoldOut ? "sold_out_embed" : "in_stock_embed";
 
   const presentation = resolveListingPresentation(car, override);
@@ -488,78 +830,185 @@ export function buildCarDropPayload(params: BuildCarDropPayloadParams) {
   const titleEmoji = formatEmojiForDiscordText(
     tpl.titleEmoji !== undefined ? tpl.titleEmoji : defaultTpl.titleEmoji
   );
-  const titlePrefix = String(tpl.titlePrefix || "").trim();
-  const titleParts = [titleEmoji, titlePrefix, presentation.effective.name].filter(Boolean);
+  const statusEmoji = formatEmojiForDiscordText(tpl.statusEmoji);
+  const featureBlock =
+    visibleFeatures.length > 0 ? formatFeaturesText(visibleFeatures, tpl.featureStyle) : "";
+
+  const detectedSec = Math.floor((car.detectedAt || Date.now()) / 1000);
+  const verifiedSec = car.lastVerifiedAt
+    ? Math.floor(car.lastVerifiedAt / 1000)
+    : car.detectedAt
+      ? detectedSec
+      : null;
+  const soldOutSec = isSoldOut && car.soldOutAt ? Math.floor(car.soldOutAt / 1000) : null;
+
+  const listingUrl = sanitizeHttpUrl(car.url, `${STORE_HOME_URL}package/${car.id}`);
+  const websiteUrl =
+    params.portalOrigin && /^https?:\/\//i.test(params.portalOrigin)
+      ? sanitizeHttpUrl(params.portalOrigin, STORE_HOME_URL)
+      : "";
+
+  const monitor = params.monitorStatus;
+  const monitorCheckedSec = monitor?.checkedAt ? Math.floor(monitor.checkedAt / 1000) : null;
+  const monitorVerifiedSec = monitor?.lastSuccessAt
+    ? Math.floor(monitor.lastSuccessAt / 1000)
+    : monitor?.authoritative && monitorCheckedSec
+      ? monitorCheckedSec
+      : null;
+  const monitorState = monitor
+    ? monitor.authoritative === false
+      ? "Verification Blocked (Using Verified History)"
+      : monitor.authoritative
+        ? "Verified"
+        : "Pending Store Check"
+    : "Verified";
+
+  const customSoundFeat = visibleFeatures.find((f) => f.key === "custom_sound");
+  const customOptionsFeat = visibleFeatures.find((f) => f.key === "custom_options");
+
+  const varValues: TemplateVariableValues = {
+    vehicle_name: presentation.effective.name,
+    vehicle_id: String(car.id || ""),
+    description: presentation.effective.fullDescription,
+    short_description: presentation.effective.shortDescription,
+    features: featureBlock,
+    custom_options:
+      customOptionsFeat?.label ||
+      presentation.source.extracted.customOptionsLabel ||
+      "",
+    custom_sound:
+      customSoundFeat?.label ||
+      (presentation.source.extracted.customSound ? "Custom Sound" : ""),
+    trading: presentation.effective.tradingRestriction || "",
+    delivery: presentation.effective.deliveryInfo || "",
+    status: "", // populated immediately below to allow statusLabel itself to contain variables safely
+    status_emoji: statusEmoji,
+    first_detected: `<t:${detectedSec}:f> (<t:${detectedSec}:R>)`,
+    last_verified: verifiedSec ? `<t:${verifiedSec}:f>` : "",
+    sold_out_at: soldOutSec ? `<t:${soldOutSec}:f> (<t:${soldOutSec}:R>)` : "",
+    store_url: STORE_CATEGORY_URL,
+    listing_url: listingUrl,
+    website_url: websiteUrl,
+    check_interval: CHECK_INTERVAL_LABEL,
+    last_store_check: monitorCheckedSec ? `<t:${monitorCheckedSec}:R>` : "",
+    last_successful_check: monitorVerifiedSec ? `<t:${monitorVerifiedSec}:R>` : "",
+    monitor_state: monitorState,
+    active_count: isSoldOut ? "0" : "1",
+  };
+
+  const resolvedStatusLabel =
+    resolveTemplateVariables(tpl.statusLabel || (isSoldOut ? "Sold Out" : "In Stock"), varValues) ||
+    (isSoldOut ? "Sold Out" : "In Stock");
+  varValues.status = resolvedStatusLabel;
+
+  const resolvedTitlePrefix = resolveTemplateVariables(tpl.titlePrefix || "", varValues);
+  const headerIncludesVehicleName = /\{(?:vehicle_)?name\}/i.test(tpl.titlePrefix || "");
+  const titleParts = [
+    titleEmoji,
+    resolvedTitlePrefix,
+    headerIncludesVehicleName ? "" : neutralizeDiscordMentions(presentation.effective.name),
+  ].filter(Boolean);
   const testBanner = isTest ? "**[TEST NOTIFICATION]**\n" : "";
 
-  const statusEmoji = formatEmojiForDiscordText(tpl.statusEmoji);
-  const statusHeading = String(tpl.availabilityHeading || "Availability").trim();
-  const statusLabel = String(tpl.statusLabel || (isSoldOut ? "Sold Out" : "In Stock")).trim();
-
-  const featureBlock =
-    visibleFeatures.length > 0
-      ? formatFeaturesText(visibleFeatures, tpl.featureStyle)
-      : "";
+  const statusHeading =
+    resolveTemplateVariables(tpl.availabilityHeading || "Availability", varValues) || "Availability";
 
   let mainBodyText = presentation.effective.fullDescription;
   if (tpl.descriptionMode === "short_summary") {
     mainBodyText = presentation.effective.shortDescription;
   } else if (tpl.descriptionMode === "custom" && tpl.customDescription.trim()) {
-    mainBodyText = tpl.customDescription
-      .replace(/\{name\}/gi, presentation.effective.name)
-      .replace(/\{short_description\}/gi, presentation.effective.shortDescription)
-      .replace(/\{full_description\}/gi, presentation.effective.fullDescription)
-      .replace(/\{features\}/gi, featureBlock || "Limited Release")
-      .replace(
-        /\{trading\}/gi,
-        presentation.effective.tradingRestriction || "Standard Store Terms"
-      )
-      .replace(
-        /\{delivery\}/gi,
-        presentation.effective.deliveryInfo || "Automatic garage delivery"
-      );
+    mainBodyText = resolveTemplateVariables(tpl.customDescription, varValues);
   }
+  mainBodyText = neutralizeDiscordMentions(mainBodyText);
 
-  const detectedSec = Math.floor((car.detectedAt || Date.now()) / 1000);
-  const verifiedSec = Math.floor((car.lastVerifiedAt || car.detectedAt || Date.now()) / 1000);
-
-  const lines: string[] = [
-    `${testBanner}# ${titleParts.join(" ")}`.slice(0, 256),
-    `**${statusHeading}:** ${statusEmoji ? `${statusEmoji} ` : ""}${statusLabel}`,
-  ];
-
-  if (tpl.descriptionMode !== "custom" && featureBlock) {
-    lines.push(featureBlock);
-  }
-
-  if (mainBodyText.trim()) {
-    lines.push(mainBodyText.trim().slice(0, 2200));
-  }
+  const customIncludesFeatures =
+    tpl.descriptionMode === "custom" && /\{features\}/i.test(tpl.customDescription || "");
 
   const extraInfoLines: string[] = [];
   if (tpl.showTradingInfo && presentation.effective.tradingRestriction) {
-    extraInfoLines.push(`**Trading:** ${presentation.effective.tradingRestriction}`);
+    const tLabel = resolveTemplateVariables(tpl.tradingLabel || "Trading", varValues) || "Trading";
+    extraInfoLines.push(
+      `**${tLabel}:** ${neutralizeDiscordMentions(presentation.effective.tradingRestriction)}`
+    );
   }
   if (tpl.showDeliveryInfo && presentation.effective.deliveryInfo) {
-    extraInfoLines.push(`**Delivery:** ${presentation.effective.deliveryInfo}`);
-  }
-  if (extraInfoLines.length > 0) {
-    lines.push(extraInfoLines.join("\n"));
+    const dLabel = resolveTemplateVariables(tpl.deliveryLabel || "Delivery", varValues) || "Delivery";
+    extraInfoLines.push(
+      `**${dLabel}:** ${neutralizeDiscordMentions(presentation.effective.deliveryInfo)}`
+    );
   }
 
   const timeLines: string[] = [];
   if (tpl.showDetectionTime) {
-    timeLines.push(`**First Detected:** <t:${detectedSec}:f> (<t:${detectedSec}:R>)`);
+    const fLabel =
+      resolveTemplateVariables(tpl.firstDetectedLabel || "First Detected", varValues) ||
+      "First Detected";
+    timeLines.push(`**${fLabel}:** <t:${detectedSec}:f> (<t:${detectedSec}:R>)`);
   }
-  if (tpl.showLastVerified) {
-    timeLines.push(`**Last Verified:** <t:${verifiedSec}:f>`);
+  if (tpl.showLastVerified && verifiedSec) {
+    const lLabel =
+      resolveTemplateVariables(tpl.lastVerifiedLabel || "Last Verified", varValues) ||
+      "Last Verified";
+    timeLines.push(`**${lLabel}:** <t:${verifiedSec}:f>`);
   }
-  if (isSoldOut && tpl.showSoldOutTime && car.soldOutAt) {
-    const soldOutSec = Math.floor(car.soldOutAt / 1000);
-    timeLines.push(`**Confirmed Sold Out:** <t:${soldOutSec}:f> (<t:${soldOutSec}:R>)`);
+  if (isSoldOut && tpl.showSoldOutTime && soldOutSec) {
+    const sLabel =
+      resolveTemplateVariables(tpl.soldOutLabel || "Confirmed Sold Out", varValues) ||
+      "Confirmed Sold Out";
+    timeLines.push(`**${sLabel}:** <t:${soldOutSec}:f> (<t:${soldOutSec}:R>)`);
   }
-  if (timeLines.length > 0) {
-    lines.push(timeLines.join("\n"));
+
+  const customSectionBlocks: string[] = [];
+  const condCtx = {
+    isSoldOut,
+    hasFeatures: visibleFeatures.length > 0,
+    hasTrading: Boolean(presentation.effective.tradingRestriction),
+    hasDelivery: Boolean(presentation.effective.deliveryInfo),
+    activeCount: isSoldOut ? 0 : 1,
+  };
+  for (const cs of tpl.customSections || []) {
+    if (!cs.enabled) continue;
+    if (!matchesSectionCondition(cs.condition, condCtx)) continue;
+    const resolvedTitle = resolveTemplateVariables(cs.title, varValues);
+    const resolvedBody = resolveTemplateVariables(cs.content, varValues);
+    if (!resolvedBody && !resolvedTitle) continue;
+    if (resolvedTitle && resolvedBody) {
+      customSectionBlocks.push(`**${resolvedTitle}**\n${resolvedBody}`);
+    } else if (resolvedBody) {
+      customSectionBlocks.push(resolvedBody);
+    }
+  }
+
+  const lines: string[] = [];
+  const order = tpl.sectionOrder || DEFAULT_ANNOUNCEMENT_SECTION_ORDER;
+  for (const sec of order) {
+    if (sec === "header") {
+      lines.push(`${testBanner}# ${titleParts.join(" ")}`.slice(0, 256));
+    } else if (sec === "status") {
+      lines.push(
+        `**${statusHeading}:** ${statusEmoji ? `${statusEmoji} ` : ""}${resolvedStatusLabel}`
+      );
+    } else if (sec === "features") {
+      if (!customIncludesFeatures && featureBlock) {
+        lines.push(featureBlock);
+      }
+    } else if (sec === "description") {
+      if (mainBodyText.trim()) {
+        lines.push(mainBodyText.trim().slice(0, 2200));
+      }
+    } else if (sec === "trading_delivery") {
+      if (extraInfoLines.length > 0) {
+        lines.push(extraInfoLines.join("\n"));
+      }
+    } else if (sec === "timestamps") {
+      if (timeLines.length > 0) {
+        lines.push(timeLines.join("\n"));
+      }
+    } else if (sec === "custom_sections") {
+      if (customSectionBlocks.length > 0) {
+        lines.push(customSectionBlocks.join("\n\n"));
+      }
+    }
   }
 
   const containerComponents: any[] = [{ type: 10, content: lines.join("\n\n").slice(0, 3900) }];
@@ -587,20 +1036,33 @@ export function buildCarDropPayload(params: BuildCarDropPayloadParams) {
     }
   }
 
-  if (tpl.showStoreButton) {
-    let buttonUrl = sanitizeHttpUrl(car.url, `${STORE_HOME_URL}package/${car.id}`);
-    if (tpl.storeButtonUrlMode === "store_home") {
-      buttonUrl = STORE_HOME_URL;
-    } else if (tpl.storeButtonUrlMode === "category") {
-      buttonUrl = STORE_CATEGORY_URL;
-    } else if (tpl.storeButtonUrlMode === "website" && params.portalOrigin) {
-      buttonUrl = sanitizeHttpUrl(params.portalOrigin, STORE_HOME_URL);
+  const resolveActionButtonUrl = (
+    mode: "listing" | "category" | "store_home" | "website" | "custom",
+    customPattern?: string
+  ): string => {
+    if (mode === "store_home") return STORE_HOME_URL;
+    if (mode === "category") return STORE_CATEGORY_URL;
+    if (mode === "website") return websiteUrl || STORE_HOME_URL;
+    if (mode === "custom" && customPattern?.trim()) {
+      const resolvedUrl = resolveTemplateVariables(customPattern, varValues, {
+        escapeMentions: false,
+        stripUnknownTokens: true,
+        collapseEmptyTokenLines: false,
+      });
+      return sanitizeHttpUrl(resolvedUrl, listingUrl);
     }
+    return listingUrl;
+  };
 
+  const buttonComponents: any[] = [];
+  if (tpl.showStoreButton) {
+    const buttonUrl = resolveActionButtonUrl(tpl.storeButtonUrlMode, tpl.customButtonUrl);
+    const resolvedBtnLabel =
+      resolveTemplateVariables(tpl.storeButtonLabel || "View Store", varValues) || "View Store";
     const storeButton: Record<string, any> = {
       type: 2,
       style: 5,
-      label: (tpl.storeButtonLabel || "View Store").trim().slice(0, 80),
+      label: resolvedBtnLabel.trim().slice(0, 80),
       url: buttonUrl,
     };
     const btnEmoji =
@@ -611,15 +1073,37 @@ export function buildCarDropPayload(params: BuildCarDropPayloadParams) {
     if (btnEmoji) {
       storeButton.emoji = btnEmoji;
     }
+    buttonComponents.push(storeButton);
+  }
+
+  if (tpl.showSecondaryButton && tpl.secondaryButtonLabel?.trim()) {
+    const secUrl = resolveActionButtonUrl(
+      tpl.secondaryButtonUrlMode || "website",
+      tpl.secondaryCustomButtonUrl
+    );
+    const secLabel =
+      resolveTemplateVariables(tpl.secondaryButtonLabel, varValues) || tpl.secondaryButtonLabel.trim();
+    if (secLabel.trim()) {
+      buttonComponents.push({
+        type: 2,
+        style: 5,
+        label: secLabel.trim().slice(0, 80),
+        url: secUrl,
+      });
+    }
+  }
+
+  if (buttonComponents.length > 0) {
     containerComponents.push({
       type: 1,
-      components: [storeButton],
+      components: buttonComponents.slice(0, 5),
     });
   }
 
   const footerEmoji = formatEmojiForDiscordText(tpl.footerEmoji);
+  const resolvedFooterText = resolveTemplateVariables(tpl.footerText || "", varValues);
   const footerParts = [
-    [footerEmoji, tpl.footerText?.trim()].filter(Boolean).join(" "),
+    [footerEmoji, resolvedFooterText?.trim()].filter(Boolean).join(" "),
     isTest ? "Test Dispatch" : "",
     isUpdate ? (isSoldOut ? "Updated: Sold Out" : "Embed Refreshed") : "",
   ].filter(Boolean);
@@ -680,14 +1164,14 @@ export interface BuildWidgetPayloadParams {
   safeOrigin?: string;
   staleThresholdMs?: number;
   nowMs?: number;
+  widgetUpdatedAt?: number;
 }
 
-export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
-  const tpl = params.template || DEFAULT_WIDGET_TEMPLATE;
-  const now = params.nowMs || Date.now();
-  const staleThreshold = params.staleThresholdMs ?? 30 * 60 * 1000;
-
-  const sortedByRecent = [...params.records].sort((a, b) => b.firstSeenAt - a.firstSeenAt);
+function selectOrderedWidgetRecords(
+  records: WidgetBuildInputListing[],
+  tpl: WidgetTemplateConfig
+) {
+  const sortedByRecent = [...records].sort((a, b) => b.firstSeenAt - a.firstSeenAt);
   const orderedRecords =
     tpl.vehicleOrdering === "in_stock_first"
       ? [...sortedByRecent].sort((a, b) => {
@@ -699,6 +1183,17 @@ export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
   const vehicleLimit = Math.max(1, Math.min(6, Math.round(tpl.vehicleCount || 3)));
   const selectedRecords = orderedRecords.slice(0, vehicleLimit);
   const activeRecords = sortedByRecent.filter((r) => r.isAvailable);
+  return { sortedByRecent, selectedRecords, activeRecords };
+}
+
+export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
+  const tpl = normalizeWidgetTemplateConfig(params.template, DEFAULT_WIDGET_TEMPLATE);
+  const now = params.nowMs || Date.now();
+  const widgetUpdatedAt = params.widgetUpdatedAt || now;
+  const widgetUpdatedSec = Math.floor(widgetUpdatedAt / 1000);
+  const staleThreshold = params.staleThresholdMs ?? 30 * 60 * 1000;
+
+  const { selectedRecords, activeRecords } = selectOrderedWidgetRecords(params.records, tpl);
 
   const monitor = params.monitorStatus;
   const checkedAt = monitor?.checkedAt || now;
@@ -720,46 +1215,191 @@ export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
           ? "Manual Scan"
           : "Store Monitor";
 
-  const titleEmoji = formatEmojiForDiscordText(tpl.titleEmoji);
-  const embedTitle = [titleEmoji, tpl.title || DEFAULT_WIDGET_TEMPLATE.title]
-    .filter(Boolean)
-    .join(" ")
-    .slice(0, 256);
+  const statusText = isBlocked
+    ? "Verification Blocked (Using Verified History)"
+    : monitor?.authoritative
+      ? `Verified (${sourceLabel})`
+      : "Pending Store Check";
 
-  const descParts: string[] = [];
-  if (tpl.subtitle?.trim()) {
-    descParts.push(tpl.subtitle.trim());
-  }
-  if (tpl.introMessage?.trim()) {
-    descParts.push(tpl.introMessage.trim());
-  }
-
-  if (tpl.showTimestamps) {
-    const statusText = isBlocked
-      ? "Verification Blocked (Using Verified History)"
-      : monitor?.authoritative
-        ? `Verified (${sourceLabel})`
-        : "Pending Store Check";
-    descParts.push(
-      `**Last Store Check:** <t:${checkedSec}:f> (<t:${checkedSec}:R>)` +
-        (verifiedSec ? `\n**Last Verified Stock:** <t:${verifiedSec}:R>` : "") +
-        `\n**Monitor State:** ${statusText}`
-    );
-  }
-
-  if (tpl.showStaleWarning && isStale && tpl.staleWarningText?.trim()) {
-    descParts.push(`> **Notice:** ${tpl.staleWarningText.trim()}`);
-  }
+  const resolvedPresentations = selectedRecords.map((rec) => ({
+    rec,
+    pres: resolveListingPresentation(
+      {
+        id: rec.id,
+        name: rec.payload?.name || `Limited #${rec.id}`,
+        description: rec.payload?.description || "",
+        url: rec.payload?.url,
+        images: rec.payload?.images,
+      },
+      rec.override
+    ),
+  }));
 
   const inStockEmoji = formatEmojiForDiscordText(tpl.inStockEmoji);
   const soldOutEmoji = formatEmojiForDiscordText(tpl.soldOutEmoji);
-  const inStockTag = [inStockEmoji, tpl.inStockLabel || "In Stock"].filter(Boolean).join(" ");
-  const soldOutTag = [soldOutEmoji, tpl.soldOutLabel || "Sold Out"].filter(Boolean).join(" ");
+
+  const heroCandidateEntry =
+    resolvedPresentations.find((entry) => entry.rec.isAvailable) || resolvedPresentations[0];
+  const heroRec = heroCandidateEntry?.rec;
+  const heroPres = heroCandidateEntry?.pres;
+  const heroFeatures = heroPres
+    ? sortAndFilterFeatures(heroPres.effective.features, "widget", {
+        featureOrder: tpl.featureOrder,
+        featureLabelOverrides: tpl.featureLabelOverrides,
+        hiddenFeatureKeys: tpl.hiddenFeatureKeys,
+        maxCount: 4,
+      })
+    : [];
+
+  const recentReleasesSummary = resolvedPresentations
+    .map(({ rec, pres }) => {
+      const stateLabel = rec.isAvailable ? tpl.inStockLabel || "In Stock" : tpl.soldOutLabel || "Sold Out";
+      return `• **${pres.effective.name}** — ${stateLabel}`;
+    })
+    .join("\n");
+
+  const websiteUrl =
+    params.portalOrigin && /^https?:\/\//i.test(params.portalOrigin)
+      ? sanitizeHttpUrl(params.portalOrigin, STORE_HOME_URL)
+      : "";
+
+  const varValues: TemplateVariableValues = {
+    vehicle_name: heroPres?.effective.name || "",
+    vehicle_id: heroRec?.id || "",
+    description: heroPres?.effective.fullDescription || "",
+    short_description: heroPres?.effective.shortDescription || "",
+    features: heroFeatures.length > 0 ? formatFeaturesText(heroFeatures, "inline_badges") : "",
+    custom_options: heroPres?.source.extracted.customOptionsLabel || "",
+    custom_sound: heroPres?.source.extracted.customSound ? "Custom Sound" : "",
+    trading: heroPres?.effective.tradingRestriction || "",
+    delivery: heroPres?.effective.deliveryInfo || "",
+    status: activeRecords.length > 0 ? tpl.inStockLabel || "In Stock" : tpl.soldOutLabel || "Sold Out",
+    status_emoji: activeRecords.length > 0 ? inStockEmoji : soldOutEmoji,
+    first_detected: heroRec?.firstSeenAt
+      ? `<t:${Math.floor(heroRec.firstSeenAt / 1000)}:f> (<t:${Math.floor(heroRec.firstSeenAt / 1000)}:R>)`
+      : "",
+    last_verified: heroRec?.lastVerifiedAt
+      ? `<t:${Math.floor(heroRec.lastVerifiedAt / 1000)}:f>`
+      : verifiedSec
+        ? `<t:${verifiedSec}:f>`
+        : "",
+    sold_out_at:
+      heroRec && !heroRec.isAvailable && heroRec.soldOutAt
+        ? `<t:${Math.floor(heroRec.soldOutAt / 1000)}:R>`
+        : "",
+    store_url: STORE_CATEGORY_URL,
+    listing_url: heroRec
+      ? sanitizeHttpUrl(heroPres?.source.url, `${STORE_HOME_URL}package/${heroRec.id}`)
+      : STORE_CATEGORY_URL,
+    website_url: websiteUrl,
+    check_interval: CHECK_INTERVAL_LABEL,
+    last_store_check: `<t:${checkedSec}:R>`,
+    last_successful_check: verifiedSec ? `<t:${verifiedSec}:R>` : "",
+    monitor_state: statusText,
+    recent_releases: recentReleasesSummary,
+    active_count: String(activeRecords.length),
+    last_widget_update: `<t:${widgetUpdatedSec}:R>`,
+  };
+
+  const inStockTag = [inStockEmoji, resolveTemplateVariables(tpl.inStockLabel || "In Stock", varValues) || "In Stock"]
+    .filter(Boolean)
+    .join(" ");
+  const soldOutTag = [soldOutEmoji, resolveTemplateVariables(tpl.soldOutLabel || "Sold Out", varValues) || "Sold Out"]
+    .filter(Boolean)
+    .join(" ");
+
+  const titleEmoji = formatEmojiForDiscordText(tpl.titleEmoji);
+  const resolvedTitle =
+    resolveTemplateVariables(tpl.title || DEFAULT_WIDGET_TEMPLATE.title, varValues) ||
+    DEFAULT_WIDGET_TEMPLATE.title;
+  const embedTitle = [titleEmoji, resolvedTitle].filter(Boolean).join(" ").slice(0, 256);
+
+  const timestampLines: string[] = [];
+  if (tpl.showLastStoreCheck !== false) {
+    const label =
+      resolveTemplateVariables(tpl.lastStoreCheckLabel || "Last Store Check", varValues) ||
+      "Last Store Check";
+    timestampLines.push(`**${label}:** <t:${checkedSec}:f> (<t:${checkedSec}:R>)`);
+  }
+  if (tpl.showLastVerifiedStock !== false) {
+    const label =
+      resolveTemplateVariables(tpl.lastVerifiedStockLabel || "Last Verified Stock", varValues) ||
+      "Last Verified Stock";
+    timestampLines.push(
+      verifiedSec ? `**${label}:** <t:${verifiedSec}:R>` : `**${label}:** Pending verification`
+    );
+  }
+  if (tpl.showMonitorState !== false) {
+    const label =
+      resolveTemplateVariables(tpl.monitorStateLabel || "Monitor State", varValues) || "Monitor State";
+    timestampLines.push(`**${label}:** ${statusText}`);
+  }
+  if (tpl.showLastUpdated !== false) {
+    const label =
+      resolveTemplateVariables(tpl.lastUpdatedLabel || "Widget Last Updated", varValues) ||
+      "Widget Last Updated";
+    timestampLines.push(`**${label}:** <t:${widgetUpdatedSec}:R>`);
+  }
+
+  const widgetConditionCtx = {
+    isSoldOut: activeRecords.length === 0,
+    hasFeatures: heroFeatures.length > 0,
+    hasTrading: Boolean(heroPres?.effective.tradingRestriction),
+    hasDelivery: Boolean(heroPres?.effective.deliveryInfo),
+    activeCount: activeRecords.length,
+  };
+
+  const inlineCustomFields: Array<{ name: string; value: string; inline: boolean }> = [];
+  const descriptionCustomBlocks: string[] = [];
+  for (const cs of tpl.customSections || []) {
+    if (!cs.enabled) continue;
+    if (!matchesSectionCondition(cs.condition, widgetConditionCtx)) continue;
+    const resolvedTitleSec = resolveTemplateVariables(cs.title, varValues);
+    const resolvedBodySec = resolveTemplateVariables(cs.content, varValues);
+    if (!resolvedTitleSec && !resolvedBodySec) continue;
+    if (cs.inline && resolvedTitleSec && resolvedBodySec) {
+      inlineCustomFields.push({
+        name: resolvedTitleSec.slice(0, 256),
+        value: resolvedBodySec.slice(0, 1024),
+        inline: true,
+      });
+    } else if (resolvedTitleSec && resolvedBodySec) {
+      descriptionCustomBlocks.push(`**${resolvedTitleSec}**\n${resolvedBodySec}`);
+    } else if (resolvedBodySec) {
+      descriptionCustomBlocks.push(resolvedBodySec);
+    }
+  }
+
+  const descParts: string[] = [];
+  const sectionOrder = tpl.sectionOrder || DEFAULT_WIDGET_SECTION_ORDER;
+  for (const sec of sectionOrder) {
+    if (sec === "subtitle" && tpl.subtitle?.trim()) {
+      const sub = resolveTemplateVariables(tpl.subtitle, varValues);
+      if (sub) descParts.push(sub);
+    } else if (sec === "intro" && tpl.introMessage?.trim()) {
+      const intro = resolveTemplateVariables(tpl.introMessage, varValues);
+      if (intro) descParts.push(intro);
+    } else if (sec === "timestamps" && timestampLines.length > 0) {
+      descParts.push(timestampLines.join("\n"));
+    } else if (sec === "stale_warning" && tpl.showStaleWarning && isStale && tpl.staleWarningText?.trim()) {
+      const warn = resolveTemplateVariables(tpl.staleWarningText, varValues);
+      if (warn) descParts.push(`> **Notice:** ${warn}`);
+    } else if (sec === "custom_sections" && descriptionCustomBlocks.length > 0) {
+      descParts.push(descriptionCustomBlocks.join("\n\n"));
+    }
+  }
+
+  const viewLabel =
+    (resolveTemplateVariables(tpl.viewButtonLabel || "View", varValues) || "View")
+      .trim()
+      .slice(0, 40);
 
   const fields: Array<{ name: string; value: string; inline: boolean }> = [];
 
   if (tpl.showActiveSummary) {
-    const heading = tpl.activeSummaryHeading?.trim() || "Active Listings";
+    const heading =
+      resolveTemplateVariables(tpl.activeSummaryHeading || "Active Listings", varValues) ||
+      "Active Listings";
     if (activeRecords.length > 0) {
       const activeSummaryLines = activeRecords.slice(0, 3).map((rec) => {
         const pres = resolveListingPresentation(
@@ -772,7 +1412,7 @@ export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
           },
           rec.override
         );
-        return `${inStockEmoji ? `${inStockEmoji} ` : ""}**${pres.effective.name}** • [${tpl.viewButtonLabel || "View"}](${sanitizeHttpUrl(pres.source.url, `${STORE_HOME_URL}package/${rec.id}`)})`;
+        return `${inStockEmoji ? `${inStockEmoji} ` : ""}**${neutralizeDiscordMentions(pres.effective.name)}** • [${viewLabel}](${sanitizeHttpUrl(pres.source.url, `${STORE_HOME_URL}package/${rec.id}`)})`;
       });
       fields.push({
         name: `${heading} (${activeRecords.length})`.slice(0, 256),
@@ -782,39 +1422,31 @@ export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
     } else {
       fields.push({
         name: `${heading} (0)`.slice(0, 256),
-        value: `No active limited vehicles right now. [${tpl.viewButtonLabel || "View"} Store](${STORE_CATEGORY_URL})`,
+        value: `No active limited vehicles right now. [${viewLabel} Store](${STORE_CATEGORY_URL})`,
         inline: false,
       });
     }
   }
 
   if (selectedRecords.length === 0) {
+    const emptyMsg =
+      resolveTemplateVariables(
+        tpl.emptyStateMessage || DEFAULT_WIDGET_TEMPLATE.emptyStateMessage,
+        varValues
+      ) || DEFAULT_WIDGET_TEMPLATE.emptyStateMessage;
     fields.push({
       name: "Recent Limited Releases",
-      value: (tpl.emptyStateMessage || DEFAULT_WIDGET_TEMPLATE.emptyStateMessage).slice(0, 1024),
+      value: emptyMsg.slice(0, 1024),
       inline: false,
     });
   } else {
-    for (const rec of selectedRecords) {
-      const pres = resolveListingPresentation(
-        {
-          id: rec.id,
-          name: rec.payload?.name || `Limited #${rec.id}`,
-          description: rec.payload?.description || "",
-          url: rec.payload?.url,
-          images: rec.payload?.images,
-        },
-        rec.override
-      );
-
-      const statusText = rec.isAvailable ? inStockTag : soldOutTag;
+    for (const { rec, pres } of resolvedPresentations) {
+      const statusTag = rec.isAvailable ? inStockTag : soldOutTag;
       const storeUrl = rec.isAvailable
         ? sanitizeHttpUrl(pres.source.url, `${STORE_HOME_URL}package/${rec.id}`)
         : `${STORE_HOME_URL}package/${rec.id}`;
 
-      const valueLines: string[] = [
-        `${statusText} • [${(tpl.viewButtonLabel || "View").trim().slice(0, 40)}](${storeUrl})`,
-      ];
+      const valueLines: string[] = [`${statusTag} • [${viewLabel}](${storeUrl})`];
 
       if (tpl.showFeatures) {
         const feats = sortAndFilterFeatures(pres.effective.features, "widget", {
@@ -825,33 +1457,29 @@ export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
         });
         for (const f of feats) {
           const fe = formatEmojiForDiscordText(f.emoji);
-          valueLines.push(`${fe ? `${fe} ` : "• "}${f.label}`);
+          valueLines.push(`${fe ? `${fe} ` : "• "}${neutralizeDiscordMentions(f.label)}`);
         }
       }
 
       fields.push({
-        name: pres.effective.name.slice(0, 256),
+        name: neutralizeDiscordMentions(pres.effective.name).slice(0, 256),
         value: valueLines.join("\n").slice(0, 1024),
         inline: true,
       });
     }
   }
 
+  if (inlineCustomFields.length > 0) {
+    fields.push(...inlineCustomFields);
+  }
+
   let featuredImageUrl: string | undefined;
-  if (tpl.showFeaturedImage && selectedRecords.length > 0) {
-    const heroCandidate =
-      selectedRecords.find((r) => r.isAvailable) || selectedRecords[0];
-    if (heroCandidate) {
-      featuredImageUrl = pickValidListingImage(
-        heroCandidate.payload?.images,
-        tpl.featuredImageSlot ?? 3,
-        {
-          listingId: heroCandidate.id,
-          cacheBustVersion: params.catalogVersion || 1,
-          safeOrigin: params.safeOrigin,
-        }
-      );
-    }
+  if (tpl.showFeaturedImage && heroRec) {
+    featuredImageUrl = pickValidListingImage(heroRec.payload?.images, tpl.featuredImageSlot ?? 3, {
+      listingId: heroRec.id,
+      cacheBustVersion: params.catalogVersion || 1,
+      safeOrigin: params.safeOrigin,
+    });
   }
 
   const embedColor = tpl.useDynamicStockColor
@@ -862,10 +1490,10 @@ export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
 
   const footerEmojiText =
     tpl.footerEmoji?.kind === "unicode" ? `${tpl.footerEmoji.name} ` : "";
-  const embedFooterText = `${footerEmojiText}${tpl.footerText || DEFAULT_WIDGET_TEMPLATE.footerText}`.slice(
-    0,
-    2048
-  );
+  const resolvedFooter =
+    resolveTemplateVariables(tpl.footerText || DEFAULT_WIDGET_TEMPLATE.footerText, varValues) ||
+    DEFAULT_WIDGET_TEMPLATE.footerText;
+  const embedFooterText = `${footerEmojiText}${resolvedFooter}`.slice(0, 2048);
 
   const embed: Record<string, any> = {
     title: embedTitle,
@@ -873,8 +1501,11 @@ export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
     color: embedColor,
     fields: fields.slice(0, 25),
     footer: { text: embedFooterText },
-    timestamp: new Date(checkedAt).toISOString(),
   };
+
+  if (tpl.showEmbedTimestamp !== false) {
+    embed.timestamp = new Date(widgetUpdatedAt).toISOString();
+  }
 
   if (featuredImageUrl) {
     embed.image = { url: featuredImageUrl };
@@ -882,23 +1513,35 @@ export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
 
   const actionButtons: any[] = [];
   if (tpl.showButtonsRow) {
-    if (params.portalOrigin && /^https?:\/\//i.test(params.portalOrigin) && tpl.websiteButtonLabel?.trim()) {
+    const resolvedSiteLabel = resolveTemplateVariables(tpl.websiteButtonLabel || "", varValues);
+    if (websiteUrl && resolvedSiteLabel.trim()) {
       const btn: any = {
         type: 2,
         style: 5,
-        label: tpl.websiteButtonLabel.trim().slice(0, 80),
-        url: sanitizeHttpUrl(params.portalOrigin, STORE_HOME_URL),
+        label: resolvedSiteLabel.trim().slice(0, 80),
+        url: websiteUrl,
       };
       const em = formatEmojiForDiscordComponent(tpl.websiteButtonEmoji);
       if (em) btn.emoji = em;
       actionButtons.push(btn);
     }
-    if (tpl.storeButtonLabel?.trim()) {
+    const resolvedStoreLabel = resolveTemplateVariables(tpl.storeButtonLabel || "", varValues);
+    if (resolvedStoreLabel.trim()) {
+      const customUrl = tpl.customStoreButtonUrl?.trim()
+        ? sanitizeHttpUrl(
+            resolveTemplateVariables(tpl.customStoreButtonUrl, varValues, {
+              escapeMentions: false,
+              stripUnknownTokens: true,
+              collapseEmptyTokenLines: false,
+            }),
+            STORE_CATEGORY_URL
+          )
+        : STORE_CATEGORY_URL;
       const btn: any = {
         type: 2,
         style: 5,
-        label: tpl.storeButtonLabel.trim().slice(0, 80),
-        url: STORE_CATEGORY_URL,
+        label: resolvedStoreLabel.trim().slice(0, 80),
+        url: customUrl,
       };
       const em = formatEmojiForDiscordComponent(tpl.storeButtonEmoji);
       if (em) btn.emoji = em;
@@ -912,6 +1555,96 @@ export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
       ? { components: [{ type: 1, components: actionButtons }] }
       : {}),
   };
+}
+
+/**
+ * Computes a deterministic content hash strictly from meaningful vehicle catalog state
+ * and static widget presentation settings. Excludes routine monitor check timestamps,
+ * execution sources, authoritative/stale flags, and widgetUpdatedAt so store checks
+ * that discover no changes never trigger Discord edits or KV writes.
+ */
+export function computeWidgetContentHash(params: {
+  records: WidgetBuildInputListing[];
+  template?: WidgetTemplateConfig;
+  catalogVersion?: number;
+  portalOrigin?: string;
+  safeOrigin?: string;
+}): string {
+  const tpl = normalizeWidgetTemplateConfig(params.template, DEFAULT_WIDGET_TEMPLATE);
+  const { selectedRecords, activeRecords } = selectOrderedWidgetRecords(params.records, tpl);
+
+  const semanticSelected = selectedRecords.map((rec) => {
+    const pres = resolveListingPresentation(
+      {
+        id: rec.id,
+        name: rec.payload?.name || `Limited #${rec.id}`,
+        description: rec.payload?.description || "",
+        url: rec.payload?.url,
+        images: rec.payload?.images,
+      },
+      rec.override
+    );
+    const feats = tpl.showFeatures
+      ? sortAndFilterFeatures(pres.effective.features, "widget", {
+          featureOrder: tpl.featureOrder,
+          featureLabelOverrides: tpl.featureLabelOverrides,
+          hiddenFeatureKeys: tpl.hiddenFeatureKeys,
+          maxCount: 4,
+        }).map((f) => ({
+          key: f.key,
+          label: f.label,
+          emoji: f.emoji ? `${f.emoji.kind}:${f.emoji.id || f.emoji.name}` : "",
+        }))
+      : [];
+    return {
+      id: rec.id,
+      isAvailable: rec.isAvailable,
+      firstSeenAt: rec.firstSeenAt,
+      soldOutAt: rec.isAvailable ? null : rec.soldOutAt || null,
+      name: pres.effective.name,
+      shortDescription: pres.effective.shortDescription,
+      fullDescription: pres.effective.fullDescription,
+      trading: pres.effective.tradingRestriction || "",
+      delivery: pres.effective.deliveryInfo || "",
+      url: pres.source.url,
+      images: Array.isArray(rec.payload?.images) ? rec.payload.images : [],
+      features: feats,
+    };
+  });
+
+  const activeIdsAndNames = activeRecords.slice(0, 3).map((rec) => {
+    const pres = resolveListingPresentation(
+      {
+        id: rec.id,
+        name: rec.payload?.name || `Limited #${rec.id}`,
+        description: rec.payload?.description || "",
+        url: rec.payload?.url,
+        images: rec.payload?.images,
+      },
+      rec.override
+    );
+    return { id: rec.id, name: pres.effective.name, url: pres.source.url };
+  });
+
+  const heroCandidate = selectedRecords.find((r) => r.isAvailable) || selectedRecords[0];
+  const featuredImageUrl =
+    tpl.showFeaturedImage && heroCandidate
+      ? pickValidListingImage(heroCandidate.payload?.images, tpl.featuredImageSlot ?? 3, {
+          listingId: heroCandidate.id,
+          cacheBustVersion: params.catalogVersion || 1,
+          safeOrigin: params.safeOrigin,
+        }) || ""
+      : "";
+
+  return computeStableHash({
+    template: tpl,
+    portalOrigin: params.portalOrigin || "",
+    safeOrigin: params.safeOrigin || "",
+    activeCount: activeRecords.length,
+    activeSummary: activeIdsAndNames,
+    selected: semanticSelected,
+    featuredImageUrl,
+  });
 }
 
 export function validateDiscordPayloadLimits(payload: any): {
@@ -987,13 +1720,13 @@ export function resolveEffectiveWidgetTemplate(
   guildCustomTemplateId?: string
 ): WidgetTemplateConfig {
   // Precedence: Global Defaults -> Server Configuration -> Widget-Specific Template
-  const defaultTpl = bundle.widgetDefault || DEFAULT_WIDGET_TEMPLATE;
+  const defaultTpl = normalizeWidgetTemplateConfig(bundle.widgetDefault, DEFAULT_WIDGET_TEMPLATE);
   const chosenId = templateId || guildCustomTemplateId || "default";
   if (!chosenId || chosenId === "default") {
     return defaultTpl;
   }
   const found = (bundle.widgetTemplates || []).find((t) => t.id === chosenId);
-  return found || defaultTpl;
+  return found ? normalizeWidgetTemplateConfig(found, defaultTpl) : defaultTpl;
 }
 
 export function getHeroActiveMessages(hero: HeroConfig): HeroMessageItem[] {

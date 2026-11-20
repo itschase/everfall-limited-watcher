@@ -19,6 +19,7 @@ import {
   resolvePublicOrigin,
 } from "./scraper";
 import { fetchDiscordWithRetry } from "./discord";
+import { CHECK_INTERVAL_LABEL } from "./shared/appConfig";
 
 const EPHEMERAL_FLAG = 64;
 
@@ -112,7 +113,7 @@ function buildHelpEmbed(guildConfig: GuildConfig | null) {
     fields: [
       {
         name: "⚙️ Current Server Settings",
-        value: `• **Alert Channel:** ${channelText}\n• **Mention Roles:** ${rolesText}\n• **Auto-Sweep Cadence:** Every 15 minutes (Edge Cron)`,
+        value: `• **Alert Channel:** ${channelText}\n• **Mention Roles:** ${rolesText}\n• **Auto-Sweep Cadence:** ${CHECK_INTERVAL_LABEL} (Store Monitor)`,
         inline: false,
       },
       {
@@ -500,7 +501,7 @@ export async function handleInteraction(
               content:
                 `✅ **Live Status Widget Deployed** in <#${targetChannelId}>.\n` +
                 `Message ID: \`${res.messageId}\` • [Jump to Widget Message](${jumpUrl})\n` +
-                `This widget will automatically update in-place within 1 minute of every store check without reposting.`,
+                `This widget will automatically update in-place whenever limited stock or catalog details change.`,
               embeds: [],
               components: [],
             });
@@ -740,7 +741,7 @@ export async function handleInteraction(
             await editOriginalInteractionResponse(appId, interactionToken, {
               content:
                 `**Live Status Widget Preview** *(Private — Only visible to you)*\n` +
-                `Confirm to post this auto-updating widget publicly in <#${targetChannelId}>. No roles will be mentioned, and it will update in-place within 1 minute of every store check.`,
+                `Confirm to post this auto-updating widget publicly in <#${targetChannelId}>. No roles will be mentioned, and it will update in-place whenever limited stock or catalog data changes.`,
               embeds: previewPayload.embeds,
               components: [
                 ...actionRows.slice(0, 1),

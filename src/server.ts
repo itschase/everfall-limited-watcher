@@ -3,6 +3,7 @@ import path from "node:path";
 import http from "node:http";
 import type { ViteDevServer } from "vite";
 import worker from "./index";
+import { SCHEDULED_CRON_INTERVAL_MS } from "./shared/appConfig";
 
 interface MemoryKVEntry {
   value: string | Uint8Array;
@@ -469,12 +470,12 @@ async function startServer() {
     }
   });
 
-  // Mirror the Cloudflare Worker scheduled cron trigger (every 15 minutes)
+  // Mirror the automated store monitor cadence (every 7 minutes)
   setInterval(() => {
     worker.scheduled({}, env, ctx).catch((err) => {
       console.error("Scheduled cron error:", err);
     });
-  }, 15 * 60 * 1000);
+  }, SCHEDULED_CRON_INTERVAL_MS);
 
   server.listen(PORT, HOST, () => {
     console.log(`Everfall Limited Watcher listening on http://${HOST}:${PORT}`);

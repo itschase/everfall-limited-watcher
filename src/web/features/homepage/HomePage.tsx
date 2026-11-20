@@ -26,6 +26,10 @@ import {
   PublicListingsResponse,
   PublicStatusResponse,
 } from "@/lib/api";
+import {
+  formatScheduledCadence,
+  SCHEDULED_CRON_INTERVAL_MS,
+} from "../../../shared/appConfig";
 import { resolveListingPresentation, sortAndFilterFeatures } from "../../../shared/features";
 import { cn, formatLocalDateTime, formatLocalTime, safeExternalUrl } from "@/lib/utils";
 import { useAuthActions, useSession } from "@/features/auth/useAuthActions";
@@ -67,11 +71,6 @@ function BotHealthBadge({ status }: { status: BotStatus }) {
       Bot Online
     </span>
   );
-}
-
-function formatScheduledCadence(intervalMs?: number): string {
-  const minutes = Math.max(1, Math.round((intervalMs || 900_000) / 60_000));
-  return `Every ${minutes}m`;
 }
 
 const FEATURES = [
@@ -159,12 +158,16 @@ export function HomePage() {
     statusHeartbeat?.scheduledIntervalMs ||
     listingsData?.scheduledIntervalMs ||
     session?.scheduledIntervalMs ||
-    900_000;
+    SCHEDULED_CRON_INTERVAL_MS;
   const lastCheckedAt =
     statusHeartbeat?.lastCheckedAt ||
     listingsData?.lastCheckedAt ||
     statusHeartbeat?.lastSuccessAt ||
     listingsData?.lastSuccessAt;
+  const lastVerifiedSuccessAt =
+    statusHeartbeat?.lastSuccessAt ||
+    listingsData?.lastSuccessAt ||
+    listingsData?.monitorStatus?.lastSuccessAt;
   const heroConfig = statusHeartbeat?.hero || listingsData?.hero;
 
   const inviteUrl =
@@ -233,7 +236,7 @@ export function HomePage() {
                 <span>Scheduled Store Check</span>
               </div>
               <div className="mt-1 font-mono text-sm font-semibold text-white tabular-nums">
-                {formatScheduledCadence(scheduledIntervalMs)}
+                {formatScheduledCadence(scheduledIntervalMs, true)}
               </div>
               <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
                 {lastCheckedAt ? `Last check ${formatLocalTime(lastCheckedAt)}` : "Awaiting run"}
@@ -270,8 +273,10 @@ export function HomePage() {
               <div className="mt-1 font-mono text-sm font-semibold text-white">
                 {monitorHealth.label}
               </div>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Bot: {botStatus === "online" ? "Authenticated" : "Offline"}
+              <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                {lastVerifiedSuccessAt
+                  ? `Verified ${formatLocalTime(lastVerifiedSuccessAt)}`
+                  : `Bot: ${botStatus === "online" ? "Authenticated" : "Offline"}`}
               </p>
             </div>
           </div>

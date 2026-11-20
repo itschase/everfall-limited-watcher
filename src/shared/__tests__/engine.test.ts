@@ -7,14 +7,24 @@ import {
   sortAndFilterFeatures,
 } from "../features";
 import {
+  CHECK_INTERVAL_LABEL,
+  SCHEDULED_CRON_INTERVAL_MS,
+} from "../appConfig";
+import {
   buildCarDropPayload,
   buildWidgetPayload,
   computeStableHash,
+  computeWidgetContentHash,
+  createDefaultPresentationConfig,
   DEFAULT_IN_STOCK_TEMPLATE,
   DEFAULT_SOLD_OUT_TEMPLATE,
   DEFAULT_WIDGET_TEMPLATE,
   validateDiscordPayloadLimits,
 } from "../presentation";
+import {
+  findUnsupportedVariables,
+  resolveTemplateVariables,
+} from "../variables";
 import { handleInteraction, hasManageServerPermission } from "../../commands";
 import {
   buildBotReadinessChecks,
@@ -23,7 +33,18 @@ import {
 } from "../../register";
 import { createSessionToken } from "../../admin";
 import { handleApiRequest } from "../../api";
-import { setWidgetDeployment } from "../../kv";
+import {
+  getAllWidgetDeployments,
+  setGuildConfig,
+  setPresentationConfig,
+  setWidgetDeployment,
+  WIDGET_REGISTRY_KEY,
+} from "../../kv";
+import {
+  deployStatusWidgetToChannel,
+  ingestVerifiedStoreScan,
+  refreshAllWidgets,
+} from "../../scraper";
 import { DISCORD_SLASH_COMMANDS } from "../slashCommands";
 
 test("extractVehicleMetadata normalizes Seraph GTS features without hyphen and isolates terms", () => {
@@ -678,4 +699,351 @@ test("Shared DISCORD_SLASH_COMMANDS doc list covers all registered Discord slash
   const registeredNames = COMMANDS.map((c) => c.name).sort();
   const documentedNames = DISCORD_SLASH_COMMANDS.map((c) => c.name).sort();
   assert.deepEqual(documentedNames, registeredNames);
+});
+
+test("Centralized schedule config matches 7-minute cadence across /api/public/status and /help command", async () => {
+  assert.equal(SCHEDULED_CRON_INTERVAL_MS, 7 * 60 * 1000);
+  assert.equal(CHECK_INTERVAL_LABEL, "Every 7 minutes");
+
+  const kv = createMemoryKv();
+  const env: any = {
+    DISCORD_BOT: kv,
+    DISCORD_PUBLIC_KEY: "0".repeat(64),
+    PUBLIC_ORIGIN: "https://portal.example.com",
+  };
+  const statusRes = await handleApiRequest(
+    new Request("https://portal.example.com/api/public/status"),
+    env,
+    new URL("https://portal.example.com/api/public/status")
+  );
+  const statusJson: any = await statusRes!.json();
+  assert.equal(statusJson.scheduledIntervalMs, 7 * 60 * 1000);
+
+  // Verify /help interaction response uses dynamic 7-minute cadence and not stale 15 minutes copy
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const spki = publicKey.export({ type: "spki", format: "der" });
+  env.DISCORD_PUBLIC_KEY = Buffer.from(spki.subarray(-32)).toString("hex");
+  const helpBody = JSON.stringify({
+    type: 2,
+    application_id: "1571958001928245378",
+    token: "help_tok",
+    guild_id: "111111111111111111",
+    channel_id: "222222222222222222",
+    data: { name: "help", type: 1 },
+  });
+  const ts = String(Math.floor(Date.now() / 1000));
+  const sig = crypto.sign(null, Buffer.from(ts + helpBody), privateKey).toString("hex");
+  const helpRes = await handleInteraction(
+    new Request("https://portal.example.com/interactions", {
+      method: "POST",
+      headers: { "x-signature-ed25519": sig, "x-signature-timestamp": ts },
+      body: helpBody,
+    }),
+    env,
+    { waitUntil() {} } as any,
+    "https://portal.example.com"
+  );
+  const helpJson: any = await helpRes.json();
+  const helpText = JSON.stringify(helpJson.data || {});
+  assert.match(helpText, /every 7 minutes/i);
+  assert.doesNotMatch(helpText, /every 15 minutes/i);
+});
+
+test("resolveTemplateVariables handles variable substitution, missing-value collapsing, mention safety, and unsupported token detection", () => {
+  const issues = findUnsupportedVariables(
+    "Header {vehicle_name} {unknown_placeholder} {recent_releases}",
+    "in_stock"
+  );
+  assert.deepEqual(issues.unknownTokens, ["{unknown_placeholder}"]);
+  assert.deepEqual(issues.unsupportedForScope, ["{recent_releases}"]);
+
+  const resolved = resolveTemplateVariables(
+    "Car: {vehicle_name} ({vehicle_id})\nSold Out: {sold_out_at}\nSpecs: {features}\nNotice: {missing_key}",
+    {
+      vehicle_name: "Seraph GTS @everyone <@&123456>",
+      vehicle_id: "7815819",
+      sold_out_at: "",
+      features: "",
+    }
+  );
+  assert.doesNotMatch(resolved, /@everyone/);
+  assert.doesNotMatch(resolved, /<@&123456>/);
+  assert.doesNotMatch(resolved, /Sold Out:/);
+  assert.doesNotMatch(resolved, /Specs:/);
+  assert.doesNotMatch(resolved, /\{[a-z_]+\}/);
+
+  // Announcement payload supports custom sections, section reordering, custom URLs, and rejects unsafe URL schemes
+  const customPayload = buildCarDropPayload({
+    car: {
+      id: "7815819",
+      name: "Seraph GTS",
+      description: "Limited vehicle.",
+      url: "https://store.everfallcommunity.com/package/7815819",
+      images: [],
+      isAvailable: true,
+    },
+    template: {
+      ...DEFAULT_IN_STOCK_TEMPLATE,
+      titlePrefix: "Drop {vehicle_id}:",
+      sectionOrder: ["timestamps", "header", "custom_sections", "status", "description", "features", "trading_delivery"],
+      storeButtonUrlMode: "custom",
+      customButtonUrl: "javascript:alert(1)",
+      showSecondaryButton: true,
+      secondaryButtonLabel: "Direct {vehicle_id}",
+      secondaryButtonUrlMode: "custom",
+      secondaryCustomButtonUrl: "https://store.everfallcommunity.com/package/{vehicle_id}?ref=bot",
+      customSections: [
+        {
+          id: "cs1",
+          title: "Check Schedule",
+          content: "Runs {check_interval}",
+          enabled: true,
+          condition: "in_stock_only",
+        },
+        {
+          id: "cs2",
+          title: "Sold Out Only",
+          content: "Should be hidden when in stock",
+          enabled: true,
+          condition: "sold_out_only",
+        },
+      ],
+    },
+  });
+  const container = customPayload.components[0];
+  const body = String(container.components[0].content);
+  assert.match(body, /# .*Drop 7815819: Seraph GTS/);
+  assert.match(body, /Check Schedule/);
+  assert.match(body, /Every 7 minutes/);
+  assert.doesNotMatch(body, /Should be hidden when in stock/);
+  const buttonsRow = container.components.find((c: any) => c.type === 1);
+  assert.equal(buttonsRow.components[0].url, "https://store.everfallcommunity.com/package/7815819");
+  assert.equal(buttonsRow.components[1].url, "https://store.everfallcommunity.com/package/7815819?ref=bot");
+});
+
+test("Independent widget timestamp controls support partial combinations, editable labels, separate Widget Last Updated, and hiding all 5", () => {
+  const checkMs = 1_760_000_000_000;
+  const verifiedMs = 1_759_999_000_000;
+  const widgetUpdatedMs = 1_760_000_500_000;
+
+  const customOnlyUpdated = buildWidgetPayload({
+    records: [],
+    monitorStatus: { checkedAt: checkMs, lastSuccessAt: verifiedMs, authoritative: true, lastSource: "scrapling" },
+    template: {
+      ...DEFAULT_WIDGET_TEMPLATE,
+      showLastStoreCheck: false,
+      showLastVerifiedStock: false,
+      showMonitorState: false,
+      showLastUpdated: true,
+      lastUpdatedLabel: "Board Refreshed",
+      showEmbedTimestamp: false,
+    },
+    nowMs: widgetUpdatedMs,
+    widgetUpdatedAt: widgetUpdatedMs,
+  });
+  const embA = customOnlyUpdated.embeds[0];
+  assert.equal(embA.timestamp, undefined, "showEmbedTimestamp=false must omit embed.timestamp");
+  assert.doesNotMatch(embA.description, /Last Store Check/);
+  assert.doesNotMatch(embA.description, /Last Verified Stock/);
+  assert.doesNotMatch(embA.description, /Monitor State/);
+  assert.match(
+    embA.description,
+    new RegExp(`\\*\\*Board Refreshed:\\*\\* <t:${Math.floor(widgetUpdatedMs / 1000)}:R>`)
+  );
+
+  // All 5 hidden produces clean description with zero timestamp lines and no embed.timestamp
+  const allHidden = buildWidgetPayload({
+    records: [],
+    monitorStatus: { checkedAt: checkMs, lastSuccessAt: verifiedMs, authoritative: true },
+    template: {
+      ...DEFAULT_WIDGET_TEMPLATE,
+      showLastStoreCheck: false,
+      showLastVerifiedStock: false,
+      showMonitorState: false,
+      showLastUpdated: false,
+      showEmbedTimestamp: false,
+    },
+    nowMs: widgetUpdatedMs,
+    widgetUpdatedAt: widgetUpdatedMs,
+  });
+  const embB = allHidden.embeds[0];
+  assert.equal(embB.timestamp, undefined);
+  assert.doesNotMatch(embB.description, /<t:\d+:/);
+});
+
+test("Widget updates skip Discord PATCH and KV writes on unchanged/blocked checks and batch-save on real changes", async () => {
+  const kv = createMemoryKv();
+  let kvPutCount = 0;
+  const trackedKv = {
+    ...kv,
+    async put(key: string, value: string | ArrayBuffer) {
+      if (key === WIDGET_REGISTRY_KEY || key.startsWith("widget")) {
+        kvPutCount++;
+      }
+      return kv.put(key, value);
+    },
+  };
+
+  const env: any = {
+    DISCORD_BOT: trackedKv,
+    DISCORD_BOT_TOKEN: "mock_bot_token",
+    PUBLIC_ORIGIN: "https://portal.example.com",
+  };
+
+  await setGuildConfig(env, "111111111111111111", {
+    channelId: "222222222222222222",
+    roleIds: ["999999999999999999"],
+    environment: "production",
+  });
+  await setGuildConfig(env, "333333333333333333", {
+    channelId: "444444444444444444",
+    roleIds: ["888888888888888888"],
+    environment: "production",
+  });
+
+  const discordPatches: Array<{ url: string; body: any }> = [];
+  const origFetch = globalThis.fetch;
+  let nextMsgId = 1000;
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const urlStr = String(input);
+    const method = String(init?.method || "GET").toUpperCase();
+    if (urlStr.includes("/messages") && method === "POST") {
+      return new Response(JSON.stringify({ id: String(++nextMsgId) }), { status: 200 });
+    }
+    if (urlStr.includes("/messages/") && method === "PATCH") {
+      discordPatches.push({ url: urlStr, body: JSON.parse(String(init?.body || "{}")) });
+      return new Response(JSON.stringify({ id: urlStr.split("/").pop() }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  }) as any;
+
+  try {
+    // Seed existing catalog via first verified ingest (no widgets yet)
+    await ingestVerifiedStoreScan(env, "https://portal.example.com", {
+      source: "scrapling",
+      authoritative: true,
+      listings: [
+        {
+          id: "7815819",
+          name: "Seraph GTS",
+          description: "Limited car.",
+          url: "https://store.everfallcommunity.com/package/7815819",
+          images: ["https://cdn.example.com/0.jpg"],
+        },
+      ],
+    });
+
+    // Deploy 2 widgets across 2 guilds
+    const w1 = await deployStatusWidgetToChannel(
+      env,
+      "111111111111111111",
+      "222222222222222222",
+      "https://portal.example.com",
+      { templateId: "default" }
+    );
+    const w2 = await deployStatusWidgetToChannel(
+      env,
+      "333333333333333333",
+      "444444444444444444",
+      "https://portal.example.com",
+      { templateId: "default" }
+    );
+    const widgetMsgIds = new Set([w1.messageId, w2.messageId]);
+
+    const registryBefore = await getAllWidgetDeployments(env);
+    assert.equal(registryBefore.length, 2);
+
+    // 1. Subsequent verified check with identical stock -> 0 Discord PATCHes, 0 widget KV writes!
+    kvPutCount = 0;
+    discordPatches.length = 0;
+    await ingestVerifiedStoreScan(env, "https://portal.example.com", {
+      source: "scrapling",
+      authoritative: true,
+      listings: [
+        {
+          id: "7815819",
+          name: "Seraph GTS",
+          description: "Limited car.",
+          url: "https://store.everfallcommunity.com/package/7815819",
+          images: ["https://cdn.example.com/0.jpg"],
+        },
+      ],
+    });
+    assert.equal(discordPatches.length, 0, "Unchanged check must trigger 0 Discord PATCH calls");
+    assert.equal(kvPutCount, 0, "Unchanged check must trigger 0 widget KV writes");
+
+    // 2. Blocked/non-authoritative check -> 0 Discord PATCHes, 0 widget KV writes!
+    await ingestVerifiedStoreScan(env, "https://portal.example.com", {
+      source: "cron-fetch",
+      authoritative: false,
+      cloudflareChallenge: true,
+      httpStatus: 403,
+      listings: [],
+    });
+    assert.equal(discordPatches.length, 0, "Blocked check must never edit widgets");
+    assert.equal(kvPutCount, 0, "Blocked check must never write widget KV");
+
+    // 3. Sold out transition -> edits 2 drop embeds + BOTH existing widgets in-place, never pings roles, and performs ONLY 1 batch KV write!
+    await ingestVerifiedStoreScan(env, "https://portal.example.com", {
+      source: "scrapling",
+      authoritative: true,
+      confirmedSoldOutIds: ["7815819"],
+      listings: [],
+    });
+    const widgetPatches = discordPatches.filter((p) =>
+      widgetMsgIds.has(p.url.split("/").pop())
+    );
+    assert.equal(widgetPatches.length, 2, "Stock transition must update both deployed widgets in place");
+    assert.equal(discordPatches.length, 4, "Stock transition also edits both announcement embeds cleanly");
+    assert.equal(kvPutCount, 1, "Multiple updated widgets must persist in a single widgets:registry batch write");
+    for (const patch of discordPatches) {
+      assert.deepEqual(patch.body.allowed_mentions?.roles, []);
+    }
+
+    // 4. Template change refreshes changed widgets; subsequent non-forced refresh skips again
+    kvPutCount = 0;
+    discordPatches.length = 0;
+    const baseBundle = createDefaultPresentationConfig();
+    await setPresentationConfig(env, {
+      ...baseBundle,
+      widgetDefault: {
+        ...baseBundle.widgetDefault,
+        title: "Updated Board Title",
+      },
+    });
+    const resTpl = await refreshAllWidgets(env, "https://portal.example.com", {
+      trigger: "presentation-save",
+      catalogChanged: true,
+    });
+    assert.equal(resTpl.refreshed, 2);
+    assert.equal(resTpl.skipped, 0);
+    assert.equal(discordPatches.length, 2);
+    assert.equal(kvPutCount, 1);
+
+    // 5. Explicit admin force=true refreshes even when content hash matches
+    kvPutCount = 0;
+    discordPatches.length = 0;
+    const resForce = await refreshAllWidgets(env, "https://portal.example.com", {
+      force: true,
+      trigger: "manual-force",
+    });
+    assert.equal(resForce.refreshed, 2);
+    assert.equal(discordPatches.length, 2);
+    assert.equal(kvPutCount, 1);
+
+    // Verify computeWidgetContentHash strictly ignores timestamp drift
+    const h1 = computeWidgetContentHash({
+      records: [],
+      template: DEFAULT_WIDGET_TEMPLATE,
+      catalogVersion: 1,
+    });
+    const h2 = computeWidgetContentHash({
+      records: [],
+      template: DEFAULT_WIDGET_TEMPLATE,
+      catalogVersion: 1,
+    });
+    assert.equal(h1, h2);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
 });

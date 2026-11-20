@@ -8,14 +8,24 @@ import type {
   VehicleMetadataOverride,
 } from "../../shared/features";
 import type {
+  AnnouncementSectionKey,
   AnnouncementTemplate,
   DiscordEmojiRef,
   HeroAnimationStyle,
   HeroConfig,
   HeroMessageItem,
   PresentationConfigBundle,
+  TemplateCustomSection,
+  TemplateSectionCondition,
+  WidgetSectionKey,
   WidgetTemplateConfig,
 } from "../../shared/presentation";
+import type {
+  TemplateVariableCategory,
+  TemplateVariableDef,
+  TemplateVariableScope,
+  TemplateVariableValues,
+} from "../../shared/variables";
 
 export type {
   EmojiReference,
@@ -25,13 +35,21 @@ export type {
   NormalizedListingPresentation,
   VehicleFeature,
   VehicleMetadataOverride,
+  AnnouncementSectionKey,
   AnnouncementTemplate,
   DiscordEmojiRef,
   HeroAnimationStyle,
   HeroConfig,
   HeroMessageItem,
   PresentationConfigBundle,
+  TemplateCustomSection,
+  TemplateSectionCondition,
+  WidgetSectionKey,
   WidgetTemplateConfig,
+  TemplateVariableCategory,
+  TemplateVariableDef,
+  TemplateVariableScope,
+  TemplateVariableValues,
 };
 
 export type BotStatus = "online" | "offline";

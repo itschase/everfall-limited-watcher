@@ -248,8 +248,7 @@ function ServerWidgetsSection({
             </h4>
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Deploy or manage auto-updating stock &amp; recent drops embeds in this server. Updates in-place
-            within 1 minute of each store check without mentioning roles.
+            Deploy or manage live stock &amp; recent drops embeds in this server. Updates in-place automatically whenever stock, vehicle details, or appearance change without mentioning roles.
           </p>
         </div>
 

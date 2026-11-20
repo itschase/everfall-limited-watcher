@@ -41,6 +41,7 @@ import {
   DEFAULT_SOLD_OUT_TEMPLATE,
   DEFAULT_WIDGET_TEMPLATE,
 } from "../../../shared/presentation";
+import { CHECK_INTERVAL_LABEL } from "../../../shared/appConfig";
 import { cn, formatLocalDateTime, safeExternalUrl } from "@/lib/utils";
 import { useSession } from "@/features/auth/useAuthActions";
 import { PublicLayout } from "@/components/layout/PublicLayout";
@@ -523,7 +524,7 @@ export function FeaturesPage() {
                         <div className="flex items-start justify-between gap-4">
                           <dt className="text-muted-foreground">Verification Cadence</dt>
                           <dd className="text-right font-medium text-white">
-                            Synced within 1 minute of store checks
+                            {CHECK_INTERVAL_LABEL} &amp; synced on change
                           </dd>
                         </div>
                         <div className="flex items-start justify-between gap-4">
@@ -951,10 +952,10 @@ export function FeaturesPage() {
                 </div>
                 <div className="rounded-lg border border-border bg-card p-4">
                   <p className="font-semibold text-white">
-                    Automatic 1-Minute Sync Guarantee
+                    Change-Aware In-Place Sync
                   </p>
                   <p className="mt-1 leading-relaxed text-muted-foreground">
-                    Every store verification pass refreshes active widgets in place within a minute using verified Slot {widgetTemplate.featuredImageSlot ?? 3} / Slot 0 artwork and deduplicated hashing.
+                    Store verification runs automatically ({CHECK_INTERVAL_LABEL.toLowerCase()}) and updates active widgets in place whenever limited stock, vehicle details, or appearance change—skipping redundant edits when data stays identical and using verified Slot {widgetTemplate.featuredImageSlot ?? 3} / Slot 0 artwork.
                   </p>
                 </div>
               </div>

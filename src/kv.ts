@@ -2,10 +2,12 @@
 // Accesses env.DISCORD_BOT KV binding
 
 import {
-  AnnouncementTemplate,
   createDefaultPresentationConfig,
   DEFAULT_IN_STOCK_TEMPLATE,
   DEFAULT_SOLD_OUT_TEMPLATE,
+  DEFAULT_WIDGET_TEMPLATE,
+  normalizeAnnouncementTemplate,
+  normalizeWidgetTemplateConfig,
   PresentationConfigBundle,
   WidgetTemplateConfig,
 } from "./shared/presentation";
@@ -789,13 +791,11 @@ export async function markListingSentToGuild(
       meta?.isSoldOutRendered !== undefined ? meta.isSoldOutRendered : prev?.isSoldOutRendered,
   };
   currentMap[listingId] = nextMeta;
-  await Promise.all([
-    kv.put(`guild:${guildId}:sent:${listingId}`, JSON.stringify(nextMeta)),
-    kv.put(`guild:${guildId}:messages`, JSON.stringify(currentMap)),
-  ]);
+  await kv.put(`guild:${guildId}:messages`, JSON.stringify(currentMap));
 }
 
 // Per-Server & Multi-Channel Deployed Status Widget Registry (/widget)
+export const WIDGET_REGISTRY_KEY = "widgets:registry";
 const LEGACY_WIDGET_INDEX_KEY = "widgets:all";
 const WIDGET_IDS_INDEX_KEY = "widgets:all_ids";
 const WIDGET_INSTANCE_PREFIX = "widget_instance:";
@@ -829,11 +829,26 @@ function normalizeWidgetRecord(raw: any): WidgetDeployment | null {
   };
 }
 
-export async function getAllWidgetDeployments(env: any): Promise<WidgetDeployment[]> {
-  const kv = env.DISCORD_BOT as KVNamespace;
-  if (!kv) return [];
+async function readWidgetRegistryMap(kv: KVNamespace): Promise<Record<string, WidgetDeployment>> {
+  const consolidatedRaw = await kv.get(WIDGET_REGISTRY_KEY);
+  if (consolidatedRaw !== null) {
+    try {
+      const parsed = JSON.parse(consolidatedRaw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const clean: Record<string, WidgetDeployment> = {};
+        for (const [k, val] of Object.entries(parsed)) {
+          const normalized = normalizeWidgetRecord(val);
+          if (normalized) clean[normalized.id || k] = normalized;
+        }
+        return clean;
+      }
+    } catch {
+      // fall through to legacy migration
+    }
+  }
 
-  const resultMap = new Map<string, WidgetDeployment>();
+  // One-time lazy read migration from legacy multi-key widget storage
+  const resultMap: Record<string, WidgetDeployment> = {};
   let ids: string[] = [];
   const rawIdx = await kv.get(WIDGET_IDS_INDEX_KEY);
   if (rawIdx) {
@@ -844,7 +859,6 @@ export async function getAllWidgetDeployments(env: any): Promise<WidgetDeploymen
       ids = [];
     }
   }
-
   if (ids.length === 0) {
     const instanceKeys = await listKeysByPrefix(kv, WIDGET_INSTANCE_PREFIX);
     ids = instanceKeys.map((k) => k.slice(WIDGET_INSTANCE_PREFIX.length)).filter(Boolean);
@@ -856,14 +870,13 @@ export async function getAllWidgetDeployments(env: any): Promise<WidgetDeploymen
       if (!raw) return;
       try {
         const normalized = normalizeWidgetRecord(JSON.parse(raw));
-        if (normalized) resultMap.set(normalized.id, normalized);
+        if (normalized) resultMap[normalized.id] = normalized;
       } catch {
         // skip corrupted record
       }
     })
   );
 
-  // Backward-compatible read of legacy 1-per-guild keys (`widget:${guildId}`)
   let legacyGuildIds: string[] = [];
   const rawLegacyIdx = await kv.get(LEGACY_WIDGET_INDEX_KEY);
   if (rawLegacyIdx) {
@@ -883,15 +896,25 @@ export async function getAllWidgetDeployments(env: any): Promise<WidgetDeploymen
     if (!raw) continue;
     try {
       const normalized = normalizeWidgetRecord(JSON.parse(raw));
-      if (normalized && !resultMap.has(normalized.id)) {
-        resultMap.set(normalized.id, normalized);
+      if (normalized && !resultMap[normalized.id]) {
+        resultMap[normalized.id] = normalized;
       }
     } catch {
       // skip corrupted legacy record
     }
   }
 
-  return [...resultMap.values()].sort((a, b) => b.deployedAt - a.deployedAt);
+  if (Object.keys(resultMap).length > 0) {
+    await kv.put(WIDGET_REGISTRY_KEY, JSON.stringify(resultMap));
+  }
+  return resultMap;
+}
+
+export async function getAllWidgetDeployments(env: any): Promise<WidgetDeployment[]> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv) return [];
+  const map = await readWidgetRegistryMap(kv);
+  return Object.values(map).sort((a, b) => b.deployedAt - a.deployedAt);
 }
 
 export async function getAllWidgetGuildIds(env: any): Promise<string[]> {
@@ -910,16 +933,8 @@ export async function getWidgetDeploymentById(
 ): Promise<WidgetDeployment | null> {
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return null;
-  const raw = await kv.get(`${WIDGET_INSTANCE_PREFIX}${widgetId}`);
-  if (raw) {
-    try {
-      return normalizeWidgetRecord(JSON.parse(raw));
-    } catch {
-      return null;
-    }
-  }
-  const all = await getAllWidgetDeployments(env);
-  return all.find((w) => w.id === widgetId) || null;
+  const map = await readWidgetRegistryMap(kv);
+  return map[widgetId] || null;
 }
 
 export async function getWidgetDeployment(
@@ -941,86 +956,38 @@ export async function setWidgetDeployment(
   })!;
   if (!kv) return normalized;
 
-  await kv.put(`${WIDGET_INSTANCE_PREFIX}${normalized.id}`, JSON.stringify(normalized));
-
-  const rawIdx = await kv.get(WIDGET_IDS_INDEX_KEY);
-  let ids: string[] = [];
-  if (rawIdx) {
-    try {
-      const parsed = JSON.parse(rawIdx);
-      if (Array.isArray(parsed)) ids = parsed.map(String).filter(Boolean);
-    } catch {
-      ids = [];
-    }
-  }
-  if (!ids.includes(normalized.id)) {
-    ids.push(normalized.id);
-    await kv.put(WIDGET_IDS_INDEX_KEY, JSON.stringify([...new Set(ids)]));
-  }
-
-  // Keep legacy key updated for backward compatibility on primary guild widget
-  await kv.put(`widget:${normalized.guildId}`, JSON.stringify(normalized));
-  const rawLegacyIdx = await kv.get(LEGACY_WIDGET_INDEX_KEY);
-  let legacyIds: string[] = [];
-  if (rawLegacyIdx) {
-    try {
-      const parsed = JSON.parse(rawLegacyIdx);
-      if (Array.isArray(parsed)) legacyIds = parsed.map(String).filter(Boolean);
-    } catch {
-      legacyIds = [];
-    }
-  }
-  if (!legacyIds.includes(normalized.guildId)) {
-    legacyIds.push(normalized.guildId);
-    await kv.put(LEGACY_WIDGET_INDEX_KEY, JSON.stringify([...new Set(legacyIds)]));
-  }
+  const map = await readWidgetRegistryMap(kv);
+  map[normalized.id] = normalized;
+  await kv.put(WIDGET_REGISTRY_KEY, JSON.stringify(map));
   return normalized;
+}
+
+export async function saveWidgetDeploymentsBatch(
+  env: any,
+  updatedWidgets: WidgetDeployment[]
+): Promise<void> {
+  const kv = env.DISCORD_BOT as KVNamespace;
+  if (!kv || updatedWidgets.length === 0) return;
+  const map = await readWidgetRegistryMap(kv);
+  for (const w of updatedWidgets) {
+    const normalized = normalizeWidgetRecord(w);
+    if (normalized) map[normalized.id] = normalized;
+  }
+  await kv.put(WIDGET_REGISTRY_KEY, JSON.stringify(map));
 }
 
 export async function deleteWidgetDeploymentById(env: any, widgetId: string): Promise<void> {
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return;
-  const existing = await getWidgetDeploymentById(env, widgetId);
-  await kv.delete(`${WIDGET_INSTANCE_PREFIX}${widgetId}`);
+  const map = await readWidgetRegistryMap(kv);
+  const existing = map[widgetId];
+  delete map[widgetId];
+  await kv.put(WIDGET_REGISTRY_KEY, JSON.stringify(map));
 
-  const rawIdx = await kv.get(WIDGET_IDS_INDEX_KEY);
-  if (rawIdx) {
-    try {
-      const parsed: string[] = JSON.parse(rawIdx);
-      if (Array.isArray(parsed)) {
-        await kv.put(
-          WIDGET_IDS_INDEX_KEY,
-          JSON.stringify(parsed.filter((id) => id !== widgetId))
-        );
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  if (existing) {
-    const remaining = (await getAllWidgetDeployments(env)).filter(
-      (w) => w.guildId === existing.guildId
-    );
-    if (remaining.length === 0) {
-      await kv.delete(`widget:${existing.guildId}`);
-      const rawLegacy = await kv.get(LEGACY_WIDGET_INDEX_KEY);
-      if (rawLegacy) {
-        try {
-          const parsed: string[] = JSON.parse(rawLegacy);
-          if (Array.isArray(parsed)) {
-            await kv.put(
-              LEGACY_WIDGET_INDEX_KEY,
-              JSON.stringify(parsed.filter((g) => g !== existing.guildId))
-            );
-          }
-        } catch {
-          // ignore
-        }
-      }
-    } else {
-      await kv.put(`widget:${existing.guildId}`, JSON.stringify(remaining[0]));
-    }
+  // Best-effort cleanup of any leftover legacy keys
+  await kv.delete(`${WIDGET_INSTANCE_PREFIX}${widgetId}`).catch(() => null);
+  if (existing && !Object.values(map).some((w) => w.guildId === existing.guildId)) {
+    await kv.delete(`widget:${existing.guildId}`).catch(() => null);
   }
 }
 
@@ -1030,24 +997,20 @@ export async function deleteWidgetDeployment(
 ): Promise<void> {
   const kv = env.DISCORD_BOT as KVNamespace;
   if (!kv) return;
-  const forGuild = await getWidgetsForGuild(env, guildId);
-  for (const w of forGuild) {
-    await deleteWidgetDeploymentById(env, w.id);
-  }
-  await kv.delete(`widget:${guildId}`);
-  const rawLegacy = await kv.get(LEGACY_WIDGET_INDEX_KEY);
-  if (rawLegacy) {
-    try {
-      const parsed: string[] = JSON.parse(rawLegacy);
-      if (Array.isArray(parsed)) {
-        await kv.put(
-          LEGACY_WIDGET_INDEX_KEY,
-          JSON.stringify(parsed.filter((id) => id !== guildId))
-        );
-      }
-    } catch {
-      // ignore
+  const map = await readWidgetRegistryMap(kv);
+  const removedIds: string[] = [];
+  for (const [id, w] of Object.entries(map)) {
+    if (w.guildId === guildId) {
+      removedIds.push(id);
+      delete map[id];
     }
+  }
+  if (removedIds.length > 0) {
+    await kv.put(WIDGET_REGISTRY_KEY, JSON.stringify(map));
+    await Promise.all([
+      ...removedIds.map((id) => kv.delete(`${WIDGET_INSTANCE_PREFIX}${id}`).catch(() => null)),
+      kv.delete(`widget:${guildId}`).catch(() => null),
+    ]);
   }
 }
 
@@ -1106,6 +1069,32 @@ export async function getEmbedConfig(env: any): Promise<EmbedConfig> {
   if (!kv) {
     return { ...DEFAULT_EMBED_CONFIG };
   }
+  const presRaw = await kv.get(PRESENTATION_CONFIG_KEY);
+  if (presRaw) {
+    try {
+      const parsed = JSON.parse(presRaw) as Partial<PresentationConfigBundle>;
+      const inStock = normalizeAnnouncementTemplate(
+        parsed.announcements?.inStock,
+        DEFAULT_IN_STOCK_TEMPLATE
+      );
+      const soldOut = normalizeAnnouncementTemplate(
+        parsed.announcements?.soldOut,
+        DEFAULT_SOLD_OUT_TEMPLATE
+      );
+      return {
+        color: inStock.accentColor || DEFAULT_EMBED_CONFIG.color,
+        titlePrefix: inStock.titlePrefix || DEFAULT_EMBED_CONFIG.titlePrefix,
+        footerText: inStock.footerText || DEFAULT_EMBED_CONFIG.footerText,
+        galleryHeading: "",
+        storeButtonLabel: inStock.storeButtonLabel || DEFAULT_EMBED_CONFIG.storeButtonLabel,
+        soldOutButtonLabel: soldOut.storeButtonLabel || DEFAULT_EMBED_CONFIG.soldOutButtonLabel,
+        showDetectionTime: inStock.showDetectionTime !== false,
+        showLastVerified: inStock.showLastVerified !== false,
+      };
+    } catch {
+      // fall through to legacy admin:embed_config
+    }
+  }
   const raw = await kv.get("admin:embed_config");
   if (!raw) {
     return { ...DEFAULT_EMBED_CONFIG };
@@ -1152,21 +1141,6 @@ export async function getEffectiveEmbedConfig(env: any, guildId?: string): Promi
   };
 }
 
-function mergeAnnouncementTemplate(
-  base: AnnouncementTemplate,
-  incoming?: Partial<AnnouncementTemplate> | null
-): AnnouncementTemplate {
-  if (!incoming || typeof incoming !== "object") return { ...base };
-  return {
-    ...base,
-    ...incoming,
-    featureOrder:
-      Array.isArray(incoming.featureOrder) && incoming.featureOrder.length > 0
-        ? incoming.featureOrder
-        : [...base.featureOrder],
-  };
-}
-
 export async function getPresentationConfig(env: any): Promise<PresentationConfigBundle> {
   const defaults = createDefaultPresentationConfig();
   const kv = env.DISCORD_BOT as KVNamespace | undefined;
@@ -1176,46 +1150,29 @@ export async function getPresentationConfig(env: any): Promise<PresentationConfi
   if (raw) {
     try {
       const parsed = JSON.parse(raw) as Partial<PresentationConfigBundle>;
+      const normalizedWidgetDefault = normalizeWidgetTemplateConfig(
+        parsed.widgetDefault,
+        defaults.widgetDefault
+      );
       return {
         version: typeof parsed.version === "number" ? parsed.version : 1,
         updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
         ...(parsed.updatedBy ? { updatedBy: String(parsed.updatedBy) } : {}),
         announcements: {
-          inStock: mergeAnnouncementTemplate(
-            defaults.announcements.inStock,
-            parsed.announcements?.inStock
+          inStock: normalizeAnnouncementTemplate(
+            parsed.announcements?.inStock,
+            defaults.announcements.inStock
           ),
-          soldOut: mergeAnnouncementTemplate(
-            defaults.announcements.soldOut,
-            parsed.announcements?.soldOut
+          soldOut: normalizeAnnouncementTemplate(
+            parsed.announcements?.soldOut,
+            defaults.announcements.soldOut
           ),
         },
-        widgetDefault: {
-          ...defaults.widgetDefault,
-          ...(parsed.widgetDefault || {}),
-          featureOrder:
-            Array.isArray(parsed.widgetDefault?.featureOrder) &&
-            parsed.widgetDefault.featureOrder.length > 0
-              ? parsed.widgetDefault.featureOrder
-              : [...defaults.widgetDefault.featureOrder],
-          featureLabelOverrides: parsed.widgetDefault?.featureLabelOverrides || {},
-          hiddenFeatureKeys: Array.isArray(parsed.widgetDefault?.hiddenFeatureKeys)
-            ? parsed.widgetDefault.hiddenFeatureKeys
-            : [],
-        },
+        widgetDefault: normalizedWidgetDefault,
         widgetTemplates: Array.isArray(parsed.widgetTemplates)
-          ? parsed.widgetTemplates.map((tpl) => ({
-              ...defaults.widgetDefault,
-              ...tpl,
-              featureOrder:
-                Array.isArray(tpl?.featureOrder) && tpl.featureOrder.length > 0
-                  ? tpl.featureOrder
-                  : [...defaults.widgetDefault.featureOrder],
-              featureLabelOverrides: tpl?.featureLabelOverrides || {},
-              hiddenFeatureKeys: Array.isArray(tpl?.hiddenFeatureKeys)
-                ? tpl.hiddenFeatureKeys
-                : [],
-            }))
+          ? parsed.widgetTemplates.map((tpl) =>
+              normalizeWidgetTemplateConfig(tpl, normalizedWidgetDefault)
+            )
           : [],
         hero: {
           ...defaults.hero,
@@ -1234,25 +1191,33 @@ export async function getPresentationConfig(env: any): Promise<PresentationConfi
 
   // First-read automatic migration from legacy admin:embed_config
   const legacy = await getEmbedConfig(env);
-  defaults.announcements.inStock = {
-    ...DEFAULT_IN_STOCK_TEMPLATE,
-    accentColor: legacy.color || DEFAULT_IN_STOCK_TEMPLATE.accentColor,
-    titlePrefix:
-      typeof legacy.titlePrefix === "string"
-        ? legacy.titlePrefix.replace(/<a?:[a-zA-Z0-9_]+:\d+>\s*/g, "").trim() ||
-          DEFAULT_IN_STOCK_TEMPLATE.titlePrefix
-        : DEFAULT_IN_STOCK_TEMPLATE.titlePrefix,
-    footerText: legacy.footerText || DEFAULT_IN_STOCK_TEMPLATE.footerText,
-    storeButtonLabel: legacy.storeButtonLabel || DEFAULT_IN_STOCK_TEMPLATE.storeButtonLabel,
-    showDetectionTime: legacy.showDetectionTime !== false,
-    showLastVerified: legacy.showLastVerified !== false,
-  };
-  defaults.announcements.soldOut = {
-    ...DEFAULT_SOLD_OUT_TEMPLATE,
-    storeButtonLabel: legacy.soldOutButtonLabel || DEFAULT_SOLD_OUT_TEMPLATE.storeButtonLabel,
-    showDetectionTime: legacy.showDetectionTime !== false,
-    showLastVerified: legacy.showLastVerified !== false,
-  };
+  defaults.announcements.inStock = normalizeAnnouncementTemplate(
+    {
+      accentColor: legacy.color || DEFAULT_IN_STOCK_TEMPLATE.accentColor,
+      titlePrefix:
+        typeof legacy.titlePrefix === "string"
+          ? legacy.titlePrefix.replace(/<a?:[a-zA-Z0-9_]+:\d+>\s*/g, "").trim() ||
+            DEFAULT_IN_STOCK_TEMPLATE.titlePrefix
+          : DEFAULT_IN_STOCK_TEMPLATE.titlePrefix,
+      footerText: legacy.footerText || DEFAULT_IN_STOCK_TEMPLATE.footerText,
+      storeButtonLabel: legacy.storeButtonLabel || DEFAULT_IN_STOCK_TEMPLATE.storeButtonLabel,
+      showDetectionTime: legacy.showDetectionTime !== false,
+      showLastVerified: legacy.showLastVerified !== false,
+    },
+    DEFAULT_IN_STOCK_TEMPLATE
+  );
+  defaults.announcements.soldOut = normalizeAnnouncementTemplate(
+    {
+      storeButtonLabel: legacy.soldOutButtonLabel || DEFAULT_SOLD_OUT_TEMPLATE.storeButtonLabel,
+      showDetectionTime: legacy.showDetectionTime !== false,
+      showLastVerified: legacy.showLastVerified !== false,
+    },
+    DEFAULT_SOLD_OUT_TEMPLATE
+  );
+  defaults.widgetDefault = normalizeWidgetTemplateConfig(
+    defaults.widgetDefault,
+    DEFAULT_WIDGET_TEMPLATE
+  );
   return defaults;
 }
 
@@ -1268,17 +1233,6 @@ export async function setPresentationConfig(
   };
   if (kv) {
     await kv.put(PRESENTATION_CONFIG_KEY, JSON.stringify(next));
-    // Keep legacy admin:embed_config synchronized for older consumers
-    await setEmbedConfig(env, {
-      color: next.announcements.inStock.accentColor,
-      titlePrefix: next.announcements.inStock.titlePrefix,
-      footerText: next.announcements.inStock.footerText,
-      galleryHeading: "",
-      storeButtonLabel: next.announcements.inStock.storeButtonLabel,
-      soldOutButtonLabel: next.announcements.soldOut.storeButtonLabel,
-      showDetectionTime: next.announcements.inStock.showDetectionTime,
-      showLastVerified: next.announcements.inStock.showLastVerified,
-    });
   }
   return next;
 }

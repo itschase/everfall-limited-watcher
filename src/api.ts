@@ -80,6 +80,7 @@ import {
   VehicleFeature,
   VehicleMetadataOverride,
 } from "./shared/features";
+import { SCHEDULED_CRON_INTERVAL_MS } from "./shared/appConfig";
 import {
   AnnouncementTemplate,
   DEFAULT_HERO_CONFIG,
@@ -88,6 +89,8 @@ import {
   DEFAULT_WIDGET_TEMPLATE,
   DiscordEmojiRef,
   HeroConfig,
+  normalizeAnnouncementTemplate,
+  normalizeWidgetTemplateConfig,
   PresentationConfigBundle,
   sanitizeHexColor,
   sanitizeHttpUrl,
@@ -100,8 +103,6 @@ const NO_STORE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate, private",
   Vary: "Cookie",
 };
-
-const SCHEDULED_CRON_INTERVAL_MS = 15 * 60 * 1000;
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -1287,7 +1288,9 @@ export async function handleApiRequest(
         incoming: any,
         fallback: AnnouncementTemplate
       ): AnnouncementTemplate => {
-        if (!incoming || typeof incoming !== "object") return fallback;
+        if (!incoming || typeof incoming !== "object") {
+          return normalizeAnnouncementTemplate(fallback, fallback);
+        }
         const descMode =
           incoming.descriptionMode === "short_summary" ||
           incoming.descriptionMode === "full_description" ||
@@ -1305,62 +1308,115 @@ export async function handleApiRequest(
           incoming.storeButtonUrlMode === "listing" ||
           incoming.storeButtonUrlMode === "category" ||
           incoming.storeButtonUrlMode === "store_home" ||
-          incoming.storeButtonUrlMode === "website"
+          incoming.storeButtonUrlMode === "website" ||
+          incoming.storeButtonUrlMode === "custom"
             ? incoming.storeButtonUrlMode
             : fallback.storeButtonUrlMode;
-        return {
-          accentColor: sanitizeHexColor(incoming.accentColor, fallback.accentColor),
-          titlePrefix: String(incoming.titlePrefix ?? fallback.titlePrefix).trim().slice(0, 120),
-          titleEmoji:
-            incoming.titleEmoji === null
-              ? null
-              : validateEmojiRef(incoming.titleEmoji) ?? fallback.titleEmoji ?? null,
-          availabilityHeading:
-            String(incoming.availabilityHeading ?? fallback.availabilityHeading).trim().slice(0, 60) ||
-            "Availability",
-          statusLabel:
-            String(incoming.statusLabel ?? fallback.statusLabel).trim().slice(0, 60) ||
-            fallback.statusLabel,
-          statusEmoji:
-            incoming.statusEmoji === null
-              ? null
-              : validateEmojiRef(incoming.statusEmoji) ?? fallback.statusEmoji ?? null,
-          descriptionMode: descMode,
-          customDescription: String(incoming.customDescription ?? fallback.customDescription).slice(0, 2000),
-          showFeatures: incoming.showFeatures !== false,
-          featureOrder: Array.isArray(incoming.featureOrder)
-            ? incoming.featureOrder.map(String).slice(0, 15)
-            : fallback.featureOrder,
-          featureStyle: incoming.featureStyle === "bullet_list" ? "bullet_list" : "inline_badges",
-          showTradingInfo: incoming.showTradingInfo !== false,
-          showDeliveryInfo: incoming.showDeliveryInfo !== false,
-          showDetectionTime: incoming.showDetectionTime !== false,
-          showLastVerified: incoming.showLastVerified !== false,
-          showSoldOutTime: Boolean(incoming.showSoldOutTime),
-          galleryMode,
-          primaryImageSlot: Math.max(0, Math.min(9, Math.round(Number(incoming.primaryImageSlot ?? 0) || 0))),
-          footerText: String(incoming.footerText ?? fallback.footerText).trim().slice(0, 200),
-          footerEmoji:
-            incoming.footerEmoji === null
-              ? null
-              : validateEmojiRef(incoming.footerEmoji) ?? fallback.footerEmoji ?? null,
-          showStoreButton: incoming.showStoreButton !== false,
-          storeButtonLabel:
-            String(incoming.storeButtonLabel ?? fallback.storeButtonLabel).trim().slice(0, 80) ||
-            fallback.storeButtonLabel,
-          storeButtonEmoji:
-            incoming.storeButtonEmoji === null
-              ? null
-              : validateEmojiRef(incoming.storeButtonEmoji) ?? fallback.storeButtonEmoji ?? null,
-          storeButtonUrlMode: urlMode,
-        };
+        const secUrlMode =
+          incoming.secondaryButtonUrlMode === "listing" ||
+          incoming.secondaryButtonUrlMode === "category" ||
+          incoming.secondaryButtonUrlMode === "store_home" ||
+          incoming.secondaryButtonUrlMode === "website" ||
+          incoming.secondaryButtonUrlMode === "custom"
+            ? incoming.secondaryButtonUrlMode
+            : fallback.secondaryButtonUrlMode || "website";
+        return normalizeAnnouncementTemplate(
+          {
+            accentColor: sanitizeHexColor(incoming.accentColor, fallback.accentColor),
+            titlePrefix: String(incoming.titlePrefix ?? fallback.titlePrefix).trim().slice(0, 120),
+            titleEmoji:
+              incoming.titleEmoji === null
+                ? null
+                : validateEmojiRef(incoming.titleEmoji) ?? fallback.titleEmoji ?? null,
+            availabilityHeading:
+              String(incoming.availabilityHeading ?? fallback.availabilityHeading).trim().slice(0, 60) ||
+              "Availability",
+            statusLabel:
+              String(incoming.statusLabel ?? fallback.statusLabel).trim().slice(0, 60) ||
+              fallback.statusLabel,
+            statusEmoji:
+              incoming.statusEmoji === null
+                ? null
+                : validateEmojiRef(incoming.statusEmoji) ?? fallback.statusEmoji ?? null,
+            descriptionMode: descMode,
+            customDescription: String(incoming.customDescription ?? fallback.customDescription).slice(0, 2000),
+            showFeatures: incoming.showFeatures !== false,
+            featureOrder: Array.isArray(incoming.featureOrder)
+              ? incoming.featureOrder.map(String).slice(0, 15)
+              : fallback.featureOrder,
+            featureStyle: incoming.featureStyle === "bullet_list" ? "bullet_list" : "inline_badges",
+            showTradingInfo: incoming.showTradingInfo !== false,
+            tradingLabel:
+              String(incoming.tradingLabel ?? fallback.tradingLabel ?? "Trading").trim().slice(0, 50) ||
+              "Trading",
+            showDeliveryInfo: incoming.showDeliveryInfo !== false,
+            deliveryLabel:
+              String(incoming.deliveryLabel ?? fallback.deliveryLabel ?? "Delivery").trim().slice(0, 50) ||
+              "Delivery",
+            showDetectionTime: incoming.showDetectionTime !== false,
+            firstDetectedLabel:
+              String(incoming.firstDetectedLabel ?? fallback.firstDetectedLabel ?? "First Detected")
+                .trim()
+                .slice(0, 50) || "First Detected",
+            showLastVerified: incoming.showLastVerified !== false,
+            lastVerifiedLabel:
+              String(incoming.lastVerifiedLabel ?? fallback.lastVerifiedLabel ?? "Last Verified")
+                .trim()
+                .slice(0, 50) || "Last Verified",
+            showSoldOutTime: Boolean(incoming.showSoldOutTime),
+            soldOutLabel:
+              String(incoming.soldOutLabel ?? fallback.soldOutLabel ?? "Confirmed Sold Out")
+                .trim()
+                .slice(0, 50) || "Confirmed Sold Out",
+            sectionOrder: Array.isArray(incoming.sectionOrder)
+              ? incoming.sectionOrder.map(String)
+              : fallback.sectionOrder,
+            customSections: Array.isArray(incoming.customSections)
+              ? incoming.customSections
+              : fallback.customSections,
+            galleryMode,
+            primaryImageSlot: Math.max(0, Math.min(9, Math.round(Number(incoming.primaryImageSlot ?? 0) || 0))),
+            footerText: String(incoming.footerText ?? fallback.footerText).trim().slice(0, 200),
+            footerEmoji:
+              incoming.footerEmoji === null
+                ? null
+                : validateEmojiRef(incoming.footerEmoji) ?? fallback.footerEmoji ?? null,
+            showStoreButton: incoming.showStoreButton !== false,
+            storeButtonLabel:
+              String(incoming.storeButtonLabel ?? fallback.storeButtonLabel).trim().slice(0, 80) ||
+              fallback.storeButtonLabel,
+            storeButtonEmoji:
+              incoming.storeButtonEmoji === null
+                ? null
+                : validateEmojiRef(incoming.storeButtonEmoji) ?? fallback.storeButtonEmoji ?? null,
+            storeButtonUrlMode: urlMode,
+            customButtonUrl: String(incoming.customButtonUrl ?? fallback.customButtonUrl ?? "")
+              .trim()
+              .slice(0, 300),
+            showSecondaryButton: Boolean(incoming.showSecondaryButton),
+            secondaryButtonLabel: String(
+              incoming.secondaryButtonLabel ?? fallback.secondaryButtonLabel ?? "View Archive Portal"
+            )
+              .trim()
+              .slice(0, 80),
+            secondaryButtonUrlMode: secUrlMode,
+            secondaryCustomButtonUrl: String(
+              incoming.secondaryCustomButtonUrl ?? fallback.secondaryCustomButtonUrl ?? ""
+            )
+              .trim()
+              .slice(0, 300),
+          },
+          fallback
+        );
       };
 
       const sanitizeWidgetTemplate = (
         incoming: any,
         fallback: WidgetTemplateConfig
       ): WidgetTemplateConfig => {
-        if (!incoming || typeof incoming !== "object") return fallback;
+        if (!incoming || typeof incoming !== "object") {
+          return normalizeWidgetTemplateConfig(fallback, fallback);
+        }
         const labelOverrides: Record<string, string> = {};
         if (incoming.featureLabelOverrides && typeof incoming.featureLabelOverrides === "object") {
           for (const [k, v] of Object.entries(incoming.featureLabelOverrides)) {
@@ -1368,79 +1424,150 @@ export async function handleApiRequest(
             if (k && clean) labelOverrides[k] = clean;
           }
         }
-        return {
-          id: String(incoming.id || fallback.id || "default").trim().slice(0, 64),
-          name: String(incoming.name || fallback.name).trim().slice(0, 80),
-          title: String(incoming.title ?? fallback.title).trim().slice(0, 200) || DEFAULT_WIDGET_TEMPLATE.title,
-          titleEmoji:
-            incoming.titleEmoji === null
-              ? null
-              : validateEmojiRef(incoming.titleEmoji) ?? fallback.titleEmoji ?? null,
-          subtitle: String(incoming.subtitle ?? fallback.subtitle).trim().slice(0, 300),
-          introMessage: String(incoming.introMessage ?? fallback.introMessage).trim().slice(0, 600),
-          accentColor: sanitizeHexColor(incoming.accentColor, fallback.accentColor),
-          inStockColor: sanitizeHexColor(incoming.inStockColor, fallback.inStockColor),
-          soldOutColor: sanitizeHexColor(incoming.soldOutColor, fallback.soldOutColor),
-          useDynamicStockColor: incoming.useDynamicStockColor !== false,
-          inStockLabel: String(incoming.inStockLabel ?? fallback.inStockLabel).trim().slice(0, 50) || "In Stock",
-          soldOutLabel: String(incoming.soldOutLabel ?? fallback.soldOutLabel).trim().slice(0, 50) || "Sold Out",
-          inStockEmoji:
-            incoming.inStockEmoji === null
-              ? null
-              : validateEmojiRef(incoming.inStockEmoji) ?? fallback.inStockEmoji ?? null,
-          soldOutEmoji:
-            incoming.soldOutEmoji === null
-              ? null
-              : validateEmojiRef(incoming.soldOutEmoji) ?? fallback.soldOutEmoji ?? null,
-          featuredImageSlot: Math.max(0, Math.min(9, Math.round(Number(incoming.featuredImageSlot ?? 3) || 0))),
-          showFeaturedImage: incoming.showFeaturedImage !== false,
-          vehicleCount: Math.max(1, Math.min(6, Math.round(Number(incoming.vehicleCount ?? 3) || 3))),
-          vehicleOrdering: incoming.vehicleOrdering === "in_stock_first" ? "in_stock_first" : "newest_first",
-          showActiveSummary: incoming.showActiveSummary !== false,
-          activeSummaryHeading:
-            String(incoming.activeSummaryHeading ?? fallback.activeSummaryHeading).trim().slice(0, 80) ||
-            "Active Listings",
-          showFeatures: incoming.showFeatures !== false,
-          featureOrder: Array.isArray(incoming.featureOrder)
-            ? incoming.featureOrder.map(String).slice(0, 15)
-            : fallback.featureOrder,
-          featureLabelOverrides: labelOverrides,
-          hiddenFeatureKeys: Array.isArray(incoming.hiddenFeatureKeys)
-            ? incoming.hiddenFeatureKeys.map(String).slice(0, 15)
-            : fallback.hiddenFeatureKeys,
-          showTimestamps: incoming.showTimestamps !== false,
-          showStaleWarning: incoming.showStaleWarning !== false,
-          staleWarningText:
-            String(incoming.staleWarningText ?? fallback.staleWarningText).trim().slice(0, 300) ||
-            DEFAULT_WIDGET_TEMPLATE.staleWarningText,
-          emptyStateMessage:
-            String(incoming.emptyStateMessage ?? fallback.emptyStateMessage).trim().slice(0, 300) ||
-            DEFAULT_WIDGET_TEMPLATE.emptyStateMessage,
-          footerText:
-            String(incoming.footerText ?? fallback.footerText).trim().slice(0, 200) ||
-            DEFAULT_WIDGET_TEMPLATE.footerText,
-          footerEmoji:
-            incoming.footerEmoji === null
-              ? null
-              : validateEmojiRef(incoming.footerEmoji) ?? fallback.footerEmoji ?? null,
-          viewButtonLabel:
-            String(incoming.viewButtonLabel ?? fallback.viewButtonLabel).trim().slice(0, 40) || "View",
-          showButtonsRow: incoming.showButtonsRow !== false,
-          websiteButtonLabel: String(incoming.websiteButtonLabel ?? fallback.websiteButtonLabel)
-            .trim()
-            .slice(0, 60),
-          websiteButtonEmoji:
-            incoming.websiteButtonEmoji === null
-              ? null
-              : validateEmojiRef(incoming.websiteButtonEmoji) ?? fallback.websiteButtonEmoji ?? null,
-          storeButtonLabel: String(incoming.storeButtonLabel ?? fallback.storeButtonLabel)
-            .trim()
-            .slice(0, 60),
-          storeButtonEmoji:
-            incoming.storeButtonEmoji === null
-              ? null
-              : validateEmojiRef(incoming.storeButtonEmoji) ?? fallback.storeButtonEmoji ?? null,
-        };
+        const hasExplicitIndependent =
+          typeof incoming.showLastStoreCheck === "boolean" ||
+          typeof incoming.showLastVerifiedStock === "boolean" ||
+          typeof incoming.showMonitorState === "boolean" ||
+          typeof incoming.showLastUpdated === "boolean";
+        const legacyAllOn =
+          incoming.showTimestamps !== undefined
+            ? incoming.showTimestamps !== false
+            : fallback.showTimestamps !== false;
+
+        return normalizeWidgetTemplateConfig(
+          {
+            id: String(incoming.id || fallback.id || "default").trim().slice(0, 64),
+            name: String(incoming.name || fallback.name).trim().slice(0, 80),
+            title: String(incoming.title ?? fallback.title).trim().slice(0, 200) || DEFAULT_WIDGET_TEMPLATE.title,
+            titleEmoji:
+              incoming.titleEmoji === null
+                ? null
+                : validateEmojiRef(incoming.titleEmoji) ?? fallback.titleEmoji ?? null,
+            subtitle: String(incoming.subtitle ?? fallback.subtitle).trim().slice(0, 300),
+            introMessage: String(incoming.introMessage ?? fallback.introMessage).trim().slice(0, 600),
+            accentColor: sanitizeHexColor(incoming.accentColor, fallback.accentColor),
+            inStockColor: sanitizeHexColor(incoming.inStockColor, fallback.inStockColor),
+            soldOutColor: sanitizeHexColor(incoming.soldOutColor, fallback.soldOutColor),
+            useDynamicStockColor: incoming.useDynamicStockColor !== false,
+            inStockLabel: String(incoming.inStockLabel ?? fallback.inStockLabel).trim().slice(0, 50) || "In Stock",
+            soldOutLabel: String(incoming.soldOutLabel ?? fallback.soldOutLabel).trim().slice(0, 50) || "Sold Out",
+            inStockEmoji:
+              incoming.inStockEmoji === null
+                ? null
+                : validateEmojiRef(incoming.inStockEmoji) ?? fallback.inStockEmoji ?? null,
+            soldOutEmoji:
+              incoming.soldOutEmoji === null
+                ? null
+                : validateEmojiRef(incoming.soldOutEmoji) ?? fallback.soldOutEmoji ?? null,
+            featuredImageSlot: Math.max(0, Math.min(9, Math.round(Number(incoming.featuredImageSlot ?? 3) || 0))),
+            showFeaturedImage: incoming.showFeaturedImage !== false,
+            vehicleCount: Math.max(1, Math.min(6, Math.round(Number(incoming.vehicleCount ?? 3) || 3))),
+            vehicleOrdering: incoming.vehicleOrdering === "in_stock_first" ? "in_stock_first" : "newest_first",
+            showActiveSummary: incoming.showActiveSummary !== false,
+            activeSummaryHeading:
+              String(incoming.activeSummaryHeading ?? fallback.activeSummaryHeading).trim().slice(0, 80) ||
+              "Active Listings",
+            showFeatures: incoming.showFeatures !== false,
+            featureOrder: Array.isArray(incoming.featureOrder)
+              ? incoming.featureOrder.map(String).slice(0, 15)
+              : fallback.featureOrder,
+            featureLabelOverrides: labelOverrides,
+            hiddenFeatureKeys: Array.isArray(incoming.hiddenFeatureKeys)
+              ? incoming.hiddenFeatureKeys.map(String).slice(0, 15)
+              : fallback.hiddenFeatureKeys,
+            showLastStoreCheck:
+              typeof incoming.showLastStoreCheck === "boolean"
+                ? incoming.showLastStoreCheck
+                : hasExplicitIndependent
+                  ? fallback.showLastStoreCheck !== false
+                  : legacyAllOn,
+            lastStoreCheckLabel:
+              String(incoming.lastStoreCheckLabel ?? fallback.lastStoreCheckLabel ?? "Last Store Check")
+                .trim()
+                .slice(0, 60) || "Last Store Check",
+            showLastVerifiedStock:
+              typeof incoming.showLastVerifiedStock === "boolean"
+                ? incoming.showLastVerifiedStock
+                : hasExplicitIndependent
+                  ? fallback.showLastVerifiedStock !== false
+                  : legacyAllOn,
+            lastVerifiedStockLabel:
+              String(
+                incoming.lastVerifiedStockLabel ??
+                  fallback.lastVerifiedStockLabel ??
+                  "Last Verified Stock"
+              )
+                .trim()
+                .slice(0, 60) || "Last Verified Stock",
+            showMonitorState:
+              typeof incoming.showMonitorState === "boolean"
+                ? incoming.showMonitorState
+                : hasExplicitIndependent
+                  ? fallback.showMonitorState !== false
+                  : legacyAllOn,
+            monitorStateLabel:
+              String(incoming.monitorStateLabel ?? fallback.monitorStateLabel ?? "Monitor State")
+                .trim()
+                .slice(0, 60) || "Monitor State",
+            showLastUpdated:
+              typeof incoming.showLastUpdated === "boolean"
+                ? incoming.showLastUpdated
+                : hasExplicitIndependent
+                  ? fallback.showLastUpdated !== false
+                  : legacyAllOn,
+            lastUpdatedLabel:
+              String(incoming.lastUpdatedLabel ?? fallback.lastUpdatedLabel ?? "Widget Last Updated")
+                .trim()
+                .slice(0, 60) || "Widget Last Updated",
+            showEmbedTimestamp:
+              typeof incoming.showEmbedTimestamp === "boolean"
+                ? incoming.showEmbedTimestamp
+                : fallback.showEmbedTimestamp !== false,
+            showStaleWarning: incoming.showStaleWarning !== false,
+            staleWarningText:
+              String(incoming.staleWarningText ?? fallback.staleWarningText).trim().slice(0, 300) ||
+              DEFAULT_WIDGET_TEMPLATE.staleWarningText,
+            sectionOrder: Array.isArray(incoming.sectionOrder)
+              ? incoming.sectionOrder.map(String)
+              : fallback.sectionOrder,
+            customSections: Array.isArray(incoming.customSections)
+              ? incoming.customSections
+              : fallback.customSections,
+            emptyStateMessage:
+              String(incoming.emptyStateMessage ?? fallback.emptyStateMessage).trim().slice(0, 300) ||
+              DEFAULT_WIDGET_TEMPLATE.emptyStateMessage,
+            footerText:
+              String(incoming.footerText ?? fallback.footerText).trim().slice(0, 200) ||
+              DEFAULT_WIDGET_TEMPLATE.footerText,
+            footerEmoji:
+              incoming.footerEmoji === null
+                ? null
+                : validateEmojiRef(incoming.footerEmoji) ?? fallback.footerEmoji ?? null,
+            viewButtonLabel:
+              String(incoming.viewButtonLabel ?? fallback.viewButtonLabel).trim().slice(0, 40) || "View",
+            showButtonsRow: incoming.showButtonsRow !== false,
+            websiteButtonLabel: String(incoming.websiteButtonLabel ?? fallback.websiteButtonLabel)
+              .trim()
+              .slice(0, 60),
+            websiteButtonEmoji:
+              incoming.websiteButtonEmoji === null
+                ? null
+                : validateEmojiRef(incoming.websiteButtonEmoji) ?? fallback.websiteButtonEmoji ?? null,
+            storeButtonLabel: String(incoming.storeButtonLabel ?? fallback.storeButtonLabel)
+              .trim()
+              .slice(0, 60),
+            storeButtonEmoji:
+              incoming.storeButtonEmoji === null
+                ? null
+                : validateEmojiRef(incoming.storeButtonEmoji) ?? fallback.storeButtonEmoji ?? null,
+            customStoreButtonUrl: String(
+              incoming.customStoreButtonUrl ?? fallback.customStoreButtonUrl ?? ""
+            )
+              .trim()
+              .slice(0, 300),
+          },
+          fallback
+        );
       };
 
       const sanitizeHeroConfig = (incoming: any, fallback: HeroConfig): HeroConfig => {
@@ -1528,8 +1655,10 @@ export async function handleApiRequest(
       let widgetRefresh: { refreshed: number; skipped: number; failed: number } | null = null;
       if (body?.refreshWidgets === true) {
         widgetRefresh = await refreshAllWidgets(env, resolvePublicOrigin(env, origin), {
-          force: true,
+          force: false,
           trigger: "presentation-save",
+          catalogChanged: true,
+          preloadedBundle: savedBundle,
         });
       }
 
@@ -1648,6 +1777,7 @@ export async function handleApiRequest(
       await purgePublicEdgeCaches(baseOrigin);
       const widgetRefresh = await refreshAllWidgets(env, baseOrigin, {
         trigger: "metadata-update",
+        catalogChanged: true,
       });
 
       let embedUpdateResults: any[] = [];
@@ -1692,6 +1822,7 @@ export async function handleApiRequest(
       await purgePublicEdgeCaches(baseOrigin);
       const widgetRefresh = await refreshAllWidgets(env, baseOrigin, {
         trigger: "metadata-reset",
+        catalogChanged: true,
       });
       return json({
         ok: true,
@@ -2311,7 +2442,10 @@ export async function handleApiRequest(
       await updateListingImages(env, listingId, urls);
       await purgeListingMediaEdgeCaches(listingId, baseOrigin);
       await purgePublicEdgeCaches(baseOrigin);
-      await refreshAllWidgets(env, baseOrigin);
+      await refreshAllWidgets(env, baseOrigin, {
+        trigger: "image-update",
+        catalogChanged: true,
+      });
       return urls;
     };
 

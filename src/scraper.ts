@@ -5,13 +5,13 @@ import {
   getDeliveryLogs,
   getGuildConfig,
   getGuildSentMessages,
-  getEffectiveEmbedConfig,
   getListingHistory,
   getListingOverridesMap,
   getMonitorStatus,
   getPresentationConfig,
   getWidgetDeploymentById,
   purgePublicEdgeCaches,
+  saveWidgetDeploymentsBatch,
   setListingAvailability,
   setMonitorStatus,
   setWidgetDeployment,
@@ -20,17 +20,21 @@ import {
   markListingSentToGuild,
   appendDeliveryLog,
   appendMonitorLog,
+  CatalogSnapshot,
   MonitorLogAttempt,
   MonitorLogSource,
+  MonitorStatus,
   WidgetDeployment,
   WidgetSyncHistoryEntry,
 } from "./kv";
 import { fetchDiscordWithRetry } from "./discord";
+import { MIN_STORE_CHECK_INTERVAL_MS } from "./shared/appConfig";
 import {
   AnnouncementTemplate,
   buildCarDropPayload,
   buildWidgetPayload,
-  computeStableHash,
+  computeWidgetContentHash,
+  PresentationConfigBundle,
   resolveEffectiveWidgetTemplate,
   WidgetTemplateConfig,
 } from "./shared/presentation";
@@ -49,7 +53,6 @@ export interface CarListing {
   lastHttpStatus?: number;
 }
 
-const MIN_STORE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
 const FETCH_CRON_GRACE_MS = 45 * 60 * 1000;
 const STORE_URLS = [
   "https://everfall.tebex.io/category/limited-cars",
@@ -378,6 +381,9 @@ async function syncListingHistory(
   newDiscoveries: number;
   soldOutIds: string[];
   totalHistoryCount: number;
+  catalogChanged: boolean;
+  snapshot: CatalogSnapshot;
+  monitorStatus: MonitorStatus | null;
 }> {
   await ensureHistoricalKnownListingsPreserved(env, options.originHint);
   const updateMonitorStatus = options.updateMonitorStatus !== false;
@@ -387,8 +393,9 @@ async function syncListingHistory(
   if (!result.authoritative && !options.acceptNonAuthoritativeListings) {
     const snapshot = await getCatalogSnapshot(env);
     const availableCount = snapshot.records.filter((r) => r.isAvailable).length;
+    let nextStatus = previousStatus;
     if (updateMonitorStatus) {
-      await setMonitorStatus(env, {
+      nextStatus = {
         checkedAt: Date.now(),
         lastSuccessAt: previousStatus?.lastSuccessAt,
         lastFetchCronSuccessAt: previousStatus?.lastFetchCronSuccessAt,
@@ -402,7 +409,8 @@ async function syncListingHistory(
           available: availableCount,
           soldOut: snapshot.records.length - availableCount,
         },
-      });
+      };
+      await setMonitorStatus(env, nextStatus);
       await purgePublicEdgeCaches(options.originHint || env?.PUBLIC_ORIGIN);
     }
     const preserved = options.skipHistoryFetchWhenBlocked ? snapshot.records : [];
@@ -411,12 +419,16 @@ async function syncListingHistory(
       newDiscoveries: 0,
       soldOutIds: [],
       totalHistoryCount: preserved.length,
+      catalogChanged: false,
+      snapshot,
+      monitorStatus: nextStatus,
     };
   }
 
   const currentIds = new Set(result.listings.map((listing) => listing.id));
   const enriched: CarListing[] = [];
-  const history = await getListingHistory(env);
+  const initialSnapshot = await getCatalogSnapshot(env);
+  const history = initialSnapshot.records;
   const historyById = new Map(history.map((record) => [record.id, record]));
   const newDiscoveries = result.listings.filter((listing) => !historyById.has(listing.id)).length;
 
@@ -462,7 +474,6 @@ async function syncListingHistory(
         // Confirm removal / HTTP 404 directly on the package endpoint before marking Sold Out
         const check = await verifyListingPackageEndpoint(record.id);
         if (check.status === "sold_out") {
-          // ensures vehicles are only marked Sold Out when the individual product verification reports that status, rather than simply because they're missing from the category.
           await setListingAvailability(
             env,
             record.id,
@@ -477,10 +488,15 @@ async function syncListingHistory(
 
   const latestSnapshot = await getCatalogSnapshot(env);
   const availableSummary = latestSnapshot.records.filter((r) => r.isAvailable).length;
+  const catalogChanged =
+    newDiscoveries > 0 ||
+    soldOutIds.length > 0 ||
+    latestSnapshot.version !== initialSnapshot.version;
 
+  let nextMonitorStatus: MonitorStatus | null = previousStatus;
   if (updateMonitorStatus) {
     const now = Date.now();
-    await setMonitorStatus(env, {
+    nextMonitorStatus = {
       checkedAt: now,
       lastSuccessAt: result.authoritative ? now : previousStatus?.lastSuccessAt,
       lastFetchCronSuccessAt:
@@ -497,7 +513,8 @@ async function syncListingHistory(
         available: availableSummary,
         soldOut: latestSnapshot.records.length - availableSummary,
       },
-    });
+    };
+    await setMonitorStatus(env, nextMonitorStatus);
     await purgePublicEdgeCaches(options.originHint || env?.PUBLIC_ORIGIN);
   }
   return {
@@ -505,6 +522,9 @@ async function syncListingHistory(
     newDiscoveries,
     soldOutIds,
     totalHistoryCount: latestSnapshot.records.length,
+    catalogChanged,
+    snapshot: latestSnapshot,
+    monitorStatus: nextMonitorStatus,
   };
 }
 
@@ -589,9 +609,12 @@ async function getRateLimitedStoreListings(
   notice?: string;
   checkedStore: boolean;
   authoritative?: boolean;
+  catalogChanged?: boolean;
+  snapshot?: CatalogSnapshot;
+  monitorStatus?: MonitorStatus | null;
 }> {
   const status = await getMonitorStatus(env);
-  // If HTTP fetch cron (/cron) succeeded within 25m, let scheduled runner yield cleanly
+  // If HTTP fetch cron (/cron) succeeded recently, let scheduled runner yield cleanly
   if (
     source === "scheduled" &&
     status?.lastFetchCronSuccessAt &&
@@ -603,6 +626,8 @@ async function getRateLimitedStoreListings(
       notice: "HTTP fetch cron verified storefront recently; scheduled runner deferred.",
       checkedStore: false,
       authoritative: status.authoritative,
+      catalogChanged: false,
+      monitorStatus: status,
     };
   }
 
@@ -626,6 +651,8 @@ async function getRateLimitedStoreListings(
       notice: "Using recorded listing history; storefront was checked recently.",
       checkedStore: false,
       authoritative: status.authoritative,
+      catalogChanged: false,
+      monitorStatus: status,
     };
   }
   const result = await fetchStoreListings(source);
@@ -644,6 +671,9 @@ async function getRateLimitedStoreListings(
     notice: result.notice,
     checkedStore: true,
     authoritative: result.authoritative,
+    catalogChanged: synced.catalogChanged,
+    snapshot: synced.snapshot,
+    monitorStatus: synced.monitorStatus,
   };
 }
 
@@ -996,11 +1026,10 @@ export async function dispatchListingToGuild(
     }
   }
 
-  await saveCarPackage(env, car);
-  const [presentationBundle, overridesMap, legacyEmbedConfig] = await Promise.all([
+  const [presentationBundle, overridesMap, monitorStatus] = await Promise.all([
     getPresentationConfig(env),
     getListingOverridesMap(env),
-    getEffectiveEmbedConfig(env, guildId),
+    getMonitorStatus(env),
   ]);
   const template =
     car.isAvailable === false
@@ -1013,10 +1042,19 @@ export async function dispatchListingToGuild(
       : options.method === "test"
         ? []
         : config?.roleIds || [];
-  const messagePayload = buildCarDropMessage(car, legacyEmbedConfig, roles, env, {
-    isTest: options.method === "test",
-    template,
+  const messagePayload = buildCarDropPayload({
+    car,
     override: overridesMap[car.id] || null,
+    template,
+    roleIds: roles,
+    portalOrigin: resolvePublicOrigin(env),
+    isTest: options.method === "test",
+    isUpdate: false,
+    fallbackStoreEmojiId:
+      typeof env?.DISCORD_STORE_EMOJI_ID === "string"
+        ? env.DISCORD_STORE_EMOJI_ID.trim()
+        : "1571981507973746868",
+    monitorStatus,
   });
 
   const result = await sendDiscordChannelMessage(token, channelId, messagePayload);
@@ -1099,22 +1137,29 @@ export async function updateSentListingEmbedForGuild(
     };
   }
 
-  await saveCarPackage(env, car);
-  const [presentationBundle, overridesMap, legacyEmbedConfig] = await Promise.all([
+  const [presentationBundle, overridesMap, monitorStatus] = await Promise.all([
     getPresentationConfig(env),
     getListingOverridesMap(env),
-    getEffectiveEmbedConfig(env, guildId),
+    getMonitorStatus(env),
   ]);
   const template =
     car.isAvailable === false
       ? presentationBundle.announcements.soldOut
       : presentationBundle.announcements.inStock;
 
-  const messagePayload = buildCarDropMessage(car, legacyEmbedConfig, [], env, {
+  const messagePayload = buildCarDropPayload({
+    car,
+    override: overridesMap[car.id] || null,
+    template,
+    roleIds: [],
+    portalOrigin: resolvePublicOrigin(env),
     isTest: false,
     isUpdate: true,
-    template,
-    override: overridesMap[car.id] || null,
+    fallbackStoreEmojiId:
+      typeof env?.DISCORD_STORE_EMOJI_ID === "string"
+        ? env.DISCORD_STORE_EMOJI_ID.trim()
+        : "1571981507973746868",
+    monitorStatus,
   });
 
   const res = await editDiscordChannelMessage(token, ref.channelId, ref.messageId, messagePayload);
@@ -1241,16 +1286,45 @@ export async function deployStatusWidgetToChannel(
   if (!token) return { ok: false, error: "DISCORD_BOT_TOKEN is not configured." };
 
   const widgetId = `${guildId}:${channelId}`;
-  const [existingSameChannel, payload, bundle, snapshot] = await Promise.all([
-    getWidgetDeploymentById(env, widgetId),
-    buildWidgetMessagePayload(env, originHint, {
-      guildId,
-      templateId: options?.templateId,
-      customTemplate: options?.customTemplate,
-    }),
-    getPresentationConfig(env),
-    getCatalogSnapshot(env),
-  ]);
+  const origin = resolvePublicOrigin(env, originHint);
+  const portalOrigin = origin || "https://everfall-limited-watcher.itschase.workers.dev";
+  const safeOrigin = origin && isDiscordSafeHttpsOrigin(origin) ? origin : undefined;
+
+  const [existingSameChannel, snapshot, monitorStatus, bundle, overridesMap, guildCfg] =
+    await Promise.all([
+      getWidgetDeploymentById(env, widgetId),
+      getCatalogSnapshot(env),
+      getMonitorStatus(env),
+      getPresentationConfig(env),
+      getListingOverridesMap(env),
+      getGuildConfig(env, guildId),
+    ]);
+
+  const template =
+    options?.customTemplate ||
+    resolveEffectiveWidgetTemplate(bundle, options?.templateId, guildCfg?.widgetTemplateId);
+
+  const recordsForWidget = snapshot.records.map((rec) => ({
+    id: rec.id,
+    firstSeenAt: rec.firstSeenAt,
+    lastVerifiedAt: rec.lastVerifiedAt,
+    soldOutAt: rec.soldOutAt,
+    isAvailable: rec.isAvailable,
+    payload: rec.payload || {},
+    override: overridesMap[rec.id] || null,
+  }));
+
+  const now = Date.now();
+  const payload = buildWidgetPayload({
+    records: recordsForWidget,
+    monitorStatus,
+    template,
+    catalogVersion: snapshot.version || 1,
+    portalOrigin,
+    safeOrigin,
+    nowMs: now,
+    widgetUpdatedAt: now,
+  });
 
   const publicPayload = {
     ...payload,
@@ -1276,8 +1350,13 @@ export async function deployStatusWidgetToChannel(
     await deleteDiscordChannelMessage(token, channelId, existingSameChannel.messageId).catch(() => null);
   }
 
-  const now = Date.now();
-  const contentHash = computeStableHash(publicPayload);
+  const contentHash = computeWidgetContentHash({
+    records: recordsForWidget,
+    template,
+    catalogVersion: snapshot.version || 1,
+    portalOrigin,
+    safeOrigin,
+  });
   const entry: WidgetSyncHistoryEntry = {
     timestamp: now,
     status: "ok",
@@ -1326,6 +1405,9 @@ export async function refreshWidgetById(
   }
 
   const origin = resolvePublicOrigin(env, originHint);
+  const portalOrigin = origin || "https://everfall-limited-watcher.itschase.workers.dev";
+  const safeOrigin = origin && isDiscordSafeHttpsOrigin(origin) ? origin : undefined;
+
   const [snapshot, monitorStatus, bundle, overridesMap, guildCfg] = await Promise.all([
     getCatalogSnapshot(env),
     getMonitorStatus(env),
@@ -1338,32 +1420,45 @@ export async function refreshWidgetById(
     widget.customTemplate ||
     resolveEffectiveWidgetTemplate(bundle, widget.templateId, guildCfg?.widgetTemplateId);
 
-  const payload = buildWidgetPayload({
-    records: snapshot.records.map((rec) => ({
-      id: rec.id,
-      firstSeenAt: rec.firstSeenAt,
-      lastVerifiedAt: rec.lastVerifiedAt,
-      soldOutAt: rec.soldOutAt,
-      isAvailable: rec.isAvailable,
-      payload: rec.payload || {},
-      override: overridesMap[rec.id] || null,
-    })),
-    monitorStatus,
+  const recordsForWidget = snapshot.records.map((rec) => ({
+    id: rec.id,
+    firstSeenAt: rec.firstSeenAt,
+    lastVerifiedAt: rec.lastVerifiedAt,
+    soldOutAt: rec.soldOutAt,
+    isAvailable: rec.isAvailable,
+    payload: rec.payload || {},
+    override: overridesMap[rec.id] || null,
+  }));
+
+  const contentHash = computeWidgetContentHash({
+    records: recordsForWidget,
     template,
     catalogVersion: snapshot.version || 1,
-    portalOrigin: origin || "https://everfall-limited-watcher.itschase.workers.dev",
-    safeOrigin: origin && isDiscordSafeHttpsOrigin(origin) ? origin : undefined,
+    portalOrigin,
+    safeOrigin,
   });
-
-  const contentHash = computeStableHash(payload);
   const trigger = options?.trigger || "manual";
 
   if (!options?.force && widget.lastContentHash === contentHash && widget.lastSyncStatus === "ok") {
     return { ok: true, skipped: true, widget };
   }
 
-  const res = await editDiscordChannelMessage(token, widget.channelId, widget.messageId, payload);
   const now = Date.now();
+  const payload = {
+    ...buildWidgetPayload({
+      records: recordsForWidget,
+      monitorStatus,
+      template,
+      catalogVersion: snapshot.version || 1,
+      portalOrigin,
+      safeOrigin,
+      nowMs: now,
+      widgetUpdatedAt: now,
+    }),
+    allowed_mentions: { parse: [], roles: [], users: [] },
+  };
+
+  const res = await editDiscordChannelMessage(token, widget.channelId, widget.messageId, payload);
   const errorDetail = res.ok
     ? undefined
     : res.httpStatus === 404
@@ -1403,7 +1498,15 @@ export async function refreshWidgetById(
 export async function refreshAllWidgets(
   env: any,
   originHint?: string,
-  options?: { force?: boolean; widgetIds?: string[]; trigger?: string }
+  options?: {
+    force?: boolean;
+    widgetIds?: string[];
+    trigger?: string;
+    catalogChanged?: boolean;
+    preloadedSnapshot?: CatalogSnapshot;
+    preloadedMonitorStatus?: MonitorStatus | null;
+    preloadedBundle?: PresentationConfigBundle;
+  }
 ): Promise<{ refreshed: number; skipped: number; failed: number }> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return { refreshed: 0, skipped: 0, failed: 0 };
@@ -1416,10 +1519,33 @@ export async function refreshAllWidgets(
   if (targetWidgets.length === 0) return { refreshed: 0, skipped: 0, failed: 0 };
 
   const origin = resolvePublicOrigin(env, originHint);
-  const [snapshot, monitorStatus, bundle, overridesMap] = await Promise.all([
-    getCatalogSnapshot(env),
-    getMonitorStatus(env),
-    getPresentationConfig(env),
+  const portalOrigin = origin || "https://everfall-limited-watcher.itschase.workers.dev";
+  const safeOrigin = origin && isDiscordSafeHttpsOrigin(origin) ? origin : undefined;
+
+  const [snapshot, bundle] = await Promise.all([
+    options?.preloadedSnapshot ? Promise.resolve(options.preloadedSnapshot) : getCatalogSnapshot(env),
+    options?.preloadedBundle ? Promise.resolve(options.preloadedBundle) : getPresentationConfig(env),
+  ]);
+
+  // Fast-skip when catalog didn't change, config didn't change, and all widgets are already synced cleanly
+  if (
+    !options?.force &&
+    options?.catalogChanged === false &&
+    targetWidgets.every(
+      (w) =>
+        w.lastSyncStatus === "ok" &&
+        Boolean(w.lastContentHash) &&
+        w.lastCatalogVersion === snapshot.version &&
+        w.configVersion === bundle.version
+    )
+  ) {
+    return { refreshed: 0, skipped: targetWidgets.length, failed: 0 };
+  }
+
+  const [monitorStatus, overridesMap] = await Promise.all([
+    options?.preloadedMonitorStatus !== undefined
+      ? Promise.resolve(options.preloadedMonitorStatus)
+      : getMonitorStatus(env),
     getListingOverridesMap(env),
   ]);
 
@@ -1434,6 +1560,7 @@ export async function refreshAllWidgets(
   }));
 
   const guildCfgCache = new Map<string, any>();
+  const updatedWidgetsToPersist: WidgetDeployment[] = [];
   let refreshed = 0;
   let skipped = 0;
   let failed = 0;
@@ -1449,23 +1576,35 @@ export async function refreshAllWidgets(
       widget.customTemplate ||
       resolveEffectiveWidgetTemplate(bundle, widget.templateId, guildCfg?.widgetTemplateId);
 
-    const payload = buildWidgetPayload({
+    const contentHash = computeWidgetContentHash({
       records: recordsForWidget,
-      monitorStatus,
       template,
       catalogVersion: snapshot.version || 1,
-      portalOrigin: origin || "https://everfall-limited-watcher.itschase.workers.dev",
-      safeOrigin: origin && isDiscordSafeHttpsOrigin(origin) ? origin : undefined,
+      portalOrigin,
+      safeOrigin,
     });
 
-    const contentHash = computeStableHash(payload);
     if (!options?.force && widget.lastContentHash === contentHash && widget.lastSyncStatus === "ok") {
       skipped++;
       continue;
     }
 
-    const res = await editDiscordChannelMessage(token, widget.channelId, widget.messageId, payload);
     const now = Date.now();
+    const payload = {
+      ...buildWidgetPayload({
+        records: recordsForWidget,
+        monitorStatus,
+        template,
+        catalogVersion: snapshot.version || 1,
+        portalOrigin,
+        safeOrigin,
+        nowMs: now,
+        widgetUpdatedAt: now,
+      }),
+      allowed_mentions: { parse: [], roles: [], users: [] },
+    };
+
+    const res = await editDiscordChannelMessage(token, widget.channelId, widget.messageId, payload);
     const errorDetail = res.ok
       ? undefined
       : res.httpStatus === 404
@@ -1483,7 +1622,7 @@ export async function refreshAllWidgets(
       contentHash,
     };
 
-    await setWidgetDeployment(env, {
+    updatedWidgetsToPersist.push({
       ...widget,
       lastAttemptedSyncAt: now,
       lastSyncedAt: res.ok ? now : widget.lastSyncedAt,
@@ -1497,6 +1636,10 @@ export async function refreshAllWidgets(
 
     if (res.ok) refreshed++;
     else failed++;
+  }
+
+  if (updatedWidgetsToPersist.length > 0) {
+    await saveWidgetDeploymentsBatch(env, updatedWidgetsToPersist);
   }
 
   return { refreshed, skipped, failed };
@@ -1581,6 +1724,46 @@ export async function manualScanStoreOnly(
     newDiscoveries = synced.newDiscoveries;
     soldOutIds = synced.soldOutIds;
     preservedHistoryCount = synced.totalHistoryCount;
+
+    await recordMonitorAttempt(env, "manual", fetched, newDiscoveries, {
+      soldOutListingIds: soldOutIds,
+      dispatchedDrops: 0,
+      preservedHistoryCount,
+    });
+
+    if (soldOutIds.length > 0) {
+      for (const soldId of soldOutIds) {
+        await updateSoldOutListingEmbeds(env, soldId);
+      }
+    }
+
+    await refreshAllWidgets(env, originHint, {
+      trigger: "manual-scan",
+      catalogChanged: synced.catalogChanged,
+      preloadedSnapshot: synced.snapshot,
+      preloadedMonitorStatus: synced.monitorStatus,
+    });
+    await purgePublicEdgeCaches(originHint || env?.PUBLIC_ORIGIN);
+
+    const listings = synced.snapshot.records.map(
+      (record) =>
+        ({
+          ...record.payload,
+          id: record.id,
+          isAvailable: record.isAvailable,
+          detectedAt: record.firstSeenAt,
+          lastVerifiedAt: record.lastVerifiedAt,
+          soldOutAt: record.soldOutAt,
+          lastHttpStatus: record.lastHttpStatus,
+        }) as CarListing
+    );
+
+    return {
+      listings,
+      usedVerifiedStoreResponse: true,
+      newDiscoveries,
+      notice: fetched.notice,
+    };
   } else {
     const previousStatus = await getMonitorStatus(env);
     await setMonitorStatus(env, {
@@ -1594,43 +1777,35 @@ export async function manualScanStoreOnly(
       catalogVersion: previousStatus?.catalogVersion,
       listingSummary: previousStatus?.listingSummary,
     });
+    await recordMonitorAttempt(env, "manual", fetched, 0, {
+      soldOutListingIds: [],
+      dispatchedDrops: 0,
+      preservedHistoryCount: undefined,
+    });
+    await purgePublicEdgeCaches(originHint || env?.PUBLIC_ORIGIN);
+
+    // Failed/blocked storefront checks never trigger widget refreshes or alter availability
+    const updatedHistory = await getListingHistory(env);
+    const listings = updatedHistory.map(
+      (record) =>
+        ({
+          ...record.payload,
+          id: record.id,
+          isAvailable: record.isAvailable,
+          detectedAt: record.firstSeenAt,
+          lastVerifiedAt: record.lastVerifiedAt,
+          soldOutAt: record.soldOutAt,
+          lastHttpStatus: record.lastHttpStatus,
+        }) as CarListing
+    );
+
+    return {
+      listings,
+      usedVerifiedStoreResponse: false,
+      newDiscoveries: 0,
+      notice: fetched.notice,
+    };
   }
-
-  await recordMonitorAttempt(env, "manual", fetched, newDiscoveries, {
-    soldOutListingIds: soldOutIds,
-    dispatchedDrops: 0,
-    preservedHistoryCount,
-  });
-
-  if (fetched.authoritative && soldOutIds.length > 0) {
-    for (const soldId of soldOutIds) {
-      await updateSoldOutListingEmbeds(env, soldId);
-    }
-  }
-  await refreshAllWidgets(env, originHint);
-  await purgePublicEdgeCaches(originHint || env?.PUBLIC_ORIGIN);
-
-  // Never send new-drop Discord notifications during a manual scan
-  const updatedHistory = await getListingHistory(env);
-  const listings = updatedHistory.map(
-    (record) =>
-      ({
-        ...record.payload,
-        id: record.id,
-        isAvailable: record.isAvailable,
-        detectedAt: record.firstSeenAt,
-        lastVerifiedAt: record.lastVerifiedAt,
-        soldOutAt: record.soldOutAt,
-        lastHttpStatus: record.lastHttpStatus,
-      }) as CarListing
-  );
-
-  return {
-    listings,
-    usedVerifiedStoreResponse: fetched.authoritative,
-    newDiscoveries,
-    notice: fetched.notice,
-  };
 }
 
 export async function manualPullCurrentListings(
@@ -1662,7 +1837,11 @@ export async function publishActiveListingsToGuildOnSetup(
   if (!cfg || !cfg.channelId) return { published: 0 };
 
   const { listings } = await getRateLimitedStoreListings(env, originHint);
-  const embedConfig = await getEffectiveEmbedConfig(env, guildId);
+  const [bundle, overridesMap, monitorStatus] = await Promise.all([
+    getPresentationConfig(env),
+    getListingOverridesMap(env),
+    getMonitorStatus(env),
+  ]);
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) {
     return { published: 0, error: "DISCORD_BOT_TOKEN is not configured." };
@@ -1672,10 +1851,19 @@ export async function publishActiveListingsToGuildOnSetup(
   let lastError: string | undefined;
 
   for (const car of listings) {
-    await saveCarPackage(env, car);
     const alreadySent = await isListingSentToGuild(env, guildId, car.id);
     if (!alreadySent) {
-      const payload = buildCarDropMessage(car, embedConfig, cfg.roleIds, env);
+      const template =
+        car.isAvailable === false ? bundle.announcements.soldOut : bundle.announcements.inStock;
+      const payload = buildCarDropPayload({
+        car,
+        override: overridesMap[car.id] || null,
+        template,
+        roleIds: cfg.roleIds,
+        portalOrigin: resolvePublicOrigin(env, originHint),
+        isUpdate: false,
+        monitorStatus,
+      });
       try {
         const res = await sendDiscordChannelMessage(token, cfg.channelId, payload);
         if (res.ok) {
@@ -1974,27 +2162,42 @@ export async function runCron(
   originHint?: string,
   source: "scheduled" | "cron-fetch" = "scheduled"
 ): Promise<{ checked: number; newDrops: number; notice?: string; authoritative?: boolean }> {
-  const { listings, soldOutIds = [], notice, checkedStore, authoritative } =
-    await getRateLimitedStoreListings(env, originHint, source, {
-      skipHistoryFetchWhenBlocked: true,
-    });
+  const {
+    listings,
+    soldOutIds = [],
+    notice,
+    checkedStore,
+    authoritative,
+    catalogChanged,
+    snapshot,
+    monitorStatus,
+  } = await getRateLimitedStoreListings(env, originHint, source, {
+    skipHistoryFetchWhenBlocked: true,
+  });
   let newDrops = 0;
 
-  for (const car of listings) {
-    const sent = await broadcastListing(env, car, false);
-    if (sent > 0) {
-      newDrops += sent;
+  if (authoritative) {
+    for (const car of listings) {
+      const sent = await broadcastListing(env, car, false);
+      if (sent > 0) {
+        newDrops += sent;
+      }
     }
-  }
 
-  if (authoritative && soldOutIds.length > 0) {
-    for (const soldId of soldOutIds) {
-      await updateSoldOutListingEmbeds(env, soldId);
+    if (soldOutIds.length > 0) {
+      for (const soldId of soldOutIds) {
+        await updateSoldOutListingEmbeds(env, soldId);
+      }
     }
-  }
 
-  if (checkedStore) {
-    await refreshAllWidgets(env, originHint);
+    if (checkedStore) {
+      await refreshAllWidgets(env, originHint, {
+        trigger: source,
+        catalogChanged: Boolean(catalogChanged),
+        preloadedSnapshot: snapshot,
+        preloadedMonitorStatus: monitorStatus,
+      });
+    }
   }
 
   return { checked: listings.length, newDrops, notice, authoritative };
@@ -2135,7 +2338,15 @@ export async function ingestVerifiedStoreScan(
     dispatchedDrops: newDrops,
     preservedHistoryCount: synced.totalHistoryCount,
   });
-  await refreshAllWidgets(env, originHint);
+
+  if (result.authoritative) {
+    await refreshAllWidgets(env, originHint, {
+      trigger: source,
+      catalogChanged: synced.catalogChanged,
+      preloadedSnapshot: synced.snapshot,
+      preloadedMonitorStatus: synced.monitorStatus,
+    });
+  }
   await purgePublicEdgeCaches(originHint || env?.PUBLIC_ORIGIN);
 
   return {

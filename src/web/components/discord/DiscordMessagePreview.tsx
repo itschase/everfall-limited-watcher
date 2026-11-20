@@ -152,11 +152,13 @@ export function AnnouncementPreviewCard({
   template,
   listing,
   portalOrigin,
+  monitorStatus,
 }: {
   mode: "in_stock" | "sold_out";
   template: AnnouncementTemplate;
   listing: ListingItem;
   portalOrigin?: string;
+  monitorStatus?: MonitorStatus | null;
 }) {
   const payload = buildCarDropPayload({
     car: {
@@ -168,11 +170,12 @@ export function AnnouncementPreviewCard({
       isAvailable: mode === "in_stock",
       detectedAt: listing.detectedAt,
       lastVerifiedAt: listing.lastVerifiedAt,
-      soldOutAt: listing.soldOutAt || Date.now(),
+      soldOutAt: mode === "sold_out" ? listing.soldOutAt || Date.now() : undefined,
     },
     override: listing.presentation?.override || null,
     template,
     portalOrigin,
+    monitorStatus,
     isUpdate: mode === "sold_out",
   });
 
@@ -263,11 +266,13 @@ export function WidgetPreviewCard({
   listings,
   monitorStatus,
   portalOrigin,
+  lastSyncedAt,
 }: {
   template: WidgetTemplateConfig;
   listings: ListingItem[];
   monitorStatus: MonitorStatus | null;
   portalOrigin?: string;
+  lastSyncedAt?: number;
 }) {
   const payload = buildWidgetPayload({
     records: listings.map((l) => ({
@@ -287,6 +292,7 @@ export function WidgetPreviewCard({
     monitorStatus,
     template,
     portalOrigin,
+    widgetUpdatedAt: lastSyncedAt || Date.now(),
   });
 
   const validation = validateDiscordPayloadLimits(payload);
@@ -375,7 +381,8 @@ export function WidgetPreviewCard({
 
             {embed.footer?.text && (
               <p className="text-[11px] text-[#949BA4]">
-                {embed.footer.text} • {formatLocalDateTime(Date.now())}
+                {embed.footer.text}
+                {embed.timestamp ? ` • ${formatLocalDateTime(embed.timestamp)}` : ""}
               </p>
             )}
           </div>
