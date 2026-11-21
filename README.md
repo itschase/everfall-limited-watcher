@@ -54,3 +54,10 @@ Production structured and temporary state uses D1, and media uploads are stored 
 ## UI Foundation & License Attribution
 
 The web interface adapts UI primitives and dashboard patterns from [`satnaing/shadcn-admin`](https://github.com/satnaing/shadcn-admin) (MIT License) with Tailwind CSS v4, Radix UI, TanStack Router, TanStack Query, and Lucide React icons.
+## Pages editor and server customizations
+
+The Pages editor now autosaves structured content per page, with isolated D1 JSON updates, retry/manual save controls, section/card management, independent hero/badge visibility, and real responsive preview viewports. Scheduled Store Check controls change only the public display.
+
+Server managers can configure listing pins, widget pins/sticky placement, and active-listing events from a per-server Customizations tab. Settings saves never send messages or create events; enabled automation runs during successful authoritative monitoring. Event covers use the existing R2 archives and a bundled WebP decoder. The Cloudflare entrypoint is `src/worker.ts`; `src/index.ts` remains the shared request/scheduled implementation used by the Node server.
+
+Run `npm test` for the storage/presentation/Discord regression suite and `npm run check:worker` after the production build to verify the Worker/Wasm deployment bundle. See [implementation and validation notes](docs/validation/implementation.md) for the KV audit, observed browser checks, and remaining deployed acceptance tests.

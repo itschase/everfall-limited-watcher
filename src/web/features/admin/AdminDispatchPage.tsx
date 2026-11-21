@@ -1166,7 +1166,7 @@ export function AdminDispatchPage() {
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 @xl/main:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Destination Server</Label>
                 <Select
@@ -1288,7 +1288,7 @@ export function AdminDispatchPage() {
                   )}
                 </div>
 
-                <div className="grid gap-2 rounded-lg border border-border/80 bg-zinc-900/50 p-3 sm:grid-cols-2">
+                <div className="grid gap-2 rounded-lg border border-border/80 bg-zinc-900/50 p-3 @xl/main:grid-cols-2">
                   <div>
                     <span className="text-muted-foreground">Author</span>
                     <p className="mt-0.5 font-medium text-white">

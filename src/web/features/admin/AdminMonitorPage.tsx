@@ -399,7 +399,7 @@ export function AdminMonitorPage() {
         {/* Automated Fetch Cron Guidance when Cloudflare Challenge Appears on Native Scheduled Events */}
         {hasRecentScheduledBlock && (
           <Card className="border-amber-500/30 bg-amber-950/20 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
               <div className="space-y-1 text-xs">
                 <p className="font-semibold text-amber-200">
                   Cloudflare Scheduled Challenge Active — Scrapling Sync Recommended
@@ -674,7 +674,7 @@ export function AdminMonitorPage() {
 
         {/* Listing Verification Table */}
         <Card>
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <CardHeader className="flex flex-col gap-3 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
             <CardTitle>Tracked Listings &amp; Verification State</CardTitle>
             <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
               <Button variant="outline" size="sm" asChild>
@@ -938,7 +938,7 @@ export function AdminMonitorPage() {
               </div>
 
               {(inspectLog.detectedListingIds?.length || inspectLog.soldOutListingIds?.length) ? (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 @xl/main:grid-cols-2">
                   <div className="rounded-lg border border-border bg-zinc-950 p-3">
                     <span className="text-muted-foreground">Detected Active Vehicles</span>
                     {inspectLog.detectedListingIds?.length ? (

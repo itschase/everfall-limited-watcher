@@ -224,7 +224,7 @@ export function AdminWidgetsPage() {
     <AppShell
       requireAdmin
       title="Status Widgets"
-      description="Manage multi-channel live /widget embeds across connected Discord servers, inspect sync history, switch presets, and deploy new widgets with confirmation."
+      description="Widgets synchronize only when listing content or templates change. Manage deployments, inspect sync history, and force a refresh when needed. Sticky placement runs separately when enabled by a server manager."
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" asChild>
@@ -277,7 +277,7 @@ export function AdminWidgetsPage() {
       ) : (
         <div className="space-y-6">
           {/* Summary */}
-          <div className="grid gap-4 @xl/main:grid-cols-3">
+          <div className="grid gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-3">
             <Card className="p-5">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Deployed Widgets</span>

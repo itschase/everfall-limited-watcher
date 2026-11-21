@@ -609,7 +609,7 @@ export function AdminMetadataPage() {
                         </div>
                       </div>
 
-                      <div className="grid gap-3 @2xl/main:grid-cols-2">
+                      <div className="grid gap-3 @xl/card:grid-cols-2">
                         <div className="rounded-lg border border-border bg-zinc-950 p-3">
                           <span className="font-semibold uppercase tracking-wider text-muted-foreground">
                             Trading Restriction

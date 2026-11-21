@@ -461,7 +461,7 @@ export function AdminServersPage() {
                 </div>
               )}
 
-              <div className="grid gap-3 rounded-lg border border-border bg-zinc-950 p-4 text-xs sm:grid-cols-2">
+              <div className="grid gap-3 rounded-lg border border-border bg-zinc-950 p-4 text-xs @xl/main:grid-cols-2">
                 <div>
                   <span className="text-muted-foreground">Alert Channel ID</span>
                   <div className="mt-0.5 flex items-center gap-1.5">

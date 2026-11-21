@@ -75,7 +75,7 @@ export function AppShell({
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
-    return window.innerWidth >= 768 && window.innerWidth < 1024;
+    return window.innerWidth >= 768 && window.innerWidth < 1280;
   });
   const manualCollapseOverride = useRef<boolean | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -83,7 +83,7 @@ export function AppShell({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onResize = () => {
-      const compactDesktop = window.innerWidth >= 768 && window.innerWidth < 1024;
+      const compactDesktop = window.innerWidth >= 768 && window.innerWidth < 1280;
       if (manualCollapseOverride.current === null) {
         setCollapsed(compactDesktop);
       }
@@ -161,10 +161,12 @@ export function AppShell({
     return location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
   };
 
-  const renderNavLinks = (onNavigate?: () => void) => (
+  const renderNavLinks = (onNavigate?: () => void) => {
+    const navCollapsed = !onNavigate && collapsed;
+    return (
     <div className="flex flex-1 flex-col gap-6 px-3 py-4">
       <div>
-        {!collapsed && (
+        {!navCollapsed && (
           <p className="mb-2 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             General
           </p>
@@ -178,17 +180,17 @@ export function AppShell({
                 key={item.to}
                 to={item.to as any}
                 onClick={onNavigate}
-                title={collapsed ? item.label : undefined}
+                title={navCollapsed ? item.label : undefined}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition",
                   active
                     ? "bg-sidebar-accent text-white"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-white",
-                  collapsed && "justify-center px-2"
+                  navCollapsed && "justify-center px-2"
                 )}
               >
                 <Icon className={cn("h-4 w-4 shrink-0", active ? "text-white" : "text-muted-foreground")} />
-                {!collapsed && <span className="truncate">{item.label}</span>}
+                {!navCollapsed && <span className="truncate">{item.label}</span>}
               </Link>
             );
           })}
@@ -197,7 +199,7 @@ export function AppShell({
 
       {user.isAdmin && (
         <div>
-          {!collapsed && (
+          {!navCollapsed && (
             <p className="mb-2 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-amber-400/90">
               Administrator
             </p>
@@ -211,19 +213,19 @@ export function AppShell({
                   key={item.to}
                   to={item.to as any}
                   onClick={onNavigate}
-                  title={collapsed ? item.label : undefined}
+                  title={navCollapsed ? item.label : undefined}
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition",
                     active
                       ? "bg-sidebar-accent text-white"
                       : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-white",
-                    collapsed && "justify-center px-2"
+                    navCollapsed && "justify-center px-2"
                   )}
                 >
                   <Icon
                     className={cn("h-4 w-4 shrink-0", active ? "text-amber-400" : "text-muted-foreground")}
                   />
-                  {!collapsed && <span className="truncate">{item.label}</span>}
+                  {!navCollapsed && <span className="truncate">{item.label}</span>}
                 </Link>
               );
             })}
@@ -235,18 +237,19 @@ export function AppShell({
         <Link
           to="/"
           onClick={onNavigate}
-          title={collapsed ? "Public Homepage" : undefined}
+          title={navCollapsed ? "Public Homepage" : undefined}
           className={cn(
             "flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium text-muted-foreground transition hover:bg-sidebar-accent/60 hover:text-white",
-            collapsed && "justify-center px-2"
+            navCollapsed && "justify-center px-2"
           )}
         >
           <Home className="h-4 w-4 shrink-0" />
-          {!collapsed && <span>Public Homepage</span>}
+          {!navCollapsed && <span>Public Homepage</span>}
         </Link>
       </div>
     </div>
   );
+  };
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">

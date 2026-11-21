@@ -435,7 +435,7 @@ export function AdminBotPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="grid gap-3 @xl/main:grid-cols-2">
+                <div className="grid gap-3 @xl/card:grid-cols-2">
                   <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-zinc-950 p-3.5 transition hover:border-zinc-700">
                     <Checkbox
                       checked={syncCommands}
@@ -621,7 +621,7 @@ export function AdminBotPage() {
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-semibold text-white">
                         {data.identity.botUser?.globalName ||
                           data.identity.botUser?.username ||
@@ -656,7 +656,7 @@ export function AdminBotPage() {
                 )}
 
                 <div className="space-y-2 rounded-lg border border-border bg-zinc-950 p-3.5 text-xs">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-muted-foreground">Interactions Endpoint</span>
                     <button
                       type="button"
@@ -667,16 +667,16 @@ export function AdminBotPage() {
                             data.environment.interactionsUrl
                         )
                       }
-                      className="inline-flex cursor-pointer items-center gap-1 font-mono text-zinc-200 hover:text-white"
+                      className="inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1 font-mono text-zinc-200 hover:text-white"
                     >
-                      <span className="max-w-[200px] truncate">
+                      <span className="min-w-0 break-all text-left">
                         {data.identity.application?.interactionsEndpointUrl ||
                           data.environment.interactionsUrl}
                       </span>
                       <Copy className="h-3 w-3 shrink-0 text-muted-foreground" />
                     </button>
                   </div>
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="flex items-center gap-1.5 text-muted-foreground">
                       <Shield className="h-3.5 w-3.5" />
                       Bot Token / Public Key
@@ -694,7 +694,7 @@ export function AdminBotPage() {
                       </Badge>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="flex items-center gap-1.5 text-muted-foreground">
                       <Database className="h-3.5 w-3.5" />
                       Cloudflare D1 Database
@@ -703,7 +703,7 @@ export function AdminBotPage() {
                       {data.environment.d1Bound ? "DB Bound (Primary)" : "Unavailable"}
                     </Badge>
                   </div>
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="flex items-center gap-1.5 text-muted-foreground">
                       <Database className="h-3.5 w-3.5" />
                       Workers KV (Legacy Compatibility)
@@ -712,7 +712,7 @@ export function AdminBotPage() {
                       {data.environment.kvBound ? "Optional Migration Source" : "Not Required"}
                     </Badge>
                   </div>
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="flex items-center gap-1.5 text-muted-foreground">
                       <HardDrive className="h-3.5 w-3.5" />
                       R2 Media Storage
@@ -727,7 +727,7 @@ export function AdminBotPage() {
                 {(data.syncMeta?.lastSuccess || data.syncMeta?.lastFailure) && (
                   <div className="space-y-1.5 rounded-lg border border-border bg-zinc-950 p-3 text-xs">
                     {data.syncMeta.lastSuccess && (
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-emerald-300">Last Success</span>
                         <span className="text-muted-foreground tabular-nums">
                           {formatLocalDateTime(data.syncMeta.lastSuccess.syncedAt)} (
@@ -736,7 +736,7 @@ export function AdminBotPage() {
                       </div>
                     )}
                     {data.syncMeta.lastFailure && (
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-red-300">Last Failure</span>
                         <span className="truncate text-red-200/80">
                           {formatLocalTime(data.syncMeta.lastFailure.syncedAt)}:{" "}
@@ -780,13 +780,13 @@ export function AdminBotPage() {
                 </Badge>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-3 @2xl/main:grid-cols-2">
+                <div className="grid gap-3 @xl/card:grid-cols-2">
                   {data.readinessChecks.map((check) => (
                     <div
                       key={check.id}
                       className="rounded-lg border border-border bg-zinc-950/80 p-3.5 text-xs space-y-1.5"
                     >
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-semibold text-white">{check.label}</span>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <Badge variant="outline" className="text-[10px] uppercase">
@@ -1116,7 +1116,7 @@ export function AdminBotPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-3 @xl/main:grid-cols-2 @3xl/main:grid-cols-3">
+              <div className="grid gap-3 @xl/card:grid-cols-2 @3xl/main:grid-cols-3">
                 {REQUIRED_PERMISSIONS.map((perm) => (
                   <div
                     key={perm.name}

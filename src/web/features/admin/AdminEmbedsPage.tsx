@@ -206,7 +206,7 @@ function AnnouncementEditorForm({
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 @xl/main:grid-cols-2">
         <div className="space-y-1.5">
           <Label>Accent Color (Hex)</Label>
           <div className="flex items-center gap-2">
@@ -243,7 +243,7 @@ function AnnouncementEditorForm({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 @xl/main:grid-cols-2">
         <div className="space-y-1.5">
           <Label>Title Emoji</Label>
           <EmojiPickerButton
@@ -268,7 +268,7 @@ function AnnouncementEditorForm({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 @xl/main:grid-cols-2">
         <div className="space-y-1.5">
           <Label>Status Badge Label</Label>
           <Input
@@ -293,7 +293,7 @@ function AnnouncementEditorForm({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 @xl/main:grid-cols-2">
         <div className="space-y-1.5">
           <Label>Description Body Mode</Label>
           <Select
@@ -360,7 +360,7 @@ function AnnouncementEditorForm({
       )}
 
       {/* Gallery & Image Slot */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 @xl/main:grid-cols-2">
         <div className="space-y-1.5">
           <Label>Gallery Mode</Label>
           <Select
@@ -514,7 +514,7 @@ function AnnouncementEditorForm({
 
         {normalized.showSecondaryButton && (
           <div className="space-y-3 border-t border-border pt-3">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 @xl/main:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Secondary Button Label</Label>
                 <Input
@@ -668,7 +668,7 @@ function AnnouncementEditorForm({
                   </Button>
                 </div>
 
-                <div className="grid gap-2.5 sm:grid-cols-2">
+                <div className="grid gap-2.5 @xl/main:grid-cols-2">
                   <div className="space-y-1">
                     <Label className="text-[11px]">Section Heading</Label>
                     <Input
@@ -723,7 +723,7 @@ function AnnouncementEditorForm({
       </div>
 
       {/* Footer & Section Toggles + Editable Labels */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 @xl/main:grid-cols-2">
         <div className="space-y-1.5">
           <Label>Footer Attribution</Label>
           <Input

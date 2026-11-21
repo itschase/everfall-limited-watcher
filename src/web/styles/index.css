@@ -117,6 +117,28 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Shared density and narrow-container behavior; tables keep every row action. */
+.responsive-table { container-type: inline-size; }
+@container (max-width: 40rem) {
+  .responsive-table table { display: block; min-width: 0 !important; }
+  .responsive-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .responsive-table thead:has(button, [aria-sort], [tabindex]) { position: static; width: auto; height: auto; clip-path: none; }
+  .responsive-table thead:has(button, [aria-sort], [tabindex]) tr { display: flex; flex-wrap: wrap; }
+  .responsive-table thead:has(button, [aria-sort], [tabindex]) th:not(:has(button)):not([aria-sort]):not([tabindex]) { display: none; }
+  .responsive-table tbody { display: grid; gap: .75rem; padding: .5rem; }
+  .responsive-table tr { display: grid; min-width: 0; border: 1px solid var(--border); border-radius: .625rem; padding: .5rem; }
+  .responsive-table td { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; min-width: 0; padding: .5rem; overflow-wrap: anywhere; text-align: left; }
+  .responsive-table td[data-label]:not([data-label=""])::before { content: attr(data-label); font-size: .75rem; color: var(--muted-foreground); font-weight: 600; }
+  .responsive-table td > * { max-width: 100%; min-width: 0; }
+}
+
+@layer base {
+  input, select, textarea { min-width: 0; max-width: 100%; }
+  button[role="switch"] { flex-shrink: 0; }
+  main .grid { grid-auto-columns: minmax(0, 1fr); }
+  main .grid > * { min-width: 0; }
+}
+
 .thin-scrollbar::-webkit-scrollbar {
   height: 5px;
   width: 5px;

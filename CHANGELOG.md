@@ -20,3 +20,12 @@
 - Preserved widget render-version metadata in storage to stop unnecessary synchronization work. New automation state never writes to KV; existing D1 import markers continue to prevent repeat legacy reads.
 - Synchronized the dependency lockfile, added a local Wrangler build check, made SQLite tests close file handles before Windows cleanup, and added regression coverage for authorization, concurrent saves, empty/hidden content, unsafe destinations, composite pixels, WebP decoding, event lifecycle, sticky recovery, and zero routine KV operations.
 - Added tests and Worker bundling checks to deployment CI so a successful frontend build alone cannot publish broken server integration code.
+
+## 2026-11-21 — Shared dashboard responsiveness and presentation
+
+- Collapse the desktop sidebar automatically below 1280px, preserve manual control, and keep mobile drawer labels visible even when the desktop sidebar is collapsed.
+- Use available main/card widths for responsive form grids and heading/action groups. Shared cards, selectors, tab panels, and implicit grid tracks now shrink safely instead of forcing horizontal page overflow.
+- Keep Bot Control identity/status rows compact and wrapping, and allow long copyable endpoint URLs to remain accessible at 320px.
+- Stack shared tables into labeled row cards below 40rem of available width while retaining row controls, copy actions and pagination. Sortable header controls remain visible and table roles remain explicit.
+- Keep compact 16–20px card spacing, Zinc colors, Plus Jakarta Sans and Lucide icons. Clarify change-only Status Widget synchronization separately from optional sticky placement.
+- Record implementation behavior, remaining necessary legacy KV usage, local validation evidence, and the post-deployment Discord/zoom acceptance checklist in docs/validation/implementation.md.

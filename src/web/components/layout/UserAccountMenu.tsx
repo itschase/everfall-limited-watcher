@@ -48,7 +48,7 @@ export function UserAccountMenu({
           type="button"
           className="flex items-center gap-2 rounded-lg border border-border bg-card px-2 py-1.5 text-sm font-medium text-white transition hover:bg-secondary cursor-pointer sm:px-2.5"
         >
-          <img src={user.avatarUrl} alt={user.username} className="h-6 w-6 shrink-0 rounded-full" />
+          <img src={user.avatarUrl || undefined} alt={user.username} className="h-6 w-6 shrink-0 rounded-full" />
           <span className="max-w-[96px] truncate text-xs font-semibold sm:max-w-[120px]">
             {user.username}
           </span>
