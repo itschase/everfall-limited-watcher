@@ -33,6 +33,21 @@ export function TermsPage() {
         description={terms.subheading}
       />
       <LegalPageSections kind="terms" config={terms} />
+      <section className="mx-auto w-full max-w-6xl px-4 pb-8" aria-labelledby="presence-terms-title">
+        <div className="rounded-xl border border-border bg-card/70 p-5">
+          <h2 id="presence-terms-title" className="text-base font-semibold text-foreground">
+            Bot Presence and Status Cards
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Discord activity settings apply globally to the Everfall Limited Watcher bot and are
+            visible to Discord users. Activity text is based on public store-monitoring data.
+            Administrators may separately configure a webhook status card and HTTPS link; publishing
+            the card requires an explicit action, after which the service edits the same message
+            rather than posting on every settings save. Administrators are responsible for the
+            accuracy and destination of their configured text and links.
+          </p>
+        </div>
+      </section>
       <AutomationNotice kind="terms" includeTestEvents />
     </PublicLayout>
   );
