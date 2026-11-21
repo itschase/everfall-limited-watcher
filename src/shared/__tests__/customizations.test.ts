@@ -161,7 +161,7 @@ test("event composites generate 1, 2, and 3 columns with a central crop and pref
   ];
   for (const n of [1, 2, 3]) {
     const png = decode(
-      composeEventImage(colors.slice(0, n).map(raster), 96, 54),
+      await composeEventImage(colors.slice(0, n).map(raster), 96, 54),
     );
     assert.equal(png.width, 96);
     assert.equal(png.height, 54);
@@ -177,7 +177,7 @@ test("event composites generate 1, 2, and 3 columns with a central crop and pref
   for (let y = 2; y < 6; y++)
     for (let x = 2; x < 6; x++)
       crop.data.set([0, 255, 0, 255], (y * 8 + x) * 4);
-  const cropped = decode(composeEventImage([crop], 8, 8));
+  const cropped = decode(await composeEventImage([crop], 8, 8));
   assert.equal(cropped.data[0], 0);
   assert.equal(cropped.data[1], 255);
   const requested: string[] = [];
@@ -243,6 +243,31 @@ test("bundled WebP decoder processes existing archived-format media in the Node 
   );
   assert.ok(decoded.width > 0 && decoded.height > 0);
   assert.equal(decoded.data.length, decoded.width * decoded.height * 4);
+});
+
+test("high-resolution multi-vehicle previews reuse painted samples and produce valid native-compressed PNGs", async () => {
+  const sourceWidth = 2560, sourceHeight = 1440;
+  const solid = (red: number, green: number) => {
+    const data = new Uint8Array(sourceWidth * sourceHeight * 4);
+    for (let i = 0; i < data.length; i += 4) { data[i] = red; data[i + 1] = green; data[i + 3] = 255; }
+    return encode({ width: sourceWidth, height: sourceHeight, data, channels: 4, depth: 8 });
+  };
+  const sources = [solid(255, 0), solid(0, 255)];
+  const reads: string[] = [];
+  const env = { MEDIA_BUCKET: { async get(key: string) { reads.push(key); const bytes = sources[key.includes("first") ? 0 : 1]; return { async arrayBuffer() { return bytes.buffer; } }; } } };
+  const first = { id: "first", images: ["a", "b", "c"] }, second = { id: "second", images: ["d", "e", "f"] };
+  for (const listings of [[first, second], [first, second, first]]) {
+    reads.length = 0;
+    const result = await generateEventPreview(env, listings);
+    assert.ok(result);
+    const image = decode(Buffer.from(result.split(",")[1], "base64"));
+    assert.equal(image.width, 960); assert.equal(image.height, 540);
+    assert.deepEqual(reads, ["media:first:2", "media:second:2"], "repeated test samples reuse the rendered canvas, not another full-size decode");
+    for (let column = 0; column < listings.length; column++) {
+      const offset = (270 * 960 + Math.floor((column + .5) * 960 / listings.length)) * 4;
+      assert.deepEqual(Array.from(image.data.slice(offset, offset + 4)), column === 1 ? [0,255,0,255] : [255,0,0,255]);
+    }
+  }
 });
 
 test("customizations API enforces manager authorization, preserves channel/roles, and saves without Discord sends", async () => {
@@ -754,3 +779,4 @@ test("test event API requires master administration and blocks production-server
     db.close();
   }
 });
+

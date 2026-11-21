@@ -56,3 +56,11 @@
 - Require explicit preview and deploy actions, show the simplified vehicle-name event description and cover, and expose tracked status, Discord event links, and manual early ending. Discord's external-event end time handles automatic expiry independently of monitoring cadence.
 - Keep test event IDs, expiry times and deployment request IDs in separate D1 records. Serialize operations, reuse deployment requests, recover interrupted creation/start attempts, and prevent overlapping active test events without changing live event tracking, listing stock, alert history, roles, or customization settings.
 - Updated fixed privacy/terms disclosures for test-event state, documented usage, and added tests for production/auth restrictions, bounded input, 1/2/3 cover previews, lifetime fields, retry recovery, duplicate prevention, early ending, real-event isolation, and zero routine KV operations.
+
+## 2026-11-21 — Multi-vehicle event preview resource fix
+
+- Reproduced the failed two-vehicle request and identified a platform resource-limit response rather than a normal application validation error.
+- Render full-resolution sources one at a time into the final canvas instead of retaining every decoded source. Repeated sample columns reuse already-painted pixels and avoid extra image reads/decodes.
+- Replace per-pixel temporary array allocation and repeated coordinate math with precomputed columns and direct RGBA copying.
+- Use native streaming PNG compression with standard PNG chunks/checksums instead of synchronous JavaScript deflate, preserving 960×540 output, center crops, transparency and third-slot image fallback.
+- Added a high-resolution two/three-column regression covering native PNG decoding, pixel colors and repeated-source read avoidance. TypeScript, all 43 tests, the production build and Worker dry run pass.
