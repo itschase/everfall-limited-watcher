@@ -33,7 +33,7 @@ export function TermsPage() {
         description={terms.subheading}
       />
       <LegalPageSections kind="terms" config={terms} />
-      <AutomationNotice kind="terms" />
+      <AutomationNotice kind="terms" includeTestEvents />
     </PublicLayout>
   );
 }

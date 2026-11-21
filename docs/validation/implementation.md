@@ -55,3 +55,13 @@ Discord integration follows the official [message endpoints](https://docs.discor
 - Network-error retry and cross-tab editing in the deployed CMS. Local tests exercise state persistence and concurrent API saves; they do not replace deployed browser acceptance.
 
 No live Discord test messages or events were sent during implementation.
+
+## Administrator event simulator follow-up
+
+Admin Testing now includes explicit preview/deployment of time-limited test events to marked Test servers. Administrators choose a maximum of 1/2/3 vehicle slots and a lifetime of 1–60 minutes. The preview uses the real event compositor, favors active vehicles, and otherwise uses archived samples. Repeating archived samples is an explicit option for filling all three columns when there are fewer distinct records.
+
+The Discord event contains a TEST title, a simple vehicle-name list, the generated image, and a scheduled end time. It starts immediately through the same external-event API flow and can be ended early. Discord handles automatic end timing; no new timer, cron cadence, or KV polling is introduced. A single status refresh is scheduled in the open simulator when its tracked lifetime expires.
+
+Test tracking uses separate D1 records (`test-event:` / `test-event-lock:`), request IDs, and a per-server operation lease. Creating/ending tests does not modify the automatic event record, availability, sent-alert history, role configuration, or manager customization preferences. Production servers and non-master-administrator callers are rejected. New regression tests cover generated slot counts, optional repeats, bounds, authorization, expiry fields, failed-start retry, duplicate prevention, early ending, real-event isolation and zero routine KV operations. The combined suite now has 42 passing tests.
+
+The final Discord creation, displayed cover, selected lifetime expiry, and permission behavior still require the user's explicit deployment in a designated Test server; no real event was created by implementation checks.

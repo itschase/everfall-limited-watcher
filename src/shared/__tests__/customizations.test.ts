@@ -18,6 +18,9 @@ import {
   savePresentationPages,
   setGuildConfig,
   setWidgetDeployment,
+  upsertListingRecord,
+  getCatalogSnapshot,
+  getGuildSentMessages,
 } from "../../kv";
 import { getMonitorStateValue, setCachedUserGuilds } from "../../d1";
 import { createSessionToken } from "../../admin";
@@ -28,6 +31,14 @@ import {
 } from "../presentation";
 import { safePageDestination } from "../pageSections";
 import { DEFAULT_CUSTOMIZATIONS } from "../customizations";
+import {
+  deployTestEvent,
+  endTestEvent,
+  getTestEventStatus,
+  previewTestEvent,
+  TestEventError,
+} from "../../testEvents";
+import { setMonitorStateValue } from "../../d1";
 
 const guildId = "111111111111111111";
 const channelId = "222222222222222222";
@@ -424,9 +435,21 @@ test("sticky replacement recovers a failed send, keeps one tracked widget, respe
     if (method === "POST") {
       sends++;
       const payload = JSON.parse(String(init?.body));
-      assert.equal(payload.content, undefined, "Components v2 replacements omit legacy content");
-      assert.equal(payload.embeds, undefined, "Components v2 replacements omit legacy embeds");
-      assert.equal(payload.flags, 32768 | 4096, "Sticky replacements suppress notifications");
+      assert.equal(
+        payload.content,
+        undefined,
+        "Components v2 replacements omit legacy content",
+      );
+      assert.equal(
+        payload.embeds,
+        undefined,
+        "Components v2 replacements omit legacy embeds",
+      );
+      assert.equal(
+        payload.flags,
+        32768 | 4096,
+        "Sticky replacements suppress notifications",
+      );
       if (failSend) return new Response(null, { status: 503 });
       return Response.json({ id: newId });
     }
@@ -472,6 +495,262 @@ test("sticky replacement recovers a failed send, keeps one tracked widget, respe
     assert.equal(pins, 2);
   } finally {
     globalThis.fetch = originalFetch;
+    db.close();
+  }
+});
+
+async function seedEventSamples(env: any) {
+  const png = encode({
+    width: 2,
+    height: 2,
+    channels: 4,
+    depth: 8,
+    data: new Uint8Array(
+      Array.from({ length: 4 }, () => [180, 100, 50, 255]).flat(),
+    ),
+  });
+  env.MEDIA_BUCKET = {
+    async get() {
+      return {
+        async arrayBuffer() {
+          return png.buffer;
+        },
+      };
+    },
+  };
+  await upsertListingRecord(
+    env,
+    "7815813",
+    { name: "Vehicle One", images: ["a", "b", "c"] },
+    false,
+  );
+  await upsertListingRecord(
+    env,
+    "7815819",
+    { name: "Vehicle Two", images: ["d", "e", "f"] },
+    true,
+  );
+}
+
+test("test event previews enforce marked servers and bounded inputs; support 1/2/3-slot images without changing stock", async () => {
+  const { db, env, count } = fixture();
+  try {
+    await setGuildConfig(env, guildId, {
+      channelId: "",
+      roleIds: [],
+      environment: "production",
+    });
+    const options = {
+      guildId,
+      maxListings: 3,
+      durationMinutes: 5,
+      repeatSamples: true,
+    };
+    await assert.rejects(
+      () => previewTestEvent(env, options),
+      (error: unknown) =>
+        error instanceof TestEventError && error.status === 403,
+    );
+    await assert.rejects(
+      () => deployTestEvent(env, { ...options, requestId: "test-request-001" }),
+      (error: unknown) =>
+        error instanceof TestEventError && error.status === 403,
+    );
+    await assert.rejects(
+      () => endTestEvent(env, guildId),
+      (error: unknown) =>
+        error instanceof TestEventError && error.status === 403,
+    );
+    await setGuildConfig(env, guildId, {
+      channelId: "",
+      roleIds: [],
+      environment: "test",
+    });
+    await seedEventSamples(env);
+    const before = await getCatalogSnapshot(env);
+    await getGuildSentMessages(env, guildId);
+    const kvBefore = count();
+    for (const maxListings of [1, 2, 3]) {
+      const preview = await previewTestEvent(env, { ...options, maxListings });
+      assert.equal(preview.actualCount, maxListings);
+      assert.equal(
+        preview.listings[0].name,
+        "Vehicle Two",
+        "active samples are preferred",
+      );
+      assert.equal(preview.repeatedSamples, maxListings === 3);
+      assert.match(preview.description, /Test simulation only/);
+      assert.match(preview.description, /Ends automatically after 5 minutes/);
+      assert.equal(
+        decode(Buffer.from(preview.image.split(",")[1], "base64")).width,
+        960,
+      );
+    }
+    assert.equal(
+      (await previewTestEvent(env, { ...options, repeatSamples: false }))
+        .actualCount,
+      2,
+    );
+    for (const invalid of [
+      { durationMinutes: 0 },
+      { durationMinutes: 61 },
+      { maxListings: 4 },
+      { maxListings: 0 },
+    ])
+      await assert.rejects(
+        () => previewTestEvent(env, { ...options, ...invalid }),
+        TestEventError,
+      );
+    assert.deepEqual(await getCatalogSnapshot(env), before);
+    assert.deepEqual(await getGuildSentMessages(env, guildId), {});
+    assert.equal(count(), kvBefore);
+  } finally {
+    db.close();
+  }
+});
+
+test("manual test events use selected lifetime, avoid duplicates, recover failed starts, and end separately from real events", async () => {
+  const { db, env } = fixture();
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ method: string; body: any }> = [];
+  let current: any = null;
+  let failStart = true;
+  globalThis.fetch = (async (input, init) => {
+    assert.match(
+      String(input),
+      new RegExp(`/guilds/${guildId}/scheduled-events`),
+    );
+    const method = init?.method || "GET";
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    calls.push({ method, body });
+    if (method === "GET")
+      return Response.json(
+        String(input).endsWith("/scheduled-events")
+          ? current && [1, 2].includes(current.status)
+            ? [current]
+            : []
+          : current,
+      );
+    if (method === "POST") {
+      current = {
+        id: "777777777777777777",
+        status: 1,
+        creator_id: env.DISCORD_APPLICATION_ID,
+        ...body,
+      };
+      return Response.json(current);
+    }
+    if (method === "PATCH") {
+      if (body.status === 2 && failStart)
+        return new Response(null, { status: 503 });
+      current = { ...current, ...body };
+      return Response.json(current);
+    }
+    throw new Error("Unexpected Discord operation");
+  }) as typeof fetch;
+  try {
+    await setGuildConfig(env, guildId, {
+      channelId: "",
+      roleIds: [],
+      environment: "test",
+    });
+    await seedEventSamples(env);
+    await setMonitorStateValue(db, `server-automation:${guildId}`, {
+      eventId: "real-event-must-survive",
+    });
+    const options = {
+      guildId,
+      maxListings: 3,
+      durationMinutes: 7,
+      repeatSamples: true,
+      requestId: "test-request-002",
+    };
+    await assert.rejects(() => deployTestEvent(env, options), TestEventError);
+    failStart = false;
+    const deployed = await deployTestEvent(env, options);
+    assert.equal(deployed.reused, true);
+    assert.equal(current.status, 2);
+    assert.equal(
+      deployed.event.expiresAt - deployed.event.createdAt,
+      7 * 60_000,
+    );
+    assert.equal(
+      Date.parse(current.scheduled_end_time),
+      deployed.event.expiresAt,
+    );
+    assert.match(current.name, /^\[TEST\]/);
+    assert.match(current.description, /Vehicles listed:\n• Vehicle Two/);
+    assert.match(current.image, /^data:image\/png;base64,/);
+    assert.equal(calls.filter((call) => call.method === "POST").length, 1);
+    await assert.rejects(
+      () =>
+        deployTestEvent(env, {
+          ...options,
+          requestId: "different-request-003",
+        }),
+      (error: unknown) =>
+        error instanceof TestEventError && error.status === 409,
+    );
+    assert.equal((await getTestEventStatus(env, guildId)).active, true);
+    await endTestEvent(env, guildId);
+    assert.equal(current.status, 3);
+    assert.equal((await getTestEventStatus(env, guildId)).active, false);
+    assert.equal(
+      (await getMonitorStateValue<any>(db, `server-automation:${guildId}`))
+        .eventId,
+      "real-event-must-survive",
+    );
+    assert.deepEqual(await getGuildSentMessages(env, guildId), {});
+  } finally {
+    globalThis.fetch = originalFetch;
+    db.close();
+  }
+});
+
+test("test event API requires master administration and blocks production-server previews", async () => {
+  const { db, env } = fixture();
+  const secret = "test-event-admin-secret";
+  Object.assign(env, {
+    DISCORD_CLIENT_SECRET: secret,
+    DISCORD_PRIMARY_ADMINISTRATOR: "151037568484507648",
+  });
+  try {
+    const url = new URL(
+      "https://portal.example/api/admin/testing/events/preview",
+    );
+    const request = (token?: string) =>
+      new Request(url, {
+        method: "POST",
+        headers: token ? { Cookie: `everfall_session=${token}` } : {},
+        body: JSON.stringify({ guildId, maxListings: 1, durationMinutes: 5 }),
+      });
+    assert.equal((await handleApiRequest(request(), env, url))?.status, 401);
+    const manager = await createSessionToken(
+      "555555555555555555",
+      "manager",
+      "",
+      secret,
+    );
+    assert.equal(
+      (await handleApiRequest(request(manager), env, url))?.status,
+      403,
+    );
+    const admin = await createSessionToken(
+      "151037568484507648",
+      "admin",
+      "",
+      secret,
+    );
+    await setGuildConfig(env, guildId, {
+      channelId: "",
+      roleIds: [],
+      environment: "production",
+    });
+    assert.equal(
+      (await handleApiRequest(request(admin), env, url))?.status,
+      403,
+    );
+  } finally {
     db.close();
   }
 });

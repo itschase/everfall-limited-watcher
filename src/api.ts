@@ -66,6 +66,7 @@ import {
 } from "./scraper";
 import { fetchDiscordWithRetry, validateBotChannelPermissions } from "./discord";
 import { normalizeCustomizations } from "./shared/customizations";
+import { deployTestEvent, endTestEvent, getTestEventStatus, previewTestEvent, TestEventError } from "./testEvents";
 import { getD1Database, getMonitorStateValue, reserveTestAlertCooldown } from "./d1";
 import {
   buildBotReadinessChecks,
@@ -2139,6 +2140,23 @@ export async function handleApiRequest(
         failedCount: results.filter((r) => !r.ok && !r.skippedAlreadySent).length,
         deliveryLogs,
       });
+    }
+
+    // Explicit administrator-only simulation routes, isolated from real event tracking.
+    if (method === "GET" && url.pathname === "/api/admin/testing/events") {
+      try { return json({ ok: true, ...await getTestEventStatus(env, url.searchParams.get("guildId") || "") }); }
+      catch (error) { return json({ error: error instanceof Error ? error.message : "Test event status failed." }, error instanceof TestEventError ? error.status : 502); }
+    }
+    if (method === "POST" && /^\/api\/admin\/testing\/events\/(preview|deploy|end)$/.test(url.pathname)) {
+      let body: any;
+      try { body = await request.json(); } catch { return json({ error: "Invalid JSON payload." }, 400); }
+      try {
+        const guildId = String(body?.guildId || "");
+        const options = { guildId, maxListings: body?.maxListings, durationMinutes: body?.durationMinutes, repeatSamples: body?.repeatSamples === true, requestId: body?.requestId };
+        if (url.pathname.endsWith("/preview")) return json({ ok: true, ...await previewTestEvent(env, options) });
+        if (url.pathname.endsWith("/end")) return json(await endTestEvent(env, guildId));
+        return json({ ok: true, ...await deployTestEvent(env, options) });
+      } catch (error) { return json({ error: error instanceof Error ? error.message : "Test event operation failed." }, error instanceof TestEventError ? error.status : 502); }
     }
 
     // 11. Toggle Server Environment (Production vs Test)

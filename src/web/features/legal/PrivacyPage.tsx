@@ -33,7 +33,7 @@ export function PrivacyPage() {
         description={privacy.subheading}
       />
       <LegalPageSections kind="privacy" config={privacy} />
-      <AutomationNotice kind="privacy" />
+      <AutomationNotice kind="privacy" includeTestEvents />
     </PublicLayout>
   );
 }

@@ -42,6 +42,18 @@ Pages supports independent hero/badge visibility, intentional blank badge text, 
 
 Edits autosave after a short debounce and on text-field blur, with Unsaved/Saving/Saved/failed feedback. Manual Save, retry, and Discard Unsaved remain available, and each page saves independently. The **Scheduled Store Check** setting changes only the public indicator; it does not change actual monitoring cadence or verification logic.
 
+### Simulate a listing event
+
+In **Admin → Testing**, mark the intended server **Test**, then use **Listing Event Simulator**:
+
+1. Select the Test server, a maximum of **1, 2, or 3 vehicles**, and an event lifetime of **1–60 minutes**.
+2. Select **Generate Event Preview** to review the cover and simplified vehicle-name description. Current listings are preferred; archived vehicles are used as clearly labeled samples when necessary.
+3. Optionally enable **Repeat archived samples to fill all slots** to exercise a three-column composite even with fewer than three distinct archived vehicles.
+4. Select **Deploy Test Event** and confirm the target and lifetime. This creates a real, clearly labeled Discord event in the selected Test server.
+5. Use **Open Discord Event**, **Reload Status**, or **End Test Event Now** as needed. Discord's scheduled end time ends it automatically after the selected lifetime, independently of store monitoring.
+
+Events need Create/Manage Events permissions; an alert channel is not required. Only one tracked test event can be active per server. Test events never change real availability, sent-alert history, automatic event tracking, role mentions, or server customization settings. Production servers are blocked by the API, and interrupted deployment retries reuse tracked state to reduce duplicates.
+
 ## Repository Structure
 
 ```text

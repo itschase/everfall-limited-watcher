@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TestEventSimulator } from "./TestEventSimulator";
 
 export function AdminTestingPage() {
   const queryClient = useQueryClient();
@@ -260,6 +261,7 @@ export function AdminTestingPage() {
               )}
             </CardContent>
           </Card>
+          <TestEventSimulator guilds={guilds} />
         </div>
       )}
     </AppShell>

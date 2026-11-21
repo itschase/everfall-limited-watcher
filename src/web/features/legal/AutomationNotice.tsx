@@ -1,4 +1,10 @@
-export function AutomationNotice({ kind }: { kind: "privacy" | "terms" }) {
+export function AutomationNotice({
+  kind,
+  includeTestEvents = true,
+}: {
+  kind: "privacy" | "terms";
+  includeTestEvents?: boolean;
+}) {
   return (
     <section className="mx-auto max-w-4xl px-4 pb-8 sm:px-6">
       <h2 className="text-base font-semibold">
@@ -9,6 +15,13 @@ export function AutomationNotice({ kind }: { kind: "privacy" | "terms" }) {
           ? "When enabled by a server manager, we store per-server pinning, sticky widget, and scheduled event preferences, tracked Discord message/event IDs, synchronization status, and temporary replacement-message data in Cloudflare D1. Sticky mode checks recent channel message IDs and types to determine widget position; it does not archive member message content. Event cover images are generated from public listing images already archived in R2. These features do not request additional Discord OAuth scopes."
           : "Server managers may enable automatic listing pins, widget pins, sticky widgets, and listing events. These features require the relevant Discord channel and event permissions. Sticky widgets may be replaced during successful monitoring with a cooldown; events reflect verified availability and may be delayed when monitoring or Discord is unavailable. Turning off event creation prevents new events; the separate sold-out cleanup setting controls whether an existing event is ended automatically. Disabling pinning removes pins applied by this service from tracked widgets."}
       </p>
+      {includeTestEvents && (
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+          {kind === "privacy"
+            ? "Administrator-deployed test events store a separate test event ID, deployment request ID, expiry time, status, and simulated vehicle names in D1. Test previews use existing listing images and do not change real availability or notification history. Only servers marked Test can receive these events."
+            : "Administrators can explicitly deploy simulated listing events to marked Test servers for a selected lifetime of 1–60 minutes. Test events are clearly labeled, may use archived or repeated sample vehicles, and end at their Discord scheduled end time or by manual ending. Their displayed vehicles do not indicate real stock availability."}
+        </p>
+      )}
     </section>
   );
 }

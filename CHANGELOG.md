@@ -47,3 +47,12 @@
 - Omit legacy content/embed fields when replacing Components v2 widgets so Discord accepts the component-only payload.
 - Set Suppress Notifications on sticky replacements in addition to disabling mentions, reducing channel notification noise.
 - Extend the sticky-send failure/recovery regression test to assert the Components v2 payload and notification flags.
+
+## 2026-11-21 — Time-limited Discord event simulator
+
+- Added a Listing Event Simulator to Admin Testing for marked Test servers, including servers without a notification channel. Production targets and non-administrator callers are rejected server-side.
+- Added a selectable maximum of 1/2/3 vehicles, a 1–60 minute event lifetime, and generated cover previews using the same third-slot/fallback/center-crop composite renderer as real events.
+- Use current vehicles first and archived vehicles as clearly labeled simulations. Optional repeated samples fill a three-column cover when the archive has fewer distinct vehicles.
+- Require explicit preview and deploy actions, show the simplified vehicle-name event description and cover, and expose tracked status, Discord event links, and manual early ending. Discord's external-event end time handles automatic expiry independently of monitoring cadence.
+- Keep test event IDs, expiry times and deployment request IDs in separate D1 records. Serialize operations, reuse deployment requests, recover interrupted creation/start attempts, and prevent overlapping active test events without changing live event tracking, listing stock, alert history, roles, or customization settings.
+- Updated fixed privacy/terms disclosures for test-event state, documented usage, and added tests for production/auth restrictions, bounded input, 1/2/3 cover previews, lifetime fields, retry recovery, duplicate prevention, early ending, real-event isolation, and zero routine KV operations.
