@@ -19,9 +19,9 @@ DISCORD_PUBLIC_KEY = "b143dc5acc60aff5f7a95169189f10e36fcc3cddb288ee8b3849a22b5c
 DISCORD_PRIMARY_ADMINISTRATOR = "151037568484507648"
 PUBLIC_ORIGIN = "https://everfall-limited-watcher.itschase.workers.dev"
 
-# Native CF scheduled triggers hit Tebex's Bot Challenge (403); automated checks run every 7m via GitHub Actions (store-monitor.yml + Scrapling) posting to POST /cron.
+# Store checks run via GitHub Actions because native cron requests hit Tebex's Bot Challenge. This minute trigger only wakes the Rich Presence Durable Object.
 [triggers]
-crons = []
+crons = ["* * * * *"]
 
 [[kv_namespaces]]
 binding = "DISCORD_BOT"
@@ -35,6 +35,14 @@ database_id = "49595553-38c4-4bdc-ae7a-17172d668987"
 [[r2_buckets]]
 binding = "MEDIA_BUCKET"
 bucket_name = "everfall-media"
+
+[[durable_objects.bindings]]
+name = "RICH_PRESENCE_GATEWAY"
+class_name = "RichPresenceGateway"
+
+[exports.RichPresenceGateway]
+type = "durable-object"
+storage = "sqlite"
 
 [observability.logs]
 enabled = true
@@ -54,7 +62,7 @@ DISCORD_PRIMARY_ADMINISTRATOR = "151037568484507648"
 PUBLIC_ORIGIN = "https://everfall-limited-watcher-staging.itschase.workers.dev"
 
 [env.staging.triggers]
-crons = []
+crons = ["* * * * *"]
 
 [[env.staging.kv_namespaces]]
 binding = "DISCORD_BOT"
@@ -68,3 +76,7 @@ database_id = "037f2bc1-cce9-49df-85b2-72e70769e6ef"
 [[env.staging.r2_buckets]]
 binding = "MEDIA_BUCKET"
 bucket_name = "everfall-media-staging"
+
+[[env.staging.durable_objects.bindings]]
+name = "RICH_PRESENCE_GATEWAY"
+class_name = "RichPresenceGateway"

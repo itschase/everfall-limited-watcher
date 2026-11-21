@@ -6,3 +6,4 @@ import { initWebp } from "./eventImage";
 // the same decoder from disk in server.ts.
 await initWebp(webpModule);
 export default app;
+export { RichPresenceGateway } from "./richPresenceGateway";

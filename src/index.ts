@@ -264,6 +264,12 @@ export default {
   },
 
   async scheduled(_controller: any, env: any, _ctx: ExecutionContext): Promise<void> {
-    await runCron(env);
+    const namespace = env.RICH_PRESENCE_GATEWAY;
+    if (!namespace) {
+      console.error("Rich Presence Durable Object binding is not configured.");
+      return;
+    }
+    const stub = namespace.get(namespace.idFromName("everfall-bot-presence"));
+    await stub.fetch("https://presence.internal/ensure", { method: "POST" });
   },
 };
