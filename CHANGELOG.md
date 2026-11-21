@@ -35,3 +35,9 @@
 - Updated bun.lock alongside package-lock.json so Cloudflare Workers Builds can install the added Wrangler dependency with Bun's frozen-lockfile mode.
 - Extracted the Node-only local SQLite adapter into src/localD1.ts. Tests import this side-effect-free adapter instead of initializing the preview server and opening a shared on-disk database, preventing parallel Linux test processes from racing on SQLite startup.
 - Kept the preview server's existing database path explicit and preserved the same D1 adapter behavior. The application test suite, TypeScript validation, and production build pass after extraction.
+
+## 2026-11-21 — Purpose and usage documentation
+
+- Expanded the README with the application's purpose, visitor workflows, Discord setup and commands, manager customizations, admin Pages usage, Node setup, bindings/secrets, and verification commands.
+- Documented both frozen lockfiles and distinguished connected Cloudflare Builds from manually dispatched production GitHub Actions deployment.
+- Clarified actual monitoring cadence versus display-only settings and identified remaining deployed Discord/zoom acceptance work.
