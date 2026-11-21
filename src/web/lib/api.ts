@@ -40,6 +40,7 @@ import type {
   TemplateVariableScope,
   TemplateVariableValues,
 } from "../../shared/variables";
+import type { RichPresenceConfig } from "../../shared/richPresence";
 
 export type {
   AboutPageContentConfig,
@@ -544,6 +545,24 @@ export interface BotReadinessCheck {
   status: "pass" | "warn" | "fail";
   summary: string;
   remediation?: string;
+}
+
+export interface RichPresenceAdminResponse {
+  ok: boolean;
+  config: RichPresenceConfig;
+  service: {
+    online: boolean;
+    connected: boolean;
+    lastHeartbeatAt: number | null;
+    activity: string | null;
+    error: string | null;
+    webhookConfigured: boolean;
+  };
+  webhookCard: {
+    exists: boolean;
+    pending: boolean;
+    error: string | null;
+  };
 }
 
 export interface AdminBotStateResponse {

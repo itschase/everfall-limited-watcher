@@ -48,6 +48,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { RichPresenceControls } from "./RichPresenceControls";
 
 export const ADMIN_BOT_KEY = ["admin-bot-state"] as const;
 
@@ -750,6 +751,8 @@ export function AdminBotPage() {
               </CardContent>
             </Card>
           </div>
+
+          <RichPresenceControls />
 
           {/* 3-Layer /widget Registration, Execution & Portal Readiness Diagnostics */}
           {data.readinessChecks && data.readinessChecks.length > 0 && (

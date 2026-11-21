@@ -69,7 +69,17 @@ import { normalizeCustomizations } from "./shared/customizations";
 import { getReleaseNotes, saveReleaseNote } from "./releaseNotes";
 import { normalizeReleaseNote } from "./shared/releaseNotes";
 import { deployTestEvent, endTestEvent, getTestEventStatus, previewTestEvent, TestEventError } from "./testEvents";
-import { getD1Database, getMonitorStateValue, reserveTestAlertCooldown } from "./d1";
+import {
+  getD1Database,
+  getMonitorStateValue,
+  reserveTestAlertCooldown,
+  setMonitorStateValue,
+} from "./d1";
+import {
+  DEFAULT_RICH_PRESENCE_CONFIG,
+  normalizeRichPresenceConfig,
+  validateRichPresenceConfig,
+} from "./shared/richPresence";
 import {
   buildBotReadinessChecks,
   checkBotHealthSnapshot,
@@ -120,6 +130,138 @@ function json(data: unknown, status = 200): Response {
     status,
     headers: NO_STORE_HEADERS,
   });
+}
+
+const RICH_PRESENCE_CONFIG_KEY = "bot_rich_presence_config";
+const RICH_PRESENCE_SERVICE_KEY = "bot_rich_presence_service";
+const RICH_PRESENCE_WEBHOOK_KEY = "bot_rich_presence_webhook";
+const RICH_PRESENCE_SERVICE_STALE_MS = 3 * 60 * 1000;
+
+interface RichPresenceServiceStatus {
+  lastHeartbeatAt: number;
+  connected: boolean;
+  activity: string | null;
+  error: string | null;
+  webhookConfigured: boolean;
+}
+
+interface RichPresenceWebhookState {
+  messageId: string | null;
+  requestId: string | null;
+  action: "sync" | "delete" | null;
+  requestedAt: number | null;
+  processedRequestId: string | null;
+  error: string | null;
+}
+
+function isSecretEqual(expected: string, received: string): boolean {
+  const encoder = new TextEncoder();
+  const expectedBytes = encoder.encode(expected);
+  const receivedBytes = encoder.encode(received);
+  let mismatch = expectedBytes.length ^ receivedBytes.length;
+  const length = Math.max(expectedBytes.length, receivedBytes.length);
+  for (let index = 0; index < length; index++) {
+    mismatch |= (expectedBytes[index] || 0) ^ (receivedBytes[index] || 0);
+  }
+  return mismatch === 0;
+}
+
+function normalizeRichPresenceWebhookState(value: unknown): RichPresenceWebhookState {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const action = raw.action === "sync" || raw.action === "delete" ? raw.action : null;
+  return {
+    messageId: typeof raw.messageId === "string" ? raw.messageId : null,
+    requestId: typeof raw.requestId === "string" ? raw.requestId : null,
+    action,
+    requestedAt:
+      typeof raw.requestedAt === "number" && Number.isFinite(raw.requestedAt)
+        ? raw.requestedAt
+        : null,
+    processedRequestId:
+      typeof raw.processedRequestId === "string" ? raw.processedRequestId : null,
+    error: typeof raw.error === "string" ? raw.error.slice(0, 200) : null,
+  };
+}
+
+async function handleRichPresenceServiceRequest(request: Request, env: any, url: URL) {
+  const method = request.method.toUpperCase();
+  const configuredSecret = typeof env.PRESENCE_SYNC_SECRET === "string" ? env.PRESENCE_SYNC_SECRET : "";
+  const authorization = request.headers.get("Authorization") || "";
+  const bearer = /^Bearer\s+(.+)$/i.exec(authorization)?.[1] || "";
+  if (!configuredSecret || !isSecretEqual(configuredSecret, bearer)) {
+    return json({ error: "Unauthorized presence service request." }, configuredSecret ? 401 : 503);
+  }
+
+  if (method !== "GET" && method !== "POST") {
+    return json({ error: "Method not allowed." }, 405);
+  }
+
+  const db = getD1Database(env);
+  if (!db) return json({ error: "The D1 database binding (DB) is not configured." }, 503);
+
+  if (method === "GET") {
+    const [storedConfig, serviceStatus, webhookState] = await Promise.all([
+      getMonitorStateValue<unknown>(db, RICH_PRESENCE_CONFIG_KEY),
+      getMonitorStateValue<RichPresenceServiceStatus>(db, RICH_PRESENCE_SERVICE_KEY),
+      getMonitorStateValue<RichPresenceWebhookState>(db, RICH_PRESENCE_WEBHOOK_KEY),
+    ]);
+    return json({
+      config: normalizeRichPresenceConfig(storedConfig ?? DEFAULT_RICH_PRESENCE_CONFIG),
+      publicOrigin: resolvePublicOrigin(env, url.origin),
+      serviceStatus,
+      webhookState: normalizeRichPresenceWebhookState(webhookState),
+    });
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON presence service update." }, 400);
+  }
+  if (!body || typeof body !== "object" || typeof body.connected !== "boolean") {
+    return json({ error: "Presence service update must include a connected boolean." }, 400);
+  }
+
+  const serviceStatus: RichPresenceServiceStatus = {
+    lastHeartbeatAt: Date.now(),
+    connected: body.connected,
+    activity: typeof body.activity === "string" ? body.activity.slice(0, 300) : null,
+    error: typeof body.error === "string" ? body.error.slice(0, 200) : null,
+    webhookConfigured: body.webhookConfigured === true,
+  };
+  await setMonitorStateValue(db, RICH_PRESENCE_SERVICE_KEY, serviceStatus);
+
+  const webhookResult = body.webhookResult;
+  if (webhookResult && typeof webhookResult === "object") {
+    const current = normalizeRichPresenceWebhookState(
+      await getMonitorStateValue<unknown>(db, RICH_PRESENCE_WEBHOOK_KEY)
+    );
+    if (
+      typeof webhookResult.requestId === "string" &&
+      webhookResult.requestId === current.requestId
+    ) {
+      const outcome = webhookResult.outcome;
+      if (outcome === "synced" || outcome === "deleted" || outcome === "error") {
+        const next: RichPresenceWebhookState = {
+          ...current,
+          messageId:
+            outcome === "deleted"
+              ? null
+              : outcome === "synced" && typeof webhookResult.messageId === "string"
+                ? webhookResult.messageId
+                : current.messageId,
+          processedRequestId: current.requestId,
+          error: outcome === "error" && typeof webhookResult.error === "string"
+            ? webhookResult.error.slice(0, 200)
+            : null,
+        };
+        await setMonitorStateValue(db, RICH_PRESENCE_WEBHOOK_KEY, next);
+      }
+    }
+  }
+
+  return json({ ok: true, receivedAt: serviceStatus.lastHeartbeatAt });
 }
 
 function getEdgeCache(): Cache | null {
@@ -279,8 +421,12 @@ export async function handleApiRequest(
     return null;
   }
 
-  const origin = getRequestOrigin(request, env);
   const method = request.method.toUpperCase();
+  if (url.pathname === "/api/internal/bot/presence") {
+    return handleRichPresenceServiceRequest(request, env, url);
+  }
+
+  const origin = getRequestOrigin(request, env);
 
   if (method !== "GET" && method !== "HEAD" && !isSameOriginMutation(request, origin)) {
     return json({ error: "Cross-origin state-changing request rejected." }, 403);
@@ -3021,6 +3167,111 @@ export async function handleApiRequest(
     }
 
     // 16. Bot Control Center (Inspect Bot, Slash Command Sync, Availability Diagnostics, Guild Cache & Widget Refresh)
+    if (method === "GET" && url.pathname === "/api/admin/bot/presence") {
+      const db = getD1Database(env);
+      if (!db) return json({ error: "The D1 database binding (DB) is not configured." }, 503);
+      const [storedConfig, serviceStatus, storedWebhookState] = await Promise.all([
+        getMonitorStateValue<unknown>(db, RICH_PRESENCE_CONFIG_KEY),
+        getMonitorStateValue<RichPresenceServiceStatus>(db, RICH_PRESENCE_SERVICE_KEY),
+        getMonitorStateValue<unknown>(db, RICH_PRESENCE_WEBHOOK_KEY),
+      ]);
+      const webhookState = normalizeRichPresenceWebhookState(storedWebhookState);
+      const now = Date.now();
+      const serviceOnline =
+        Boolean(serviceStatus?.lastHeartbeatAt) &&
+        now - serviceStatus!.lastHeartbeatAt < RICH_PRESENCE_SERVICE_STALE_MS;
+      return json({
+        ok: true,
+        config: normalizeRichPresenceConfig(storedConfig ?? DEFAULT_RICH_PRESENCE_CONFIG),
+        service: {
+          online: serviceOnline,
+          connected: serviceOnline && serviceStatus?.connected === true,
+          lastHeartbeatAt: serviceStatus?.lastHeartbeatAt ?? null,
+          activity: serviceStatus?.activity ?? null,
+          error: serviceOnline ? serviceStatus?.error ?? null : null,
+          webhookConfigured: serviceOnline && serviceStatus?.webhookConfigured === true,
+        },
+        webhookCard: {
+          exists: Boolean(webhookState.messageId),
+          pending: Boolean(
+            webhookState.requestId &&
+              webhookState.requestId !== webhookState.processedRequestId
+          ),
+          error: webhookState.error,
+        },
+      });
+    }
+
+    if (method === "PUT" && url.pathname === "/api/admin/bot/presence") {
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return json({ error: "Invalid JSON presence configuration." }, 400);
+      }
+      const errors = validateRichPresenceConfig(body);
+      if (errors.length) return json({ error: errors[0], errors }, 400);
+      const db = getD1Database(env);
+      if (!db) return json({ error: "The D1 database binding (DB) is not configured." }, 503);
+      const config = normalizeRichPresenceConfig(body);
+      const savedAt = Date.now();
+      await setMonitorStateValue(db, RICH_PRESENCE_CONFIG_KEY, config, savedAt);
+      return json({ ok: true, config, savedAt });
+    }
+
+    if (method === "POST" && url.pathname === "/api/admin/bot/presence/webhook-card") {
+      let body: any = {};
+      try {
+        body = await request.json();
+      } catch {
+        return json({ error: "Invalid webhook card action." }, 400);
+      }
+      const action = body?.action;
+      if (action !== "sync" && action !== "delete") {
+        return json({ error: "Choose a valid webhook card action." }, 400);
+      }
+      const db = getD1Database(env);
+      if (!db) return json({ error: "The D1 database binding (DB) is not configured." }, 503);
+      const [storedConfig, serviceStatus, storedWebhookState] = await Promise.all([
+        getMonitorStateValue<unknown>(db, RICH_PRESENCE_CONFIG_KEY),
+        getMonitorStateValue<RichPresenceServiceStatus>(db, RICH_PRESENCE_SERVICE_KEY),
+        getMonitorStateValue<unknown>(db, RICH_PRESENCE_WEBHOOK_KEY),
+      ]);
+      const config = normalizeRichPresenceConfig(storedConfig ?? DEFAULT_RICH_PRESENCE_CONFIG);
+      const webhookState = normalizeRichPresenceWebhookState(storedWebhookState);
+      const now = Date.now();
+      const serviceOnline =
+        Boolean(serviceStatus?.lastHeartbeatAt) &&
+        now - serviceStatus!.lastHeartbeatAt < RICH_PRESENCE_SERVICE_STALE_MS;
+      if (!serviceOnline) {
+        return json({ error: "The persistent Rich Presence service is not connected." }, 503);
+      }
+      if (!serviceStatus?.webhookConfigured) {
+        return json({ error: "The Rich Presence service has no status webhook configured." }, 503);
+      }
+      if (action === "sync" && !config.webhookCardEnabled) {
+        return json({ error: "Enable the webhook status card and save it before publishing." }, 400);
+      }
+      if (action === "delete" && !webhookState.messageId) {
+        return json({ error: "There is no published webhook status card to remove." }, 404);
+      }
+
+      const requestId = crypto.randomUUID();
+      await setMonitorStateValue(
+        db,
+        RICH_PRESENCE_WEBHOOK_KEY,
+        {
+          ...webhookState,
+          requestId,
+          action,
+          requestedAt: now,
+          error: null,
+        },
+        now
+      );
+      return json({ ok: true, requestId, action, queuedAt: now }, 202);
+    }
+
     const buildBotStatePayload = async (forceRefreshGuilds = false, checkAvailability = true) => {
       const [identity, syncMeta, botGuilds, allWidgets, monitorStatus, botHealth] =
         await Promise.all([
