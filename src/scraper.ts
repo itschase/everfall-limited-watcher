@@ -48,6 +48,7 @@ import {
   WidgetTemplateConfig,
 } from "./shared/presentation";
 import { VehicleMetadataOverride } from "./shared/features";
+import { pinListingMessage, runServerAutomations } from "./serverAutomation";
 
 export interface CarListing {
   id: string; // Package ID, e.g. "7815813"
@@ -1138,6 +1139,9 @@ export async function dispatchListingToGuild(
       messageId: result.messageId,
       isSoldOutRendered: car.isAvailable === false,
     });
+    if (config?.customizations?.autoPinListings && result.messageId && car.isAvailable !== false) {
+      await pinListingMessage(env, channelId, result.messageId).catch(error => console.error("Listing pin failed:", error.message));
+    }
   }
   return result;
 }
@@ -2734,6 +2738,7 @@ export async function runCron(
     }
 
     if (checkedStore) {
+      if (snapshot) await runServerAutomations(env, snapshot);
       await refreshAllWidgets(env, originHint, {
         trigger: source,
         catalogChanged: Boolean(catalogChanged),
@@ -2863,6 +2868,7 @@ export async function ingestVerifiedStoreScan(
 
   let newDrops = 0;
   if (result.authoritative) {
+    await runServerAutomations(env, synced.snapshot);
     for (const car of synced.availableListings) {
       const sent = await broadcastListing(env, car, false);
       if (sent > 0) {

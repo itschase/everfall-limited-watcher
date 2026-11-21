@@ -1685,8 +1685,8 @@ test("D1 performs one-time non-destructive migration from KV and brings routine 
     },
   };
 
+  const d1 = createLocalD1(dbPath);
   try {
-    const d1 = createLocalD1(dbPath);
     const env: any = {
       DB: d1,
       DISCORD_BOT: instrumentedKv,
@@ -1737,6 +1737,7 @@ test("D1 performs one-time non-destructive migration from KV and brings routine 
     assert.equal(kvWrites, 0, "Routine D1-backed structured writes must execute zero KV writes");
     assert.equal(kvDeletes, 0, "Routine D1-backed operations must execute zero KV deletes");
   } finally {
+    d1.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

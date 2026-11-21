@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import type { ViteDevServer } from "vite";
 import worker from "./index";
+import { initWebp } from "./eventImage";
 import { SCHEDULED_CRON_INTERVAL_MS } from "./shared/appConfig";
 
 interface MemoryKVEntry {
@@ -16,7 +17,7 @@ interface MemoryKVEntry {
 const DEV_KV_FILE = path.resolve(import.meta.dirname, "..", ".dev-kv.json");
 const DEV_D1_FILE = path.resolve(import.meta.dirname, "..", ".dev-d1.sqlite");
 
-export function createLocalD1(sqlitePath = DEV_D1_FILE): D1Database {
+export function createLocalD1(sqlitePath = DEV_D1_FILE): D1Database & { close(): void } {
   const db = new DatabaseSync(sqlitePath);
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA synchronous = NORMAL;");
@@ -91,6 +92,7 @@ export function createLocalD1(sqlitePath = DEV_D1_FILE): D1Database {
   };
 
   return {
+    close() { db.close(); },
     prepare(query: string) {
       return makeStatement(query, []);
     },
@@ -513,6 +515,7 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = "0.0.0.0";
 
 async function startServer() {
+  await initWebp(await WebAssembly.compile(fs.readFileSync(path.resolve(import.meta.dirname, "../node_modules/@jsquash/webp/codec/dec/webp_dec.wasm"))));
   const vite = await getViteDevServer();
   env.ASSETS = createAssetsFetcher(vite);
 

@@ -1,3 +1,5 @@
+declare module "*.wasm" { const module: WebAssembly.Module; export default module; }
+
 interface KVGetWithMetadataResult<T, Metadata = unknown> {
   value: T | null;
   metadata: Metadata | null;

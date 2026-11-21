@@ -1,3 +1,4 @@
+import { ServerCustomizationsPanel } from "./ServerCustomizationsPanel";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -56,7 +57,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function ServerStatusIndicator({ status }: { status: ServerStatus }) {
   if (status === "active") {
@@ -254,7 +255,7 @@ function ServerWidgetsSection({
 
   return (
     <div className="space-y-4 border-t border-border pt-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <LayoutPanelTop className="h-4 w-4 text-zinc-400" />
@@ -429,7 +430,7 @@ function ServerWidgetsSection({
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 @xl/main:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Destination Channel</Label>
                 <Select value={deployChannelId} onValueChange={setDeployChannelId}>
@@ -636,6 +637,7 @@ function ServerConfigPanel({
   publicOrigin?: string;
   onSaved: () => void;
 }) {
+  const [panelTab, setPanelTab] = useState("settings");
   const [channelId, setChannelId] = useState(server.config.channelId || "");
   const [roleIds, setRoleIds] = useState<string[]>(server.config.roleIds || []);
   const [channelSearch, setChannelSearch] = useState("");
@@ -720,6 +722,9 @@ function ServerConfigPanel({
 
   return (
     <div className="border-t border-border bg-zinc-900/50 p-4 sm:p-5 space-y-6">
+      <Tabs value={panelTab} onValueChange={setPanelTab}><TabsList className="h-auto flex-wrap"><TabsTrigger value="settings">Channel & roles</TabsTrigger><TabsTrigger value="customizations">Customizations</TabsTrigger><TabsTrigger value="widgets">Widgets</TabsTrigger></TabsList>
+      <TabsContent value="customizations"><ServerCustomizationsPanel server={server} onSaved={onSaved} /></TabsContent>
+      <TabsContent value="settings" className="space-y-4">
       {server.controlsError && (
         <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/35 bg-amber-950/40 p-3 text-xs text-amber-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
@@ -978,6 +983,7 @@ function ServerConfigPanel({
         </div>
       </div>
 
+      </TabsContent><TabsContent value="widgets">
       <ServerWidgetsSection
         server={server}
         widgetDefault={widgetDefault}
@@ -987,6 +993,7 @@ function ServerConfigPanel({
         publicOrigin={publicOrigin}
         onMutated={onSaved}
       />
+      </TabsContent></Tabs>
     </div>
   );
 }

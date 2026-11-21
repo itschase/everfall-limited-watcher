@@ -28,8 +28,14 @@ jobs:
       - name: Typecheck
         run: npm run lint
 
+      - name: Test storage, presentation, and Discord synchronization
+        run: npm test
+
       - name: Build Frontend & Worker
         run: npm run build
+
+      - name: Verify Worker and bundled WebP decoder
+        run: npm run check:worker
 
   deploy_staging:
     needs: verify
