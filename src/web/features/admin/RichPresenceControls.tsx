@@ -206,8 +206,9 @@ export function RichPresenceControls() {
             Rich Presence &amp; Status Card
           </CardTitle>
           <CardDescription className="mt-1 max-w-3xl">
-            Configure the bot-wide Discord activity and an optional, editable webhook status card.
-            Activity templates can use current listings and store-check timing.
+            Configure the bot-wide Discord activity and an optional status card. Activity updates
+            do not post messages; the card is separate and only publishes when requested.
+            Templates can use current listings and store-check timing.
           </CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -226,10 +227,11 @@ export function RichPresenceControls() {
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
             <p className="font-medium">A persistent Node Gateway service is required.</p>
             <p className="mt-1 text-amber-100/80">
-              Set <code>DISCORD_BOT_TOKEN</code>, <code>PRESENCE_SYNC_URL</code>, and{" "}
-              <code>PRESENCE_SYNC_SECRET</code> on an always-on Node host, then run{" "}
-              <code>npm run presence</code>. Set <code>PRESENCE_SYNC_SECRET</code> as a Worker
-              secret too. The Gateway connection is global to this bot, not per server.
+              Run the included <code>Dockerfile.presence</code> on an always-on Node.js 22+ host.
+              Provide the existing <code>DISCORD_BOT_TOKEN</code> and the same{" "}
+              <code>PRESENCE_SYNC_SECRET</code> used by the Worker. The production endpoint is
+              automatic; set <code>PUBLIC_ORIGIN</code> or <code>PRESENCE_SYNC_URL</code> only for
+              staging or a custom domain. No webhook is needed for profile activity.
             </p>
             {data?.service.error && (
               <p className="mt-1 text-amber-100/90">Last service error: {data.service.error}</p>
@@ -466,7 +468,9 @@ export function RichPresenceControls() {
 
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant={webhookReady ? "success" : "outline"}>
-                  {webhookReady ? "Webhook configured" : "Webhook secret not detected"}
+                  {webhookReady
+                    ? "Optional webhook configured"
+                    : "Optional webhook not configured"}
                 </Badge>
                 {data?.webhookCard.exists && (
                   <Badge variant="secondary">
@@ -511,8 +515,9 @@ export function RichPresenceControls() {
               </div>
               <p className="text-[11px] leading-relaxed text-muted-foreground">
                 Configure <code>DISCORD_STATUS_WEBHOOK_URL</code> as a secret on the Node service.
-                Publishing is an explicit action; after creation, the service edits this same
-                message as its live values change. Saving settings alone never posts a message.
+                This sends a single card to its configured channel and is not needed for profile
+                activity. Publishing is an explicit action; after creation, the service edits that
+                same message as its live values change. Saving settings alone never posts a message.
               </p>
               {data?.webhookCard.error && (
                 <p className="text-xs text-amber-300">

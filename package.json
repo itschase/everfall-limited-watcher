@@ -14,7 +14,6 @@
   "devDependencies": {
     "@types/node": "^26.6.6",
     "cheerio": "^1.0.0-rc.12",
-    "tsx": "^4.23.15",
     "typescript": "^5.4.2",
     "wrangler": "^4.166.0"
   },
@@ -48,6 +47,7 @@
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
     "tailwindcss": "^4.3.5",
+    "tsx": "^4.23.15",
     "vite": "^8.3.8"
   }
 }
