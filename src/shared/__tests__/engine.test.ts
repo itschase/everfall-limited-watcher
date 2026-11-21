@@ -20,6 +20,7 @@ import {
   computeStableHash,
   computeWidgetContentHash,
   createDefaultPresentationConfig,
+  DEFAULT_HERO_CONFIG,
   DEFAULT_IN_STOCK_TEMPLATE,
   DEFAULT_SITE_PAGES_CONFIG,
   DEFAULT_SOLD_OUT_TEMPLATE,
@@ -32,6 +33,7 @@ import {
   resolveTemplateVariables,
 } from "../variables";
 import { handleInteraction, hasManageServerPermission } from "../../commands";
+import { computeBotChannelPermissions, DISCORD_PERM } from "../../discord";
 import {
   buildBotReadinessChecks,
   checkBotHealthSnapshot,
@@ -503,9 +505,10 @@ test("buildWidgetPayload prefers Slot 3 image, falls back to Slot 0, includes Vi
   const embed = payload.embeds[0];
   assert.match(embed.image.url, /\/media\/listings\/7815819\/3\?v=4$/);
   assert.ok(embed.fields.some((f: any) => f.value.includes("[View](https://store.everfallcommunity.com/package/7815819)")));
+  assert.ok(embed.fields.some((f: any) => f.value.includes("[View](https://portal.example.com/history/7815813)")));
   assert.equal(validateDiscordPayloadLimits(payload).valid, true);
 
-  // Fallback to Slot 0 when only Slot 0 exists, plus stale notice when blocked
+  // Fallback to Slot 0 when only Slot 0 exists, plus stale notice when blocked & default workers.dev history link
   const fallbackPayload = buildWidgetPayload({
     nowMs,
     records: [
@@ -531,6 +534,11 @@ test("buildWidgetPayload prefers Slot 3 image, falls back to Slot 0, includes Vi
   });
   assert.match(fallbackPayload.embeds[0].image.url, /\/media\/listings\/7815813\/0\?v=4$/);
   assert.match(fallbackPayload.embeds[0].description, /Latest store check could not verify live stock/i);
+  assert.ok(
+    fallbackPayload.embeds[0].fields.some((f: any) =>
+      f.value.includes("[View](https://everfall-limited-watcher.itschase.workers.dev/history/7815813)")
+    )
+  );
   assert.equal(
     computeStableHash(payload),
     computeStableHash(payload),
@@ -818,9 +826,15 @@ test("dashboard cache refreshes coalesce and persist one bot-guild and per-guild
       return Response.json([{ id: "111111111111111111", name: "Test Guild" }]);
     }
     if (url.endsWith("/channels")) {
-      return Response.json([{ id: "222222222222222222", name: "alerts", type: 0 }]);
+      return Response.json([{ id: "222222222222222222", name: "alerts", type: 0, permission_overwrites: [] }]);
     }
-    return Response.json([{ id: "333333333333333333", name: "Members", managed: false }]);
+    if (url.endsWith("/roles")) {
+      return Response.json([{ id: "333333333333333333", name: "Members", managed: false, permissions: "0" }]);
+    }
+    if (url.includes("/members/")) {
+      return Response.json({ user: { id: "1571958001928245378" }, roles: [] });
+    }
+    return Response.json({ id: "111111111111111111", owner_id: "999999999999999999" });
   };
 
   try {
@@ -838,12 +852,12 @@ test("dashboard cache refreshes coalesce and persist one bot-guild and per-guild
     ]);
     assert.deepEqual(controls1, controls2);
     assert.equal(kvPuts, 0, "Guild control refresh should not write KV");
-    assert.equal(fetchCalls, 3, "Concurrent control refreshes should share two Discord requests");
+    assert.equal(fetchCalls, 5, "Concurrent control refreshes should share four Discord guild metadata requests");
 
     await getBotGuilds(env);
     await getGuildControlOptions(env, "111111111111111111");
     assert.equal(kvPuts, 0, "Warm isolate caches should avoid KV writes");
-    assert.equal(fetchCalls, 3, "Warm isolate caches should avoid repeated Discord requests");
+    assert.equal(fetchCalls, 5, "Warm isolate caches should avoid repeated Discord requests");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -968,11 +982,36 @@ test("Server dashboard widget routes enforce auth, per-guild ownership, and cros
   globalThis.fetch = (async (input: any, init?: any) => {
     const urlStr = String(input);
     const method = (init?.method || "GET").toUpperCase();
+    if (urlStr.endsWith("/users/@me")) {
+      return Response.json({ id: "1571958001928245378", username: "EverfallBot" });
+    }
+    if (urlStr.endsWith("/guilds/111111111111111111")) {
+      return Response.json({ id: "111111111111111111", owner_id: "999999999999999999" });
+    }
     if (urlStr.includes("/guilds/111111111111111111/channels")) {
-      return Response.json([{ id: "333333333333333333", name: "widget-updates", type: 0 }]);
+      return Response.json([{ id: "333333333333333333", name: "widget-updates", type: 0, permission_overwrites: [] }]);
     }
     if (urlStr.includes("/guilds/111111111111111111/roles")) {
-      return Response.json([]);
+      return Response.json([
+        {
+          id: "111111111111111111",
+          permissions: String(
+            DISCORD_PERM.VIEW_CHANNEL | DISCORD_PERM.SEND_MESSAGES | DISCORD_PERM.EMBED_LINKS
+          ),
+        },
+      ]);
+    }
+    if (urlStr.includes("/guilds/111111111111111111/members/")) {
+      return Response.json({ user: { id: "1571958001928245378" }, roles: [] });
+    }
+    if (urlStr.endsWith("/channels/333333333333333333") && method === "GET") {
+      return Response.json({
+        id: "333333333333333333",
+        guild_id: "111111111111111111",
+        name: "widget-updates",
+        type: 0,
+        permission_overwrites: [],
+      });
     }
     if (urlStr.includes("/channels/333333333333333333/messages") && method === "POST") {
       return new Response(JSON.stringify({ id: "777777777777777777" }), { status: 200 });
@@ -1935,4 +1974,515 @@ test("Site pages normalization strips HTML tags and admin partial pages updates 
   assert.equal(pubStatusJson.pages.home.sectionTitle, DEFAULT_SITE_PAGES_CONFIG.home.sectionTitle);
   assert.equal(pubStatusJson.pages.privacy.heading, DEFAULT_SITE_PAGES_CONFIG.privacy.heading);
 });
+
+test("computeBotChannelPermissions accurately resolves Discord roles, overwrites, threads, and admin bypasses", () => {
+  const guildId = "100000000000000001";
+  const botId = "200000000000000002";
+  const roleBotId = "300000000000000003";
+
+  // 1. Guild owner & ADMINISTRATOR bypasses channel denies
+  const ownerPerm = computeBotChannelPermissions({
+    guild: { id: guildId, owner_id: botId },
+    roles: [{ id: guildId, permissions: "0" }],
+    member: { user: { id: botId }, roles: [] },
+    channel: {
+      id: "400000000000000001",
+      name: "locked-channel",
+      type: 0,
+      permission_overwrites: [{ id: guildId, type: 0, allow: "0", deny: String(DISCORD_PERM.VIEW_CHANNEL | DISCORD_PERM.SEND_MESSAGES) }],
+    },
+    botUserId: botId,
+  });
+  assert.equal(ownerPerm.isAdmin, true);
+  assert.equal(ownerPerm.writable, true);
+  assert.deepEqual(ownerPerm.missingPermissions, []);
+
+  const adminPerm = computeBotChannelPermissions({
+    guild: { id: guildId, owner_id: "999999999999999999" },
+    roles: [
+      { id: guildId, permissions: "0" },
+      { id: roleBotId, permissions: String(DISCORD_PERM.ADMINISTRATOR) },
+    ],
+    member: { user: { id: botId }, roles: [roleBotId] },
+    channel: {
+      id: "400000000000000001",
+      name: "admin-override",
+      type: 0,
+      permission_overwrites: [{ id: botId, type: 1, allow: "0", deny: String(DISCORD_PERM.EMBED_LINKS) }],
+    },
+    botUserId: botId,
+  });
+  assert.equal(adminPerm.isAdmin, true);
+  assert.equal(adminPerm.writable, true);
+
+  // 2. @everyone deny overridden by role allow, then overridden by member-specific deny
+  const roleAllowPerm = computeBotChannelPermissions({
+    guild: { id: guildId, owner_id: "999999999999999999" },
+    roles: [
+      { id: guildId, permissions: String(DISCORD_PERM.VIEW_CHANNEL) },
+      { id: roleBotId, permissions: "0" },
+    ],
+    member: { user: { id: botId }, roles: [roleBotId] },
+    channel: {
+      id: "400000000000000002",
+      name: "limited-alerts",
+      type: 0,
+      permission_overwrites: [
+        {
+          id: guildId,
+          type: 0,
+          allow: "0",
+          deny: String(DISCORD_PERM.VIEW_CHANNEL | DISCORD_PERM.SEND_MESSAGES | DISCORD_PERM.EMBED_LINKS),
+        },
+        {
+          id: roleBotId,
+          type: 0,
+          allow: String(DISCORD_PERM.VIEW_CHANNEL | DISCORD_PERM.SEND_MESSAGES | DISCORD_PERM.EMBED_LINKS),
+          deny: "0",
+        },
+      ],
+    },
+    botUserId: botId,
+  });
+  assert.equal(roleAllowPerm.writable, true);
+  assert.deepEqual(roleAllowPerm.missingPermissions, []);
+
+  const memberDenyPerm = computeBotChannelPermissions({
+    guild: { id: guildId, owner_id: "999999999999999999" },
+    roles: [
+      { id: guildId, permissions: String(DISCORD_PERM.VIEW_CHANNEL | DISCORD_PERM.SEND_MESSAGES | DISCORD_PERM.EMBED_LINKS) },
+    ],
+    member: { user: { id: botId }, roles: [roleBotId] },
+    channel: {
+      id: "400000000000000003",
+      name: "no-embeds-here",
+      type: 0,
+      permission_overwrites: [
+        { id: roleBotId, type: 0, allow: String(DISCORD_PERM.EMBED_LINKS), deny: "0" },
+        { id: botId, type: 1, allow: "0", deny: String(DISCORD_PERM.EMBED_LINKS) },
+      ],
+    },
+    botUserId: botId,
+    requirements: { requireView: true, requireSend: true, requireEmbed: true, requireHistory: true },
+  });
+  assert.equal(memberDenyPerm.writable, false);
+  assert.equal(memberDenyPerm.canSend, true);
+  assert.equal(memberDenyPerm.canEmbed, false);
+  assert.equal(memberDenyPerm.canReadHistory, false);
+  assert.deepEqual(memberDenyPerm.missingPermissions, ["Embed Links", "Read Message History"]);
+  assert.match(memberDenyPerm.remediation || "", /#no-embeds-here/);
+
+  // 3. Public thread inherits parent overwrites and checks SEND_MESSAGES_IN_THREADS
+  const threadMissingSend = computeBotChannelPermissions({
+    guild: { id: guildId, owner_id: "999999999999999999" },
+    roles: [
+      {
+        id: guildId,
+        permissions: String(
+          DISCORD_PERM.VIEW_CHANNEL | DISCORD_PERM.SEND_MESSAGES | DISCORD_PERM.EMBED_LINKS
+        ),
+      },
+    ],
+    member: { user: { id: botId }, roles: [] },
+    channel: { id: "400000000000000099", name: "drop-thread", type: 11, parent_id: "400000000000000004" },
+    parentChannel: {
+      id: "400000000000000004",
+      name: "forum-parent",
+      type: 0,
+      permission_overwrites: [
+        { id: guildId, type: 0, allow: "0", deny: String(DISCORD_PERM.SEND_MESSAGES_IN_THREADS) },
+      ],
+    },
+    botUserId: botId,
+  });
+  assert.equal(threadMissingSend.isThread, true);
+  assert.equal(threadMissingSend.writable, false);
+  assert.deepEqual(threadMissingSend.missingPermissions, ["Send Messages in Threads"]);
+});
+
+test("Server save & test routes validate Discord channel permissions, preserve prior valid config, and avoid burning cooldowns on permission failure", async () => {
+  const db = createLocalD1(":memory:");
+  const kv = createMemoryKv();
+  const secret = "test_perm_secret_0123456789abcdef";
+  const env: any = {
+    DB: db,
+    DISCORD_BOT: kv,
+    DISCORD_CLIENT_SECRET: secret,
+    DISCORD_BOT_TOKEN: "mock_bot_token",
+    DISCORD_APPLICATION_ID: "1571958001928245378",
+    PUBLIC_ORIGIN: "https://portal.example.com",
+  };
+
+  await setCachedUserGuilds(
+    db,
+    "555555555555555555",
+    [{ id: "111111111111111111", name: "Perm Guild", permissions: "32", owner: false }],
+    Date.now() + 86400_000
+  );
+  await setGuildConfig(env, "111111111111111111", {
+    channelId: "222222222222222222",
+    roleIds: [],
+    environment: "production",
+  });
+
+  const token = await createSessionToken("555555555555555555", "permmod", "", secret);
+  const cookieHeader = `everfall_session=${token}`;
+
+  let denyEmbedsOnChannel2 = false;
+  let testPostCalls = 0;
+
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const urlStr = String(input);
+    const method = (init?.method || "GET").toUpperCase();
+    const denyBadChannel = String(DISCORD_PERM.SEND_MESSAGES | DISCORD_PERM.EMBED_LINKS);
+    const overwrites2 = denyEmbedsOnChannel2
+      ? [{ id: "111111111111111111", type: 0, allow: "0", deny: String(DISCORD_PERM.EMBED_LINKS) }]
+      : [];
+
+    if (urlStr.endsWith("/guilds/111111111111111111")) {
+      return Response.json({ id: "111111111111111111", owner_id: "999999999999999999" });
+    }
+    if (urlStr.endsWith("/guilds/111111111111111111/roles")) {
+      return Response.json([
+        {
+          id: "111111111111111111",
+          permissions: String(
+            DISCORD_PERM.VIEW_CHANNEL | DISCORD_PERM.SEND_MESSAGES | DISCORD_PERM.EMBED_LINKS
+          ),
+        },
+      ]);
+    }
+    if (urlStr.includes("/guilds/111111111111111111/members/")) {
+      return Response.json({ user: { id: "1571958001928245378" }, roles: [] });
+    }
+    if (urlStr.endsWith("/guilds/111111111111111111/channels")) {
+      return Response.json([
+        { id: "222222222222222222", name: "valid-alerts", type: 0, permission_overwrites: overwrites2 },
+        {
+          id: "333333333333333333",
+          name: "read-only-channel",
+          type: 0,
+          permission_overwrites: [{ id: "111111111111111111", type: 0, allow: "0", deny: denyBadChannel }],
+        },
+      ]);
+    }
+    if (urlStr.endsWith("/channels/222222222222222222")) {
+      return Response.json({
+        id: "222222222222222222",
+        guild_id: "111111111111111111",
+        name: "valid-alerts",
+        type: 0,
+        permission_overwrites: overwrites2,
+      });
+    }
+    if (urlStr.endsWith("/channels/333333333333333333")) {
+      return Response.json({
+        id: "333333333333333333",
+        guild_id: "111111111111111111",
+        name: "read-only-channel",
+        type: 0,
+        permission_overwrites: [{ id: "111111111111111111", type: 0, allow: "0", deny: denyBadChannel }],
+      });
+    }
+    if (urlStr.endsWith("/channels/222222222222222222/messages") && method === "POST") {
+      testPostCalls++;
+      return Response.json({ id: "888888888888888888" });
+    }
+    return Response.json({ error: "unexpected mock fetch" }, { status: 404 });
+  }) as any;
+
+  try {
+    // 1. Attempt to save read-only channel -> HTTP 400 + missingPermissions + remediation, previous valid channel preserved
+    const badSaveReq = new Request("https://portal.example.com/api/dashboard/servers/111111111111111111", {
+      method: "PUT",
+      headers: { Cookie: cookieHeader, "Content-Type": "application/json" },
+      body: JSON.stringify({ channelId: "333333333333333333", roleIds: [] }),
+    });
+    const badSaveRes = await handleApiRequest(badSaveReq, env, new URL(badSaveReq.url));
+    assert.equal(badSaveRes?.status, 400);
+    const badSaveJson: any = await badSaveRes!.json();
+    assert.deepEqual(badSaveJson.missingPermissions, ["Send Messages", "Embed Links"]);
+    assert.match(badSaveJson.remediation, /#read-only-channel/);
+    assert.equal(
+      (await getGuildConfig(env, "111111111111111111"))?.channelId,
+      "222222222222222222",
+      "Invalid save must preserve previously valid channelId"
+    );
+
+    // 2. Permission revocation on configured channel blocks /test BEFORE consuming cooldown, and restoring allows immediate retry
+    denyEmbedsOnChannel2 = true;
+    const blockedTestReq = new Request("https://portal.example.com/api/dashboard/servers/111111111111111111/test", {
+      method: "POST",
+      headers: { Cookie: cookieHeader },
+    });
+    const blockedTestRes = await handleApiRequest(blockedTestReq, env, new URL(blockedTestReq.url));
+    assert.equal(blockedTestRes?.status, 400);
+    const blockedTestJson: any = await blockedTestRes!.json();
+    assert.deepEqual(blockedTestJson.missingPermissions, ["Embed Links"]);
+    assert.equal(testPostCalls, 0);
+
+    denyEmbedsOnChannel2 = false;
+    const okTestReq = new Request("https://portal.example.com/api/dashboard/servers/111111111111111111/test", {
+      method: "POST",
+      headers: { Cookie: cookieHeader },
+    });
+    const okTestRes = await handleApiRequest(okTestReq, env, new URL(okTestReq.url));
+    assert.equal(okTestRes?.status, 200, "Failed permission check must not consume the 15s test cooldown");
+    assert.equal(testPostCalls, 1);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test("normalizeSitePagesConfig preserves HeroConfig when hiding hero, sanitizes icons, and locks required legal sections", () => {
+  const customHero = {
+    ...DEFAULT_HERO_CONFIG,
+    version: 9,
+    animationStyle: "fade_slide" as const,
+    messages: [
+      { id: "h1", text: "Saved HeroHeadline", highlightText: "Saved Accent", enabled: true },
+    ],
+  };
+
+  const normalized = normalizeSitePagesConfig({
+    home: {
+      ...DEFAULT_SITE_PAGES_CONFIG.home,
+      showHero: false,
+      spacingPreset: "compact",
+      featureColumns: 2,
+      featureCards: [
+        {
+          id: "card-1",
+          title: "Tracked Drops",
+          description: "Fast store checks",
+          icon: "<script>bad</script>" as any,
+          enabled: true,
+        },
+        {
+          id: "card-2",
+          title: "Guild Controls",
+          description: "Manage channels",
+          icon: "server",
+          enabled: false,
+        },
+        {
+          id: "card-3",
+          title: "Role Mentions",
+          description: "Notify members",
+          icon: "users",
+          enabled: true,
+        },
+        {
+          id: "card-4",
+          title: "New Custom Card",
+          description: "Extra card beyond default list",
+          icon: "<script>bad</script>" as any,
+          enabled: true,
+        },
+      ],
+    },
+    privacy: {
+      ...DEFAULT_SITE_PAGES_CONFIG.privacy,
+      // Attempt to drop or unlock mandatory privacy clauses (priv-1..priv-3)
+      sections: [
+        {
+          id: "priv-1",
+          heading: "Tampered Title",
+          body: "Tampered body",
+          enabled: false,
+          locked: false,
+        },
+        {
+          id: "priv-custom",
+          heading: "Additional Retention Note",
+          body: "Custom retention note",
+          icon: "shield-check",
+          enabled: true,
+        },
+      ],
+    },
+    terms: {
+      ...DEFAULT_SITE_PAGES_CONFIG.terms,
+      sections: [
+        {
+          id: "terms-1",
+          heading: "Custom Acceptance",
+          body: "Accepted.",
+          icon: "file-text",
+          enabled: true,
+        },
+      ],
+    },
+  });
+
+  assert.equal(normalized.home.showHero, false);
+  assert.equal(customHero.messages[0].text, "Saved HeroHeadline");
+  assert.equal(normalized.home.spacingPreset, "compact");
+  assert.equal(normalized.home.featureColumns, 2);
+  assert.equal(normalized.home.featureCards?.[0].icon, "bell", "Invalid icon key falls back to slot default");
+  assert.equal(normalized.home.featureCards?.[1].icon, "server");
+  assert.equal(normalized.home.featureCards?.[1].enabled, false);
+  assert.equal(normalized.home.featureCards?.[3].icon, "sparkles", "Invalid icon key without default falls back to sparkles");
+
+  const priv1 = normalized.privacy.sections.find((s) => s.id === "priv-1");
+  const priv2 = normalized.privacy.sections.find((s) => s.id === "priv-2");
+  const priv3 = normalized.privacy.sections.find((s) => s.id === "priv-3");
+  assert.equal(priv1?.locked, true);
+  assert.equal(priv1?.enabled, true);
+  assert.equal(priv1?.heading, DEFAULT_SITE_PAGES_CONFIG.privacy.sections[0].heading);
+  assert.equal(priv2?.locked, true);
+  assert.equal(priv3?.locked, true);
+  assert.ok(normalized.privacy.sections.some((s) => s.id === "priv-custom"));
+
+  const terms3 = normalized.terms.sections.find((s) => s.id === "terms-3");
+  assert.equal(terms3?.locked, true);
+  assert.equal(terms3?.enabled, true);
+});
+
+test("Sold-out widget links route to /history/{packageId}, legacy widgets update in place, and /api/public/history/:packageId serves archived listings cleanly", async () => {
+  const db = createLocalD1(":memory:");
+  const kv = createMemoryKv();
+  const env: any = {
+    DB: db,
+    DISCORD_BOT: kv,
+    DISCORD_BOT_TOKEN: "mock_bot_token",
+    PUBLIC_ORIGIN: "https://everfall-limited-watcher.itschase.workers.dev",
+  };
+
+  // Seed one In Stock vehicle (7815819) and one Sold Out archived vehicle (7815813)
+  await ingestVerifiedStoreScan(env, env.PUBLIC_ORIGIN, {
+    source: "scrapling",
+    authoritative: true,
+    listings: [
+      {
+        id: "7815819",
+        name: "Seraph GTS",
+        description: "Quantity-limited coupe with custom sound.",
+        url: "https://store.everfallcommunity.com/package/7815819",
+        images: ["https://cdn.example.com/seraph-0.jpg"],
+      },
+      {
+        id: "7815813",
+        name: "73C",
+        description: "Sold out limited vehicle.",
+        url: "https://store.everfallcommunity.com/package/7815813",
+        images: ["https://cdn.example.com/73c-0.jpg"],
+      },
+    ],
+  });
+  await ingestVerifiedStoreScan(env, env.PUBLIC_ORIGIN, {
+    source: "scrapling",
+    authoritative: true,
+    confirmedSoldOutIds: ["7815813"],
+    listings: [
+      {
+        id: "7815819",
+        name: "Seraph GTS",
+        description: "Quantity-limited coupe with custom sound.",
+        url: "https://store.everfallcommunity.com/package/7815819",
+        images: ["https://cdn.example.com/seraph-0.jpg"],
+      },
+    ],
+  });
+
+  const snapshot = await getCatalogSnapshot(env);
+  const bundle = await getPresentationConfig(env);
+
+  // Seed an existing deployed widget from before WIDGET_RENDER_VERSION=2 (no renderVersion, old hash)
+  await setWidgetDeployment(env, {
+    id: "111111111111111111:222222222222222222",
+    guildId: "111111111111111111",
+    channelId: "222222222222222222",
+    messageId: "333333333333333333",
+    deployedAt: Date.now() - 60_000,
+    lastSyncStatus: "ok",
+    configVersion: bundle.version,
+    lastCatalogVersion: snapshot.version,
+    lastContentHash: "legacy-hash-before-history-links",
+    history: [],
+  });
+
+  const patches: any[] = [];
+  let postCount = 0;
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    const urlStr = String(input);
+    if (method === "POST" && urlStr.endsWith("/messages")) {
+      postCount++;
+      return Response.json({ id: "999999999999999999" });
+    }
+    if (method === "PATCH" && urlStr.includes("/messages/333333333333333333")) {
+      patches.push(JSON.parse(String(init?.body || "{}")));
+      return Response.json({ id: "333333333333333333" });
+    }
+    return Response.json({ error: "unexpected" }, { status: 404 });
+  }) as any;
+
+  try {
+    // 1. Store sync with catalogChanged=false updates existing legacy widget IN PLACE without reposting or mentioning roles
+    const firstRefresh = await refreshAllWidgets(env, env.PUBLIC_ORIGIN, {
+      catalogChanged: false,
+      trigger: "cron-fetch",
+    });
+    assert.equal(firstRefresh.refreshed, 1);
+    assert.equal(postCount, 0, "Existing widget must be edited in place without reposting");
+    assert.equal(patches.length, 1);
+    assert.deepEqual(patches[0].allowed_mentions, { parse: [], roles: [], users: [] });
+
+    const fields: any[] = patches[0].embeds?.[0]?.fields || [];
+    const activeField = fields.find((f) => String(f.name).includes("Seraph GTS"));
+    const soldOutField = fields.find((f) => String(f.name).includes("73C"));
+    assert.ok(
+      activeField?.value.includes("[View](https://store.everfallcommunity.com/package/7815819)"),
+      "In Stock widget link must point directly to the store listing"
+    );
+    assert.ok(
+      soldOutField?.value.includes(
+        "[View](https://everfall-limited-watcher.itschase.workers.dev/history/7815813)"
+      ),
+      "Sold Out widget link must point to portal /history/{packageId}"
+    );
+
+    // 2. Subsequent store check with no changes must skip Discord PATCH cleanly
+    patches.length = 0;
+    const secondRefresh = await refreshAllWidgets(env, env.PUBLIC_ORIGIN, {
+      catalogChanged: false,
+      trigger: "cron-fetch",
+    });
+    assert.equal(secondRefresh.refreshed, 0);
+    assert.equal(secondRefresh.skipped, 1);
+    assert.equal(patches.length, 0);
+
+    // 3. Public history detail endpoint returns Sold Out listing without authentication
+    const soldReq = new Request(
+      "https://everfall-limited-watcher.itschase.workers.dev/api/public/history/7815813"
+    );
+    const soldRes = await handleApiRequest(soldReq, env, new URL(soldReq.url));
+    assert.equal(soldRes?.status, 200);
+    const soldJson: any = await soldRes!.json();
+    assert.equal(soldJson.ok, true);
+    assert.equal(soldJson.listing.id, "7815813");
+    assert.equal(soldJson.listing.isAvailable, false);
+    assert.ok(soldJson.listing.soldOutAt);
+
+    // 4. Missing or invalid package IDs return clear 404 / 400 JSON errors
+    const missingReq = new Request(
+      "https://everfall-limited-watcher.itschase.workers.dev/api/public/history/99999999"
+    );
+    const missingRes = await handleApiRequest(missingReq, env, new URL(missingReq.url));
+    assert.equal(missingRes?.status, 404);
+
+    const invalidReq = new Request(
+      "https://everfall-limited-watcher.itschase.workers.dev/api/public/history/bad!id"
+    );
+    const invalidRes = await handleApiRequest(invalidReq, env, new URL(invalidReq.url));
+    assert.equal(invalidRes?.status, 400);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+
 

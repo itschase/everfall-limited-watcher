@@ -63,7 +63,7 @@ import {
   sendDiscordChannelMessage,
   updateSentListingEmbedForGuild,
 } from "./scraper";
-import { fetchDiscordWithRetry } from "./discord";
+import { fetchDiscordWithRetry, validateBotChannelPermissions } from "./discord";
 import { getD1Database, reserveTestAlertCooldown } from "./d1";
 import {
   buildBotReadinessChecks,
@@ -482,6 +482,49 @@ export async function handleApiRequest(
     return res;
   }
 
+  // 2b. Public Single Historical Listing Detail (supports direct Discord widget /history/{packageId} links)
+  const publicHistoryDetailMatch = url.pathname.match(/^\/api\/public\/history\/([^/]+)$/);
+  if (method === "GET" && publicHistoryDetailMatch) {
+    let packageId = "";
+    try {
+      packageId = decodeURIComponent(publicHistoryDetailMatch[1]).trim();
+    } catch {
+      return json({ ok: false, error: "Invalid vehicle package ID." }, 400);
+    }
+    if (!packageId || packageId.length > 64 || !/^[a-zA-Z0-9_-]+$/.test(packageId)) {
+      return json({ ok: false, error: "Invalid vehicle package ID." }, 400);
+    }
+
+    await ensureHistoricalKnownListingsPreserved(env, origin);
+    const [snapshot, monitorStatus, overridesMap] = await Promise.all([
+      getCatalogSnapshot(env),
+      getMonitorStatus(env),
+      getListingOverridesMap(env),
+    ]);
+
+    const record = snapshot.records.find((r) => r.id === packageId);
+    if (!record) {
+      return json(
+        {
+          ok: false,
+          error: `Historical vehicle listing #${packageId} was not found in the archive.`,
+        },
+        404
+      );
+    }
+
+    return publicCachedJson(
+      {
+        ok: true,
+        listing: serializeListing(record, overridesMap[record.id] || null),
+        monitorStatus,
+        monitorHealth: computeMonitorHealth(monitorStatus),
+        publicOrigin: resolvePublicOrigin(env, origin),
+      },
+      15
+    );
+  }
+
   // Authenticated routes below
   const user = await getCurrentSessionUser(request, env);
 
@@ -588,6 +631,17 @@ export async function handleApiRequest(
           : null;
         const channelMissing =
           Boolean(config?.channelId) && isInstalled && !controls.error && !configuredChannel;
+        const channelPermissionError = Boolean(
+          configuredChannel &&
+            configuredChannel.permissionsChecked &&
+            configuredChannel.writable === false
+        );
+        const channelMissingPermissions = channelPermissionError
+          ? configuredChannel?.missingPermissions || []
+          : [];
+        const channelRemediation = channelPermissionError
+          ? configuredChannel?.remediation || null
+          : null;
 
         let status: "active" | "setup_required" | "not_installed" | "offline" = "not_installed";
         let statusReason = "Bot has not joined this server yet.";
@@ -604,7 +658,12 @@ export async function handleApiRequest(
           } else if (channelMissing) {
             status = "setup_required";
             statusReason =
-              "The previously selected notification channel is missing or the bot lacks permission to post there.";
+              "The previously selected notification channel is missing or the bot lacks View Channel access.";
+          } else if (channelPermissionError) {
+            status = "setup_required";
+            statusReason =
+              channelRemediation ||
+              `Bot lacks ${channelMissingPermissions.join(", ") || "required permissions"} in #${configuredChannel?.name || "channel"}.`;
           } else {
             status = "active";
             statusReason = `Delivering alerts to #${configuredChannel?.name || "channel"}.`;
@@ -627,6 +686,9 @@ export async function handleApiRequest(
             channelId: config?.channelId || "",
             channelName: configuredChannel?.name || null,
             channelMissing,
+            channelPermissionError,
+            channelMissingPermissions,
+            channelRemediation,
             roleIds: Array.isArray(config?.roleIds) ? config.roleIds : [],
             environment: config?.environment === "test" ? "test" : "production",
             widgetTemplateId: config?.widgetTemplateId || "default",
@@ -695,10 +757,32 @@ export async function handleApiRequest(
       return json(
         {
           error:
-            "The bot cannot send messages in this channel or cannot view it. Please update channel permissions or select another channel.",
+            "The selected channel was not found or the bot cannot view it. Verify View Channel, Send Messages, and Embed Links permissions or select another channel.",
+          missingPermissions: ["View Channel"],
+          channelId,
         },
         400
       );
+    }
+
+    if (env.DISCORD_BOT_TOKEN) {
+      const perm = await validateBotChannelPermissions(env.DISCORD_BOT_TOKEN, guildId, channelId, {
+        requireView: true,
+        requireSend: true,
+        requireEmbed: true,
+        botUserId: env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID,
+      });
+      if (!perm.valid) {
+        return json(
+          {
+            error: perm.remediation || perm.error || "Bot lacks required permissions in that channel.",
+            missingPermissions: perm.missingPermissions,
+            remediation: perm.remediation || perm.error,
+            channelId,
+          },
+          perm.httpStatus === 502 || perm.httpStatus === 503 ? 502 : 400
+        );
+      }
     }
 
     const requestedRoles: string[] = Array.isArray(body?.roleIds)
@@ -744,6 +828,23 @@ export async function handleApiRequest(
     const cfg = await getGuildConfig(env, guildId);
     if (!cfg?.channelId) {
       return json({ error: "Save a valid notification channel before sending a test notification." }, 400);
+    }
+
+    const perm = await validateBotChannelPermissions(token, guildId, cfg.channelId, {
+      requireView: true,
+      requireSend: true,
+      requireEmbed: true,
+      botUserId: env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID,
+    });
+    if (!perm.valid) {
+      return json(
+        {
+          error: perm.remediation || perm.error || "Bot lacks required permissions in that channel.",
+          missingPermissions: perm.missingPermissions,
+          remediation: perm.remediation || perm.error,
+        },
+        perm.httpStatus === 502 || perm.httpStatus === 503 ? 502 : 400
+      );
     }
 
     const db = getD1Database(env);
@@ -847,9 +948,27 @@ export async function handleApiRequest(
       return json(
         {
           error:
-            "The bot cannot send embeds in this channel or cannot view it. Verify View Channel, Send Messages, and Embed Links permissions.",
+            "The bot cannot view or access this channel. Verify View Channel, Send Messages, and Embed Links permissions.",
+          missingPermissions: ["View Channel"],
         },
         400
+      );
+    }
+    const perm = await validateBotChannelPermissions(env.DISCORD_BOT_TOKEN, guildId, channelId, {
+      requireView: true,
+      requireSend: true,
+      requireEmbed: true,
+      botUserId: env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID,
+    });
+    if (!perm.valid) {
+      return json(
+        {
+          ok: false,
+          error: perm.remediation || perm.error || "Bot lacks required permissions in that channel.",
+          missingPermissions: perm.missingPermissions,
+          remediation: perm.remediation || perm.error,
+        },
+        perm.httpStatus === 502 || perm.httpStatus === 503 ? 502 : 400
       );
     }
 
@@ -985,10 +1104,30 @@ export async function handleApiRequest(
       return json(
         {
           error:
-            "Bot lacks View Channel / Send Messages / Embed Links permission in the destination channel.",
+            "Destination channel not found or bot lacks View Channel access.",
+          missingPermissions: ["View Channel"],
         },
         400
       );
+    }
+    if (env.DISCORD_BOT_TOKEN) {
+      const perm = await validateBotChannelPermissions(env.DISCORD_BOT_TOKEN, guildId, targetChannelId, {
+        requireView: true,
+        requireSend: true,
+        requireEmbed: true,
+        botUserId: env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID,
+      });
+      if (!perm.valid) {
+        return json(
+          {
+            ok: false,
+            error: perm.remediation || perm.error || "Bot lacks required permissions in destination channel.",
+            missingPermissions: perm.missingPermissions,
+            remediation: perm.remediation || perm.error,
+          },
+          perm.httpStatus === 502 || perm.httpStatus === 503 ? 502 : 400
+        );
+      }
     }
 
     const deployRes = await deployStatusWidgetToChannel(
@@ -1101,11 +1240,18 @@ export async function handleApiRequest(
 
       const connectedGuilds = await Promise.all(
         [...guildIdSet].map(async (guildId) => {
-          const [cfg, sentMessages] = await Promise.all([
+          const botGuild = botGuildMap.get(guildId);
+          const [cfg, sentMessages, controls] = await Promise.all([
             getGuildConfig(env, guildId),
             getGuildSentMessages(env, guildId),
+            botGuild && env.DISCORD_BOT_TOKEN
+              ? getGuildControlOptions(env, guildId, forceRefresh).catch(() => ({
+                  channels: [],
+                  roles: [],
+                  error: undefined,
+                }))
+              : Promise.resolve({ channels: [], roles: [], error: undefined }),
           ]);
-          const botGuild = botGuildMap.get(guildId);
           const sentListingIds: Record<string, boolean> = {};
           for (const listingId of Object.keys(sentMessages)) {
             sentListingIds[listingId] = true;
@@ -1114,6 +1260,29 @@ export async function handleApiRequest(
             ? `https://cdn.discordapp.com/icons/${encodeURIComponent(guildId)}/${encodeURIComponent(botGuild.icon)}.png?size=64`
             : null;
           const guildWidgets = widgetsByGuild.get(guildId) || [];
+          const configuredChannel = cfg?.channelId
+            ? controls.channels.find((c) => c.id === cfg.channelId) || null
+            : null;
+          const channelMissing =
+            Boolean(cfg?.channelId) &&
+            Boolean(botGuild) &&
+            !controls.error &&
+            controls.channels.length > 0 &&
+            !configuredChannel;
+          const channelPermissionError = Boolean(
+            configuredChannel &&
+              configuredChannel.permissionsChecked &&
+              configuredChannel.writable === false
+          );
+          const channelMissingPermissions = channelPermissionError
+            ? configuredChannel?.missingPermissions || []
+            : [];
+          const channelRemediation = channelPermissionError
+            ? configuredChannel?.remediation || null
+            : channelMissing
+              ? "Previously configured channel is missing or inaccessible (View Channel denied)."
+              : null;
+
           return {
             id: guildId,
             name: botGuild?.name || `Server ${guildId}`,
@@ -1121,6 +1290,11 @@ export async function handleApiRequest(
             memberCount: botGuild?.approximate_member_count ?? null,
             inBotGuilds: Boolean(botGuild),
             channelId: cfg?.channelId || "",
+            channelName: configuredChannel?.name || null,
+            channelMissing,
+            channelPermissionError,
+            channelMissingPermissions,
+            channelRemediation,
             roleIds: cfg?.roleIds || [],
             environment: cfg?.environment === "test" ? "test" : "production",
             configured: Boolean(cfg?.channelId),
@@ -2275,6 +2449,26 @@ export async function handleApiRequest(
         return json({ error: "Valid Discord server ID and channel ID are required." }, 400);
       }
 
+      if (env.DISCORD_BOT_TOKEN) {
+        const perm = await validateBotChannelPermissions(env.DISCORD_BOT_TOKEN, guildId, channelId, {
+          requireView: true,
+          requireSend: true,
+          requireEmbed: true,
+          botUserId: env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID,
+        });
+        if (!perm.valid) {
+          return json(
+            {
+              ok: false,
+              error: perm.remediation || perm.error || "Bot lacks required permissions in that channel.",
+              missingPermissions: perm.missingPermissions,
+              remediation: perm.remediation || perm.error,
+            },
+            perm.httpStatus === 502 || perm.httpStatus === 503 ? 502 : 400
+          );
+        }
+      }
+
       const res = await deployStatusWidgetToChannel(env, guildId, channelId, resolvePublicOrigin(env, origin), {
         deployedBy: user.id,
         deployedByUsername: user.username,
@@ -2338,6 +2532,31 @@ export async function handleApiRequest(
       }
       const existing = await getWidgetDeploymentById(env, widgetId);
       if (!existing) return json({ error: "Widget deployment not found." }, 404);
+
+      if (env.DISCORD_BOT_TOKEN) {
+        const perm = await validateBotChannelPermissions(
+          env.DISCORD_BOT_TOKEN,
+          existing.guildId,
+          targetChannelId,
+          {
+            requireView: true,
+            requireSend: true,
+            requireEmbed: true,
+            botUserId: env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID,
+          }
+        );
+        if (!perm.valid) {
+          return json(
+            {
+              ok: false,
+              error: perm.remediation || perm.error || "Bot lacks required permissions in destination channel.",
+              missingPermissions: perm.missingPermissions,
+              remediation: perm.remediation || perm.error,
+            },
+            perm.httpStatus === 502 || perm.httpStatus === 503 ? 502 : 400
+          );
+        }
+      }
 
       const deployRes = await deployStatusWidgetToChannel(
         env,

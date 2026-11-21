@@ -15,13 +15,14 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminWidgetsResponse, apiFetch, WidgetDeployment } from "@/lib/api";
+import { AdminWidgetsResponse, apiFetch, ApiError, WidgetDeployment } from "@/lib/api";
 import { formatLocalDateTime, formatLocalTime } from "@/lib/utils";
 import { ADMIN_OVERVIEW_KEY } from "./useAdminOverview";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -84,6 +85,22 @@ export function AdminWidgetsPage() {
   const selectedDeployGuild = guildMap.get(deployGuildId);
   const selectedMoveGuild = moveTarget ? guildMap.get(moveTarget.guildId) : undefined;
 
+  const selectedDeployChannel = selectedDeployGuild?.channels.find(
+    (c) => c.id === deployChannelId
+  );
+  const deployChannelBlocked = Boolean(
+    selectedDeployChannel?.permissionsChecked && selectedDeployChannel.writable === false
+  );
+  const selectedMoveChannel = selectedMoveGuild?.channels.find((c) => c.id === moveChannelId);
+  const moveChannelBlocked = Boolean(
+    selectedMoveChannel?.permissionsChecked && selectedMoveChannel.writable === false
+  );
+
+  const formatApiErr = (err: Error, fallback: string) => {
+    const apiErr = err as ApiError;
+    return apiErr?.remediation ? `${apiErr.message} ${apiErr.remediation}` : err.message || fallback;
+  };
+
   const invalidateAll = () => {
     void queryClient.invalidateQueries({ queryKey: ADMIN_WIDGETS_KEY });
     void queryClient.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });
@@ -97,11 +114,19 @@ export function AdminWidgetsPage() {
       ),
     onSuccess: (res) => {
       invalidateAll();
-      toast.success(
-        `Refreshed ${res.refreshed} widget(s)${res.failed ? ` (${res.failed} failed)` : ""}.`
-      );
+      if (res.refreshed === 0 && res.failed > 0) {
+        toast.error(`Failed to refresh ${res.failed} widget(s). Inspect widget sync errors below.`);
+      } else if (res.failed > 0) {
+        toast.warning(
+          `Refreshed ${res.refreshed} widget(s), ${res.failed} failed${res.skipped ? `, ${res.skipped} up to date` : ""}.`
+        );
+      } else {
+        toast.success(
+          `Refreshed ${res.refreshed} widget(s)${res.skipped ? ` (${res.skipped} already up to date)` : ""}.`
+        );
+      }
     },
-    onError: (err: Error) => toast.error(err.message || "Failed to refresh widgets."),
+    onError: (err: Error) => toast.error(formatApiErr(err, "Failed to refresh widgets.")),
   });
 
   const refreshSingleMutation = useMutation({
@@ -116,7 +141,8 @@ export function AdminWidgetsPage() {
     },
     onError: (err: Error) => {
       setBusyWidgetId(null);
-      toast.error(err.message || "Failed to update widget.");
+      invalidateAll();
+      toast.error(formatApiErr(err, "Failed to update widget."));
     },
   });
 
@@ -138,7 +164,7 @@ export function AdminWidgetsPage() {
       toast.success("Deployed live status widget to Discord channel.");
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to deploy status widget.");
+      toast.error(formatApiErr(err, "Failed to deploy status widget."));
     },
   });
 
@@ -154,23 +180,30 @@ export function AdminWidgetsPage() {
       invalidateAll();
       toast.success("Moved live status widget to target channel.");
     },
-    onError: (err: Error) => toast.error(err.message || "Failed to move widget."),
+    onError: (err: Error) => toast.error(formatApiErr(err, "Failed to move widget.")),
   });
 
   const assignTemplateMutation = useMutation({
     mutationFn: ({ widgetId, templateId }: { widgetId: string; templateId: string }) =>
-      apiFetch<{ ok: boolean }>(`/api/admin/widgets/${encodeURIComponent(widgetId)}/template`, {
-        method: "PUT",
-        body: JSON.stringify({ templateId }),
-      }),
-    onSuccess: () => {
+      apiFetch<{ ok: boolean; error?: string | null }>(
+        `/api/admin/widgets/${encodeURIComponent(widgetId)}/template`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ templateId }),
+        }
+      ),
+    onSuccess: (res) => {
       setBusyWidgetId(null);
       invalidateAll();
-      toast.success("Updated widget template & synced message.");
+      if (res.ok === false) {
+        toast.error(res.error || "Saved template preset, but Discord sync failed.");
+      } else {
+        toast.success("Updated widget template & synced message.");
+      }
     },
     onError: (err: Error) => {
       setBusyWidgetId(null);
-      toast.error(err.message || "Failed to assign template.");
+      toast.error(formatApiErr(err, "Failed to assign template."));
     },
   });
 
@@ -244,7 +277,7 @@ export function AdminWidgetsPage() {
       ) : (
         <div className="space-y-6">
           {/* Summary */}
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 @xl/main:grid-cols-3">
             <Card className="p-5">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Deployed Widgets</span>
@@ -299,7 +332,7 @@ export function AdminWidgetsPage() {
               ) : (
                 <>
                   {/* Mobile Widget Cards */}
-                  <div className="space-y-3 md:hidden">
+                  <div className="space-y-3 @3xl/main:hidden">
                     {widgets.map((w) => {
                       const guild = guildMap.get(w.guildId);
                       const channelName = guild?.channels.find((c) => c.id === w.channelId)?.name;
@@ -437,7 +470,7 @@ export function AdminWidgetsPage() {
                   </div>
 
                   {/* Desktop Widget Table */}
-                  <div className="hidden md:block">
+                  <div className="hidden @3xl/main:block">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -629,10 +662,20 @@ export function AdminWidgetsPage() {
                   {(selectedDeployGuild?.channels || []).map((ch) => (
                     <SelectItem key={ch.id} value={ch.id}>
                       #{ch.name}
+                      {ch.permissionsChecked && ch.writable === false
+                        ? ` — Missing: ${(ch.missingPermissions || []).join(", ") || "Permissions"}`
+                        : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {deployChannelBlocked && selectedDeployChannel && (
+                <p className="text-[11px] text-red-300">
+                  Bot is missing{" "}
+                  {(selectedDeployChannel.missingPermissions || []).join(", ")} in #
+                  {selectedDeployChannel.name}. Grant these in Discord before deploying.
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -651,12 +694,10 @@ export function AdminWidgetsPage() {
               </Select>
             </div>
 
-            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-zinc-950 p-3 text-xs text-zinc-200">
-              <input
-                type="checkbox"
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-border bg-zinc-950 p-3 text-xs text-zinc-200">
+              <Checkbox
                 checked={deployConfirmed}
-                onChange={(e) => setDeployConfirmed(e.target.checked)}
-                className="h-4 w-4 accent-white"
+                onCheckedChange={(v) => setDeployConfirmed(Boolean(v))}
               />
               <span>Confirm posting public status widget message into selected channel</span>
             </label>
@@ -670,6 +711,7 @@ export function AdminWidgetsPage() {
                 !deployGuildId ||
                 !deployChannelId ||
                 !deployConfirmed ||
+                deployChannelBlocked ||
                 deployMutation.isPending
               }
               onClick={() => deployMutation.mutate()}
@@ -711,10 +753,19 @@ export function AdminWidgetsPage() {
                   {(selectedMoveGuild?.channels || []).map((ch) => (
                     <SelectItem key={ch.id} value={ch.id}>
                       #{ch.name}
+                      {ch.permissionsChecked && ch.writable === false
+                        ? ` — Missing: ${(ch.missingPermissions || []).join(", ") || "Permissions"}`
+                        : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {moveChannelBlocked && selectedMoveChannel && (
+                <p className="text-[11px] text-red-300">
+                  Missing permissions in #{selectedMoveChannel.name}:{" "}
+                  {(selectedMoveChannel.missingPermissions || []).join(", ")}.
+                </p>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setMoveTarget(null)}>
@@ -724,6 +775,7 @@ export function AdminWidgetsPage() {
                 disabled={
                   !moveChannelId ||
                   moveChannelId === moveTarget.channelId ||
+                  moveChannelBlocked ||
                   moveMutation.isPending
                 }
                 onClick={() =>

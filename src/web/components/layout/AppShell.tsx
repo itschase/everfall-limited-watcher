@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
@@ -35,7 +35,7 @@ interface NavItem {
 
 const GENERAL_NAV: NavItem[] = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, exact: true },
-  { label: "Limited Drop History", to: "/history", icon: History, exact: true },
+  { label: "Limited Drop History", to: "/history", icon: History },
 ];
 
 const ADMIN_NAV: NavItem[] = [
@@ -73,8 +73,29 @@ export function AppShell({
     if (dest) void navigate({ to: dest as any });
   });
 
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth >= 768 && window.innerWidth < 1024;
+  });
+  const manualCollapseOverride = useRef<boolean | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => {
+      const compactDesktop = window.innerWidth >= 768 && window.innerWidth < 1024;
+      if (manualCollapseOverride.current === null) {
+        setCollapsed(compactDesktop);
+      }
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const toggleSidebarCollapsed = (next: boolean) => {
+    manualCollapseOverride.current = next;
+    setCollapsed(next);
+  };
 
   const user = session?.user;
 
@@ -252,7 +273,7 @@ export function AppShell({
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onClick={() => setCollapsed(true)}
+                  onClick={() => toggleSidebarCollapsed(true)}
                   aria-label="Collapse sidebar"
                   className="rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-white cursor-pointer"
                 >
@@ -269,7 +290,7 @@ export function AppShell({
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onClick={() => setCollapsed(false)}
+                  onClick={() => toggleSidebarCollapsed(false)}
                   aria-label="Expand sidebar"
                   className="rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-white cursor-pointer"
                 >
@@ -302,28 +323,28 @@ export function AppShell({
 
       {/* Main Content Frame */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-md sm:px-6">
-          <div className="flex items-center gap-3 min-w-0">
+        <header className="sticky top-0 z-30 flex h-14 sm:h-16 items-center justify-between gap-2 sm:gap-4 border-b border-border bg-background/95 px-3 backdrop-blur-md sm:px-5">
+          <div className="flex items-center gap-2.5 min-w-0">
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
               aria-label="Open menu"
-              className="rounded-lg border border-border bg-card p-2 text-muted-foreground hover:text-white md:hidden cursor-pointer"
+              className="shrink-0 rounded-lg border border-border bg-card p-2 text-muted-foreground hover:text-white md:hidden cursor-pointer"
             >
               <Menu className="h-4 w-4" />
             </button>
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Link to="/" className="whitespace-nowrap hover:text-white">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Link to="/" className="hidden whitespace-nowrap hover:text-white sm:inline">
                   Everfall Limited Watcher
                 </Link>
-                <span>/</span>
-                <span className="truncate text-zinc-300">{title}</span>
+                <span className="hidden sm:inline">/</span>
+                <span className="truncate font-medium text-zinc-200">{title}</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <span
               className={cn(
                 "hidden items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold sm:inline-flex",
@@ -332,23 +353,25 @@ export function AppShell({
                   : "border-sky-500/35 bg-sky-500/15 text-sky-300"
               )}
             >
-              <Shield className="h-3.5 w-3.5" />
-              {user.isAdmin ? "Master Administrator" : "Server Manager"}
+              <Shield className="h-3.5 w-3.5 shrink-0" />
+              <span className="whitespace-nowrap">
+                {user.isAdmin ? "Master Administrator" : "Server Manager"}
+              </span>
             </span>
 
             <UserAccountMenu user={user} onLogout={logout} />
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mb-6 flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white">{title}</h1>
+        <main className="@container/main mx-auto w-full max-w-6xl flex-1 px-3 py-4 sm:px-5 sm:py-5 lg:px-6">
+          <div className="mb-5 flex flex-col gap-3 border-b border-border pb-4 @3xl/main:flex-row @3xl/main:items-center @3xl/main:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl">{title}</h1>
               {description && (
-                <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+                <p className="mt-1 text-xs sm:text-sm text-muted-foreground">{description}</p>
               )}
             </div>
-            {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+            {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
           </div>
 
           {children}

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronLeft, ChevronRight, Copy, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, Check, ChevronLeft, ChevronRight, Copy, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { AdminConnectedGuild, AdminOverviewResponse, apiFetch } from "@/lib/api";
 import { formatLocalDateTime } from "@/lib/utils";
@@ -84,8 +84,8 @@ export function AdminServersPage() {
         </Button>
       }
     >
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:w-80">
+      <div className="mb-5 flex flex-col gap-3 @xl/main:flex-row @xl/main:items-center @xl/main:justify-between">
+        <div className="relative w-full @xl/main:w-80">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
@@ -116,7 +116,7 @@ export function AdminServersPage() {
         ) : (
           <>
             {/* Mobile Server Cards */}
-            <div className="divide-y divide-border md:hidden">
+            <div className="divide-y divide-border @3xl/main:hidden">
               {guilds
                 .slice((serverPage - 1) * serverPageSize, serverPage * serverPageSize)
                 .map((guild) => (
@@ -166,7 +166,10 @@ export function AdminServersPage() {
                     <div className="flex flex-wrap items-center gap-2 text-xs" onClick={(e) => e.stopPropagation()}>
                       {guild.configured ? (
                         <div className="inline-flex items-center gap-1">
-                          <Badge variant="success" className="font-mono">
+                          <Badge
+                            variant={guild.channelPermissionError || guild.channelMissing ? "destructive" : "success"}
+                            className="font-mono"
+                          >
                             #<span className="select-text">{guild.channelId}</span>
                           </Badge>
                           <button
@@ -185,6 +188,12 @@ export function AdminServersPage() {
                       ) : (
                         <Badge variant="secondary">Channel Not Set</Badge>
                       )}
+                      {guild.channelPermissionError && (
+                        <Badge variant="destructive">Permissions Missing</Badge>
+                      )}
+                      {guild.channelMissing && (
+                        <Badge variant="destructive">Channel Deleted</Badge>
+                      )}
                       {guild.widget && (
                         <Badge variant={guild.widget.lastSyncStatus === "error" ? "destructive" : "info"}>
                           {guild.widget.lastSyncStatus === "error" ? "Widget Error" : "Live Widget"}
@@ -194,6 +203,18 @@ export function AdminServersPage() {
                         {guild.roleIds.length > 0 ? `${guild.roleIds.length} role(s)` : "No mention roles"}
                       </span>
                     </div>
+
+                    {guild.channelPermissionError && (
+                      <div className="rounded-lg border border-red-500/35 bg-red-950/30 p-2.5 text-[11px] text-red-200">
+                        <p className="font-semibold">
+                          Missing Discord permissions:{" "}
+                          {guild.channelMissingPermissions?.join(", ") || "View Channel / Send Messages / Embed Links"}
+                        </p>
+                        {guild.channelRemediation && (
+                          <p className="mt-1 text-red-200/80">{guild.channelRemediation}</p>
+                        )}
+                      </div>
+                    )}
 
                     <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
                       <Button variant="outline" size="sm" onClick={() => setSelectedGuild(guild)}>
@@ -205,7 +226,7 @@ export function AdminServersPage() {
             </div>
 
             {/* Desktop Server Table */}
-            <div className="hidden md:block">
+            <div className="hidden @3xl/main:block">
               <Table containerClassName="thin-scrollbar max-h-[520px] overflow-y-auto overflow-x-auto">
                 <TableHeader className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
                   <TableRow>
@@ -275,27 +296,54 @@ export function AdminServersPage() {
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           {guild.configured ? (
-                            <div className="inline-flex items-center gap-1.5">
-                              <Badge variant="success" className="font-mono">
-                                #<span className="select-text cursor-text">{guild.channelId}</span>
-                              </Badge>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    type="button"
-                                    onClick={() => void copyId(guild.channelId, "Channel ID")}
-                                    aria-label={`Copy channel ID ${guild.channelId}`}
-                                    className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
-                                  >
-                                    {copiedId === guild.channelId ? (
-                                      <Check className="h-3 w-3 text-emerald-400" />
-                                    ) : (
-                                      <Copy className="h-3 w-3" />
-                                    )}
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent>Copy Channel ID</TooltipContent>
-                              </Tooltip>
+                            <div className="space-y-1">
+                              <div className="inline-flex items-center gap-1.5">
+                                <Badge
+                                  variant={
+                                    guild.channelPermissionError || guild.channelMissing
+                                      ? "destructive"
+                                      : "success"
+                                  }
+                                  className="font-mono"
+                                >
+                                  #<span className="select-text cursor-text">{guild.channelId}</span>
+                                </Badge>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() => void copyId(guild.channelId, "Channel ID")}
+                                      aria-label={`Copy channel ID ${guild.channelId}`}
+                                      className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
+                                    >
+                                      {copiedId === guild.channelId ? (
+                                        <Check className="h-3 w-3 text-emerald-400" />
+                                      ) : (
+                                        <Copy className="h-3 w-3" />
+                                      )}
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Copy Channel ID</TooltipContent>
+                                </Tooltip>
+                              </div>
+                              {guild.channelPermissionError && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <p className="flex items-center gap-1 text-[11px] font-medium text-red-300">
+                                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                                      Missing:{" "}
+                                      {guild.channelMissingPermissions?.join(", ") || "Permissions"}
+                                    </p>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-xs">
+                                    {guild.channelRemediation ||
+                                      "Update Discord channel overrides so the bot has View Channel, Send Messages, and Embed Links."}
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                              {guild.channelMissing && (
+                                <p className="text-[11px] text-red-300">Channel no longer exists</p>
+                              )}
                             </div>
                           ) : (
                             <Badge variant="secondary">Channel Not Set</Badge>
@@ -388,6 +436,31 @@ export function AdminServersPage() {
             </DialogHeader>
 
             <div className="space-y-4">
+              {selectedGuild.channelPermissionError && (
+                <div className="flex items-start gap-2.5 rounded-lg border border-red-500/40 bg-red-950/35 p-3.5 text-xs text-red-200">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-red-100">
+                      Insufficient Bot Permissions in #{selectedGuild.channelName || selectedGuild.channelId}
+                    </p>
+                    {selectedGuild.channelMissingPermissions &&
+                      selectedGuild.channelMissingPermissions.length > 0 && (
+                        <p className="text-[11px]">
+                          Missing permissions:{" "}
+                          <strong className="text-white">
+                            {selectedGuild.channelMissingPermissions.join(", ")}
+                          </strong>
+                        </p>
+                      )}
+                    {selectedGuild.channelRemediation && (
+                      <p className="text-[11px] text-red-200/85">
+                        {selectedGuild.channelRemediation}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="grid gap-3 rounded-lg border border-border bg-zinc-950 p-4 text-xs sm:grid-cols-2">
                 <div>
                   <span className="text-muted-foreground">Alert Channel ID</span>

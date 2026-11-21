@@ -1,5 +1,6 @@
 import {
   CHECK_INTERVAL_LABEL,
+  DEFAULT_PUBLIC_ORIGIN,
   STORE_CATEGORY_URL as SHARED_STORE_CATEGORY_URL,
   STORE_HOME_URL as SHARED_STORE_HOME_URL,
 } from "./appConfig";
@@ -17,6 +18,7 @@ import {
   resolveTemplateVariables,
   TemplateVariableValues,
 } from "./variables";
+import { sanitizeSiteIconKey, SiteIconKey } from "./icons";
 
 export type DiscordEmojiRef = EmojiReference;
 
@@ -198,64 +200,177 @@ export interface EditableFeatureCard {
   id: string;
   title: string;
   description: string;
+  icon?: SiteIconKey;
+  enabled?: boolean;
 }
 
 export interface EditableTextSection {
   id: string;
   heading: string;
   body: string;
+  icon?: SiteIconKey;
+  enabled?: boolean;
+  locked?: boolean;
 }
 
+export type PageLayoutSpacing = "compact" | "standard" | "spacious";
+export type PageSectionAlignment = "left" | "center";
+export type PageSurfaceStyle = "elevated" | "subtle" | "bordered";
+
+export type HomeSectionKey =
+  | "hero"
+  | "telemetry"
+  | "listings"
+  | "features"
+  | "slash_commands";
+
+export const DEFAULT_HOME_SECTION_ORDER: HomeSectionKey[] = [
+  "hero",
+  "telemetry",
+  "listings",
+  "features",
+  "slash_commands",
+];
+
+export type FeaturesSectionKey =
+  | "header"
+  | "previews"
+  | "workflow"
+  | "metadata_demo"
+  | "galleries"
+  | "widget_showcase"
+  | "archive_showcase"
+  | "server_controls"
+  | "capabilities"
+  | "slash_commands"
+  | "cta";
+
+export const DEFAULT_FEATURES_SECTION_ORDER: FeaturesSectionKey[] = [
+  "header",
+  "previews",
+  "workflow",
+  "metadata_demo",
+  "galleries",
+  "widget_showcase",
+  "archive_showcase",
+  "server_controls",
+  "capabilities",
+  "slash_commands",
+  "cta",
+];
+
+export type AboutSectionKey =
+  | "header"
+  | "mission"
+  | "workflow"
+  | "architecture_disclaimer";
+
+export const DEFAULT_ABOUT_SECTION_ORDER: AboutSectionKey[] = [
+  "header",
+  "mission",
+  "workflow",
+  "architecture_disclaimer",
+];
+
 export interface HomePageContentConfig {
+  showHero?: boolean;
+  showTelemetry?: boolean;
+  showListingsSection?: boolean;
+  showFeaturesSection?: boolean;
+  showSlashCommands?: boolean;
   badgeText: string;
+  primaryCtaLabel?: string;
   sectionBadge: string;
   sectionTitle: string;
   sectionSubtitle: string;
   featuresCtaLabel: string;
   archiveEmptyTitle: string;
   archiveEmptyDescription: string;
+  featureColumns?: 2 | 3;
+  spacingPreset?: PageLayoutSpacing;
+  sectionAlignment?: PageSectionAlignment;
+  surfaceStyle?: PageSurfaceStyle;
+  sectionOrder?: HomeSectionKey[];
+  featureCards?: EditableFeatureCard[];
 }
 
 export interface FeaturesPageContentConfig {
+  showHeader?: boolean;
+  showPreviews?: boolean;
+  showWorkflow?: boolean;
+  showMetadataDemo?: boolean;
+  showGalleries?: boolean;
+  showWidgetShowcase?: boolean;
+  showArchiveShowcase?: boolean;
+  showServerControls?: boolean;
+  showCapabilities?: boolean;
+  showSlashCommands?: boolean;
+  showCta?: boolean;
   badgeText: string;
   heading: string;
   subheading: string;
   primaryCtaLabel: string;
   secondaryCtaLabel: string;
+  primaryCtaIcon?: SiteIconKey;
+  secondaryCtaIcon?: SiteIconKey;
   capabilitiesHeading: string;
   capabilitiesSubheading: string;
+  capabilitiesColumns?: 2 | 3;
   capabilities: EditableFeatureCard[];
   previewsHeading: string;
   previewsSubheading: string;
   workflowHeading: string;
   workflowSubheading: string;
+  workflowSteps?: EditableFeatureCard[];
   ctaTitle: string;
   ctaDescription: string;
+  spacingPreset?: PageLayoutSpacing;
+  sectionAlignment?: PageSectionAlignment;
+  surfaceStyle?: PageSurfaceStyle;
+  sectionOrder?: FeaturesSectionKey[];
 }
 
 export interface AboutPageContentConfig {
+  showHeader?: boolean;
+  showMission?: boolean;
+  showWorkflow?: boolean;
+  showArchitecture?: boolean;
+  showDisclaimer?: boolean;
   badgeText: string;
   heading: string;
   subheading: string;
   missionHeading: string;
   missionBody: string;
+  missionIcon?: SiteIconKey;
   workflowHeading: string;
+  workflowColumns?: 2 | 3;
   workflowSteps: EditableFeatureCard[];
   architectureHeading: string;
   architectureBody: string;
+  architectureIcon?: SiteIconKey;
   disclaimerHeading: string;
   disclaimerBody: string;
+  disclaimerIcon?: SiteIconKey;
   primaryCtaLabel: string;
   secondaryCtaLabel: string;
+  spacingPreset?: PageLayoutSpacing;
+  sectionAlignment?: PageSectionAlignment;
+  surfaceStyle?: PageSurfaceStyle;
+  sectionOrder?: AboutSectionKey[];
 }
 
 export interface LegalPageContentConfig {
+  showHeader?: boolean;
+  showSections?: boolean;
+  showContact?: boolean;
   badgeText: string;
   heading: string;
   subheading: string;
   effectiveDate: string;
   operatorName: string;
   contactEmail: string;
+  spacingPreset?: PageLayoutSpacing;
+  sectionAlignment?: PageSectionAlignment;
   sections: EditableTextSection[];
 }
 
@@ -658,7 +773,13 @@ export function normalizeWidgetTemplateConfig(
 
 export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
   home: {
+    showHero: true,
+    showTelemetry: true,
+    showListingsSection: true,
+    showFeaturesSection: true,
+    showSlashCommands: true,
     badgeText: "Independent Everfall Community Monitor",
+    primaryCtaLabel: "Add to Discord",
     sectionBadge: "Limited Vehicles Archive",
     sectionTitle: "Verified Release Archive",
     sectionSubtitle:
@@ -667,53 +788,110 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
     archiveEmptyTitle: "No Limited Releases Recorded Yet",
     archiveEmptyDescription:
       "The monitor is actively checking the Everfall store. New limited vehicles will appear here automatically upon verification.",
+    featureColumns: 3,
+    spacingPreset: "standard",
+    sectionAlignment: "center",
+    surfaceStyle: "elevated",
+    sectionOrder: [...DEFAULT_HOME_SECTION_ORDER],
+    featureCards: [
+      {
+        id: "home-posts",
+        title: "Limited Drop Posts",
+        description:
+          "Get notified when new limited vehicles are discovered. Each drop is posted to your configured Discord channel in a detailed embed with vehicle information and images.",
+        icon: "bell",
+        enabled: true,
+      },
+      {
+        id: "home-previews",
+        title: "Limited Drop Previews",
+        description:
+          "View multiple angles of each vehicle directly in Discord, with images organized into a single, easy-to-browse gallery.",
+        icon: "images",
+        enabled: true,
+      },
+      {
+        id: "home-roles",
+        title: "Mention Roles",
+        description:
+          "Choose which Discord roles to mention when a new limited drop is posted, so the right members receive notifications.",
+        icon: "users",
+        enabled: true,
+      },
+    ],
   },
   features: {
+    showHeader: true,
+    showPreviews: true,
+    showWorkflow: true,
+    showMetadataDemo: true,
+    showGalleries: true,
+    showWidgetShowcase: true,
+    showArchiveShowcase: true,
+    showServerControls: true,
+    showCapabilities: true,
+    showSlashCommands: true,
+    showCta: true,
     badgeText: "Platform Capabilities & Live Previews",
     heading: "Built for Everfall Collectors and Server Owners",
     subheading:
       "Automated limited-vehicle monitoring, permanent multi-angle media archiving, in-place Discord embed synchronization, and live storefront status widgets.",
     primaryCtaLabel: "Add Bot to Discord",
     secondaryCtaLabel: "Browse Drop Archive",
+    primaryCtaIcon: "bot",
+    secondaryCtaIcon: "history",
     capabilitiesHeading: "Core Monitoring Capabilities",
     capabilitiesSubheading:
       "Engineered to preserve verified availability history even when upstream storefront requests hit temporary bot challenges.",
+    capabilitiesColumns: 3,
     capabilities: [
       {
         id: "cap-alerts",
         title: "Automated Drop Alerts",
         description:
           "Detects limited edition releases on the Everfall storefront and dispatches formatted announcement embeds with role mentions to subscribed Discord channels.",
+        icon: "bell",
+        enabled: true,
       },
       {
         id: "cap-soldout",
         title: "In-Place Sold Out Edits",
         description:
           "When a limited vehicle leaves the storefront, existing Discord announcements are edited in place to reflect Sold Out status without reposting or re-pinging roles.",
+        icon: "refresh-cw",
+        enabled: true,
       },
       {
         id: "cap-widget",
         title: "Live Server Status Widget",
         description:
           "Deploy persistent status embeds with /widget or directly from your server settings dashboard. Widgets automatically update whenever meaningful vehicle data changes.",
+        icon: "layout-panel-top",
+        enabled: true,
       },
       {
         id: "cap-media",
         title: "R2 Media Archiving",
         description:
           "Mirrors vehicle gallery screenshots into Cloudflare R2 edge object storage so images stay crisp across embeds and web catalogs even after store packages rotate.",
+        icon: "hard-drive",
+        enabled: true,
       },
       {
         id: "cap-features",
         title: "Normalized Specifications",
         description:
           "Extracts and standardizes quantity-limited status, custom engine sounds, customization option counts, garage delivery notes, and trading rules.",
+        icon: "sliders-horizontal",
+        enabled: true,
       },
       {
         id: "cap-recovery",
         title: "Zero-Downtime Resilience",
         description:
           "Challenge-protected responses never erase verified drop records or trigger false Sold Out updates; full structured state persists safely in Cloudflare D1.",
+        icon: "shield-check",
+        enabled: true,
       },
     ],
     previewsHeading: "Interactive Discord Output Previews",
@@ -722,11 +900,53 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
     workflowHeading: "Four-Step Verification Pipeline",
     workflowSubheading:
       "How Everfall Limited Watcher monitors the storefront, archives assets, and delivers verified notifications.",
+    workflowSteps: [
+      {
+        id: "feat-step-detect",
+        title: "Storefront Detection",
+        description: `Automated runners inspect the Everfall Limited Cars category (${CHECK_INTERVAL_LABEL.toLowerCase()}) and cross-verify package pages before updating state.`,
+        icon: "activity",
+        enabled: true,
+      },
+      {
+        id: "feat-step-archive",
+        title: "Media Archival & Formatting",
+        description:
+          "Vehicle details are normalized, missing metadata is preserved, and screenshots are archived to durable Cloudflare R2 storage.",
+        icon: "hard-drive",
+        enabled: true,
+      },
+      {
+        id: "feat-step-delivery",
+        title: "Discord Notification Delivery",
+        description:
+          "Verified drops are published once per server with multi-image galleries, interactive pagination buttons, and optional role mentions.",
+        icon: "send",
+        enabled: true,
+      },
+      {
+        id: "feat-step-sync",
+        title: "Persistent Stock Synchronization",
+        description:
+          "Sold Out status transitions edit original embeds and /widget boards in place automatically without reposting.",
+        icon: "refresh-cw",
+        enabled: true,
+      },
+    ],
     ctaTitle: "Ready to Track Everfall Drops in Your Server?",
     ctaDescription:
       "Invite Everfall Limited Watcher, pick your alert channel, and deploy a live /widget status board in under two minutes.",
+    spacingPreset: "standard",
+    sectionAlignment: "center",
+    surfaceStyle: "elevated",
+    sectionOrder: [...DEFAULT_FEATURES_SECTION_ORDER],
   },
   about: {
+    showHeader: true,
+    showMission: true,
+    showWorkflow: true,
+    showArchitecture: true,
+    showDisclaimer: true,
     badgeText: "About Everfall Limited Watcher",
     heading: "Reliable Tracking for Everfall Limited Drops",
     subheading:
@@ -734,43 +954,62 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
     missionHeading: "Why We Built Everfall Limited Watcher",
     missionBody:
       "Quantity-limited vehicles on Everfall sell out or rotate off the public storefront without a permanent historical index. Collectors and community server owners needed a single, dependable source of truth that verifies real store availability, archives multi-angle gallery screenshots, and updates existing Discord posts accurately without spamming channels.",
+    missionIcon: "layers",
     workflowHeading: "End-to-End Architecture & Verification",
+    workflowColumns: 2,
     workflowSteps: [
       {
         id: "step-scan",
         title: "1. Verified Storefront Sweeps",
         description:
           "Automated checks run via GitHub Actions and Cloudflare edge workers to inspect the Everfall Limited Cars category while validating genuine storefront markup against challenge pages.",
+        icon: "activity",
+        enabled: true,
       },
       {
         id: "step-store",
         title: "2. Durable D1 & R2 Archiving",
         description:
           "Verified vehicle records, availability timelines, delivery audit logs, and guild settings persist in Cloudflare D1 SQLite storage while high-resolution vehicle imagery is archived in R2 object storage.",
+        icon: "database",
+        enabled: true,
       },
       {
         id: "step-sync",
         title: "3. Smart Discord Synchronization",
         description:
           "New releases trigger configured channel alerts with optional role mentions. Stock transitions edit the original message in place, and server /widget boards refresh only when semantic content hashes change.",
+        icon: "send",
+        enabled: true,
       },
       {
         id: "step-recover",
         title: "4. Continuity & Message Recovery",
         description:
           "Server owners control channels, pings, and status widgets from the web dashboard, while legacy bot messages can be relinked by message ID or URL so automatic updates continue seamlessly.",
+        icon: "wrench",
+        enabled: true,
       },
     ],
     architectureHeading: "Infrastructure & Data Integrity",
     architectureBody:
       "Everfall Limited Watcher runs on Cloudflare Workers for low-latency global routing, backed by Cloudflare D1 for structured and short-lived state and Cloudflare R2 for media assets. Workers KV is retained only for legacy compatibility while existing records and media are imported into D1 and R2.",
+    architectureIcon: "database",
     disclaimerHeading: "Independent Community Project",
     disclaimerBody:
       "Everfall Limited Watcher is an independent utility operated for Everfall players and server communities. It is not affiliated with, endorsed by, or officially connected to Everfall Roleplay, FiveM, Cfx.re, Rockstar Games, Discord Inc., or Tebex.",
+    disclaimerIcon: "shield-check",
     primaryCtaLabel: "Explore Features",
     secondaryCtaLabel: "View Drop Archive",
+    spacingPreset: "standard",
+    sectionAlignment: "center",
+    surfaceStyle: "elevated",
+    sectionOrder: [...DEFAULT_ABOUT_SECTION_ORDER],
   },
   privacy: {
+    showHeader: true,
+    showSections: true,
+    showContact: true,
     badgeText: "Legal & Data Stewardship",
     heading: "Privacy Policy",
     subheading:
@@ -778,35 +1017,53 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
     effectiveDate: "November 2026",
     operatorName: "Everfall Limited Watcher Operations",
     contactEmail: "privacy@everfallwatcher.com",
+    spacingPreset: "standard",
+    sectionAlignment: "left",
     sections: [
       {
         id: "priv-1",
         heading: "1. Information Collected via Discord OAuth2",
         body: "When you sign in to Everfall Limited Watcher using Discord OAuth2 (identify and guilds scopes), we receive your Discord User ID, username, avatar hash, and the list of Discord servers where you hold management permissions. Signed HTTP-only session cookies maintain your authenticated portal session. OAuth state and handoff records, server access lists, widget confirmations, and test-notification cooldowns are held temporarily in Cloudflare D1 with automatic expiration.",
+        icon: "lock",
+        enabled: true,
+        locked: true,
       },
       {
         id: "priv-2",
-        heading: "2. Server Configuration, Tracking & Delivery Storage (Cloudflare D1)",
-        body: "When an administrator configures alert channels, role mention IDs, test/production server modes, widget deployments (/widget), or links an existing Discord announcement via message ID/URL for recovery tracking, those identifiers are stored persistently in Cloudflare D1 relational storage along with delivery status logs and vehicle release history.",
+        heading: "2. Server Configuration, Permissions & Delivery Storage (Cloudflare D1)",
+        body: "When an administrator configures alert channels, role mention IDs, test/production server modes, widget deployments (/widget), or links an existing Discord announcement via message ID/URL for recovery tracking, those identifiers are stored persistently in Cloudflare D1 relational storage along with delivery status logs and vehicle release history. We also inspect channel and role permission overwrites via Discord's Bot API strictly to verify the bot can post embeds before saving server settings or deploying widgets.",
+        icon: "database",
+        enabled: true,
+        locked: true,
       },
       {
         id: "priv-3",
         heading: "3. Media Archiving & Legacy Storage (Cloudflare R2, D1 & Workers KV)",
         body: "Public storefront vehicle images are archived in Cloudflare R2 object storage so release galleries remain available over time. Structured records, temporary access data, and operational caches are stored in Cloudflare D1. Existing image blobs and records in Workers KV may be read during compatibility migrations into R2 or D1; new media uploads require R2.",
+        icon: "hard-drive",
+        enabled: true,
+        locked: true,
       },
       {
         id: "priv-4",
         heading: "4. Discord Bot Message Inspection & In-Place Editing",
         body: "The bot only inspects or edits messages inside configured channels—or specific message IDs submitted during administrator embed recovery—to verify bot authorship and apply updated In Stock or Sold Out templates without reading unrelated community chat history.",
+        icon: "shield-check",
+        enabled: true,
       },
       {
         id: "priv-5",
         heading: "5. Data Retention & Deletion Requests",
         body: "Server configurations remain active while the bot is connected or until removed via the dashboard. Automated store verification logs are retained on a rolling 7-day window. To request removal of server configuration records or OAuth session caches, contact the operator or remove bot access from your Discord server.",
+        icon: "file-text",
+        enabled: true,
       },
     ],
   },
   terms: {
+    showHeader: true,
+    showSections: true,
+    showContact: true,
     badgeText: "Service Agreement & Guidelines",
     heading: "Terms of Service",
     subheading:
@@ -814,31 +1071,44 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
     effectiveDate: "November 2026",
     operatorName: "Everfall Limited Watcher Operations",
     contactEmail: "privacy@everfallwatcher.com",
+    spacingPreset: "standard",
+    sectionAlignment: "left",
     sections: [
       {
         id: "terms-1",
         heading: "1. Independent Community Utility",
         body: "Everfall Limited Watcher is an independent, fan-operated monitoring utility tracking publicly visible Limited Cars packages on the Everfall Tebex storefront. It is not affiliated with or endorsed by Everfall Roleplay, Tebex, Discord Inc., FiveM, or Rockstar Games.",
+        icon: "info",
+        enabled: true,
       },
       {
         id: "terms-2",
         heading: "2. Best-Effort Storefront Availability Data",
         body: "Availability status, vehicle specifications, timestamps, and images are collected on a best-effort automated schedule. Third-party storefront downtime or challenge protections may delay updates, and we do not guarantee purchase availability or pricing accuracy at checkout.",
+        icon: "activity",
+        enabled: true,
       },
       {
         id: "terms-3",
         heading: "3. Authorized Server Administration",
-        body: "You may only configure Discord alert channels, role mentions, embed recovery actions, and /widget deployments for servers where you hold valid administrative or Manage Server permissions. Server access data, temporary authorization state, and storage are handled as described in the Privacy Policy. Structured data is stored in Cloudflare D1 and media in Cloudflare R2; legacy Workers KV may be read during compatibility migrations. Abuse, automated scraping of private admin routes, or unauthorized probing is prohibited.",
+        body: "You may only configure Discord alert channels, role mentions, embed recovery actions, and /widget deployments for servers where you hold valid administrative or Manage Server permissions. Channel and permission metadata are checked against Discord prior to persisting configuration or posting embeds. Server access data, temporary authorization state, and storage are handled as described in the Privacy Policy. Structured data is stored in Cloudflare D1 and media in Cloudflare R2; legacy Workers KV may be read during compatibility migrations. Abuse, automated scraping of private admin routes, or unauthorized probing is prohibited.",
+        icon: "shield-check",
+        enabled: true,
+        locked: true,
       },
       {
         id: "terms-4",
         heading: "4. Intellectual Property & Vehicle Media",
         body: "All trademarks, vehicle screenshots, and game assets referenced in drop listings belong to their respective owners and are displayed strictly for informational community tracking.",
+        icon: "images",
+        enabled: true,
       },
       {
         id: "terms-5",
         heading: "5. Service Modifications & Limitation of Liability",
         body: "The service is provided \"as is\" without warranties of uninterrupted uptime. Features, check intervals, or Discord integrations may change or be discontinued at any time without liability.",
+        icon: "scale",
+        enabled: true,
       },
     ],
   },
@@ -1449,6 +1719,23 @@ function selectOrderedWidgetRecords(
   return { sortedByRecent, selectedRecords, activeRecords };
 }
 
+export const WIDGET_RENDER_VERSION = 2;
+
+export function resolveWidgetListingViewUrl(
+  rec: { id: string; isAvailable: boolean; url?: string },
+  portalOrigin?: string
+): string {
+  if (rec.isAvailable) {
+    return sanitizeHttpUrl(rec.url, `${STORE_HOME_URL}package/${encodeURIComponent(rec.id)}`);
+  }
+  const baseOrigin = (
+    portalOrigin && /^https?:\/\//i.test(portalOrigin)
+      ? sanitizeHttpUrl(portalOrigin, DEFAULT_PUBLIC_ORIGIN)
+      : DEFAULT_PUBLIC_ORIGIN
+  ).replace(/\/+$/, "");
+  return `${baseOrigin}/history/${encodeURIComponent(rec.id)}`;
+}
+
 export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
   const tpl = normalizeWidgetTemplateConfig(params.template, DEFAULT_WIDGET_TEMPLATE);
   const now = params.nowMs || Date.now();
@@ -1705,11 +1992,12 @@ export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
   } else {
     for (const { rec, pres } of resolvedPresentations) {
       const statusTag = rec.isAvailable ? inStockTag : soldOutTag;
-      const storeUrl = rec.isAvailable
-        ? sanitizeHttpUrl(pres.source.url, `${STORE_HOME_URL}package/${rec.id}`)
-        : `${STORE_HOME_URL}package/${rec.id}`;
+      const viewUrl = resolveWidgetListingViewUrl(
+        { id: rec.id, isAvailable: rec.isAvailable, url: pres.source.url },
+        params.portalOrigin
+      );
 
-      const valueLines: string[] = [`${statusTag} • [${viewLabel}](${storeUrl})`];
+      const valueLines: string[] = [`${statusTag} • [${viewLabel}](${viewUrl})`];
 
       if (tpl.showFeatures) {
         const feats = sortAndFilterFeatures(pres.effective.features, "widget", {
@@ -1859,6 +2147,10 @@ export function computeWidgetContentHash(params: {
           emoji: f.emoji ? `${f.emoji.kind}:${f.emoji.id || f.emoji.name}` : "",
         }))
       : [];
+    const viewUrl = resolveWidgetListingViewUrl(
+      { id: rec.id, isAvailable: rec.isAvailable, url: pres.source.url },
+      params.portalOrigin
+    );
     return {
       id: rec.id,
       isAvailable: rec.isAvailable,
@@ -1870,6 +2162,7 @@ export function computeWidgetContentHash(params: {
       trading: pres.effective.tradingRestriction || "",
       delivery: pres.effective.deliveryInfo || "",
       url: pres.source.url,
+      viewUrl,
       images: Array.isArray(rec.payload?.images) ? rec.payload.images : [],
       features: feats,
     };
@@ -1900,6 +2193,7 @@ export function computeWidgetContentHash(params: {
       : "";
 
   return computeStableHash({
+    renderVersion: WIDGET_RENDER_VERSION,
     template: tpl,
     portalOrigin: params.portalOrigin || "",
     safeOrigin: params.safeOrigin || "",
@@ -2000,6 +2294,81 @@ export function getHeroActiveMessages(hero: HeroConfig): HeroMessageItem[] {
   return DEFAULT_HERO_CONFIG.messages;
 }
 
+const VALID_HERO_ANIMATION_STYLES = new Set<HeroAnimationStyle>([
+  "soft_reveal",
+  "float_down",
+  "fade_slide",
+  "character_reveal",
+  "word_stagger",
+  "decrypting_text",
+]);
+
+export function normalizeHeroConfig(
+  incoming?: Partial<HeroConfig> | null,
+  fallback: HeroConfig = DEFAULT_HERO_CONFIG
+): HeroConfig {
+  const base: HeroConfig = {
+    ...DEFAULT_HERO_CONFIG,
+    ...fallback,
+    messages:
+      Array.isArray(fallback.messages) && fallback.messages.length > 0
+        ? fallback.messages.map((m) => ({ ...m }))
+        : DEFAULT_HERO_CONFIG.messages.map((m) => ({ ...m })),
+  };
+  if (!incoming || typeof incoming !== "object") return base;
+
+  const rawMessages = Array.isArray(incoming.messages)
+    ? incoming.messages
+        .filter((m): m is HeroMessageItem => Boolean(m && typeof m.text === "string" && m.text.trim()))
+        .slice(0, 12)
+        .map((m, idx) => ({
+          id: String(m.id || `hero-${idx + 1}`).slice(0, 64),
+          text: String(m.text).trim().slice(0, 140),
+          highlightText: typeof m.highlightText === "string" ? m.highlightText.trim().slice(0, 80) : "",
+          subtext: typeof m.subtext === "string" ? m.subtext.trim().slice(0, 320) : "",
+          enabled: m.enabled !== false,
+          isDefault: Boolean(m.isDefault),
+        }))
+    : base.messages;
+
+  if (rawMessages.length > 0 && !rawMessages.some((m) => m.isDefault)) {
+    rawMessages[0].isDefault = true;
+  }
+
+  return {
+    version:
+      typeof incoming.version === "number" && Number.isFinite(incoming.version) && incoming.version >= 1
+        ? Math.floor(incoming.version)
+        : base.version,
+    autoRotate: incoming.autoRotate !== undefined ? Boolean(incoming.autoRotate) : base.autoRotate,
+    intervalMs: Math.max(
+      2500,
+      Math.min(20000, Math.round(Number(incoming.intervalMs ?? base.intervalMs) || 5500))
+    ),
+    animationStyle: VALID_HERO_ANIMATION_STYLES.has(incoming.animationStyle as HeroAnimationStyle)
+      ? (incoming.animationStyle as HeroAnimationStyle)
+      : base.animationStyle,
+    durationMs: Math.max(
+      200,
+      Math.min(2500, Math.round(Number(incoming.durationMs ?? base.durationMs) || 650))
+    ),
+    delayMs: Math.max(0, Math.min(600, Math.round(Number(incoming.delayMs ?? base.delayMs) || 60))),
+    fontSizePreset:
+      incoming.fontSizePreset === "compact" ||
+      incoming.fontSizePreset === "display" ||
+      incoming.fontSizePreset === "standard"
+        ? incoming.fontSizePreset
+        : base.fontSizePreset,
+    secondaryDescription:
+      String(incoming.secondaryDescription ?? base.secondaryDescription).trim().slice(0, 340) ||
+      DEFAULT_HERO_CONFIG.secondaryDescription,
+    messages:
+      rawMessages.length > 0
+        ? rawMessages
+        : DEFAULT_HERO_CONFIG.messages.map((m) => ({ ...m })),
+  };
+}
+
 export function sanitizePlainPageText(input: unknown, fallback: string, maxLen = 1200): string {
   if (typeof input !== "string") return fallback;
   const stripped = input
@@ -2009,54 +2378,149 @@ export function sanitizePlainPageText(input: unknown, fallback: string, maxLen =
   return stripped ? stripped.slice(0, maxLen) : fallback;
 }
 
+function sanitizeSpacingPreset(
+  val: unknown,
+  fallback: PageLayoutSpacing = "standard"
+): PageLayoutSpacing {
+  return val === "compact" || val === "standard" || val === "spacious" ? val : fallback;
+}
+
+function sanitizeSectionAlignment(
+  val: unknown,
+  fallback: PageSectionAlignment = "center"
+): PageSectionAlignment {
+  return val === "left" || val === "center" ? val : fallback;
+}
+
+function sanitizeSurfaceStyle(
+  val: unknown,
+  fallback: PageSurfaceStyle = "elevated"
+): PageSurfaceStyle {
+  return val === "elevated" || val === "subtle" || val === "bordered" ? val : fallback;
+}
+
+function sanitizeColumns(val: unknown, fallback: 2 | 3 = 3): 2 | 3 {
+  return val === 2 || val === 3 ? val : fallback;
+}
+
 function normalizeFeatureCardsList(
   incoming: unknown,
   fallback: EditableFeatureCard[],
-  maxItems = 8
+  maxItems = 12
 ): EditableFeatureCard[] {
   if (!Array.isArray(incoming) || incoming.length === 0) {
-    return fallback.map((item) => ({ ...item }));
+    return fallback.map((item) => ({
+      ...item,
+      icon: sanitizeSiteIconKey(item.icon, "sparkles"),
+      enabled: item.enabled !== false,
+    }));
   }
+  const byId = new Map(fallback.map((item) => [item.id, item]));
   const normalized: EditableFeatureCard[] = [];
   for (let i = 0; i < Math.min(incoming.length, maxItems); i++) {
     const raw = incoming[i] as Record<string, unknown> | null;
     if (!raw || typeof raw !== "object") continue;
-    const defItem = fallback[i];
+    const rawId = sanitizePlainPageText(raw.id, "", 48);
+    const defItem = (rawId && byId.get(rawId)) || fallback[i];
     const title = sanitizePlainPageText(raw.title, defItem?.title || "", 120);
     const description = sanitizePlainPageText(raw.description, defItem?.description || "", 500);
     if (!title && !description) continue;
     normalized.push({
-      id: sanitizePlainPageText(raw.id, defItem?.id || `item-${i + 1}`, 48),
+      id: rawId || defItem?.id || `item-${i + 1}`,
       title: title || defItem?.title || `Item ${i + 1}`,
       description: description || defItem?.description || "",
+      icon: sanitizeSiteIconKey(raw.icon, defItem?.icon || "sparkles"),
+      enabled: raw.enabled !== false,
     });
   }
-  return normalized.length > 0 ? normalized : fallback.map((item) => ({ ...item }));
+  return normalized.length > 0
+    ? normalized
+    : fallback.map((item) => ({
+        ...item,
+        icon: sanitizeSiteIconKey(item.icon, "sparkles"),
+        enabled: item.enabled !== false,
+      }));
 }
 
 function normalizeTextSectionsList(
   incoming: unknown,
   fallback: EditableTextSection[],
-  maxItems = 12
+  options: { maxItems?: number; requiredIds?: readonly string[]; defaultRequiredSource?: EditableTextSection[] } = {}
 ): EditableTextSection[] {
-  if (!Array.isArray(incoming) || incoming.length === 0) {
-    return fallback.map((item) => ({ ...item }));
-  }
+  const maxItems = options.maxItems ?? 12;
+  const requiredSet = new Set(options.requiredIds || []);
+  const requiredSource = options.defaultRequiredSource || fallback;
+  const requiredById = new Map(
+    requiredSource.filter((s) => requiredSet.has(s.id)).map((s) => [s.id, s])
+  );
+  const byId = new Map(fallback.map((s) => [s.id, s]));
+
   const normalized: EditableTextSection[] = [];
-  for (let i = 0; i < Math.min(incoming.length, maxItems); i++) {
-    const raw = incoming[i] as Record<string, unknown> | null;
-    if (!raw || typeof raw !== "object") continue;
-    const defItem = fallback[i];
-    const heading = sanitizePlainPageText(raw.heading, defItem?.heading || "", 160);
-    const body = sanitizePlainPageText(raw.body, defItem?.body || "", 2400);
-    if (!heading && !body) continue;
-    normalized.push({
-      id: sanitizePlainPageText(raw.id, defItem?.id || `sec-${i + 1}`, 48),
-      heading: heading || defItem?.heading || `Section ${i + 1}`,
-      body: body || defItem?.body || "",
-    });
+  const seenIds = new Set<string>();
+
+  if (Array.isArray(incoming) && incoming.length > 0) {
+    for (let i = 0; i < Math.min(incoming.length, maxItems); i++) {
+      const raw = incoming[i] as Record<string, unknown> | null;
+      if (!raw || typeof raw !== "object") continue;
+      const rawId = sanitizePlainPageText(raw.id, "", 48);
+      if (rawId && seenIds.has(rawId)) continue;
+
+      if (rawId && requiredById.has(rawId)) {
+        const reqDef = requiredById.get(rawId)!;
+        seenIds.add(reqDef.id);
+        normalized.push({
+          ...reqDef,
+          icon: sanitizeSiteIconKey(reqDef.icon, "shield-check"),
+          enabled: true,
+          locked: true,
+        });
+        continue;
+      }
+
+      const defItem = (rawId && byId.get(rawId)) || fallback[i];
+      const heading = sanitizePlainPageText(raw.heading, defItem?.heading || "", 160);
+      const body = sanitizePlainPageText(raw.body, defItem?.body || "", 2400);
+      if (!heading && !body) continue;
+      const finalId = rawId || defItem?.id || `sec-${i + 1}`;
+      seenIds.add(finalId);
+      normalized.push({
+        id: finalId,
+        heading: heading || defItem?.heading || `Section ${i + 1}`,
+        body: body || defItem?.body || "",
+        icon: sanitizeSiteIconKey(raw.icon, defItem?.icon || "file-text"),
+        enabled: raw.enabled !== false,
+        locked: false,
+      });
+    }
+  } else {
+    for (const item of fallback) {
+      seenIds.add(item.id);
+      const req = requiredById.get(item.id);
+      const src = req || item;
+      normalized.push({
+        ...src,
+        icon: sanitizeSiteIconKey(src.icon, "file-text"),
+        enabled: req ? true : src.enabled !== false,
+        locked: Boolean(req),
+      });
+    }
   }
-  return normalized.length > 0 ? normalized : fallback.map((item) => ({ ...item }));
+
+  for (const reqId of requiredSet) {
+    if (!seenIds.has(reqId)) {
+      const reqDef = requiredById.get(reqId);
+      if (reqDef) {
+        normalized.push({
+          ...reqDef,
+          icon: sanitizeSiteIconKey(reqDef.icon, "shield-check"),
+          enabled: true,
+          locked: true,
+        });
+      }
+    }
+  }
+
+  return normalized;
 }
 
 export function normalizeSitePagesConfig(
@@ -2064,6 +2528,12 @@ export function normalizeSitePagesConfig(
   fallback: SitePagesConfig = DEFAULT_SITE_PAGES_CONFIG
 ): SitePagesConfig {
   const src = incoming && typeof incoming === "object" ? incoming : {};
+  const defHome = DEFAULT_SITE_PAGES_CONFIG.home;
+  const defFeat = DEFAULT_SITE_PAGES_CONFIG.features;
+  const defAbout = DEFAULT_SITE_PAGES_CONFIG.about;
+  const defPriv = DEFAULT_SITE_PAGES_CONFIG.privacy;
+  const defTerms = DEFAULT_SITE_PAGES_CONFIG.terms;
+
   const homeSrc = (src.home || {}) as Partial<HomePageContentConfig>;
   const featSrc = (src.features || {}) as Partial<FeaturesPageContentConfig>;
   const aboutSrc = (src.about || {}) as Partial<AboutPageContentConfig>;
@@ -2072,7 +2542,29 @@ export function normalizeSitePagesConfig(
 
   return {
     home: {
+      showHero: homeSrc.showHero !== undefined ? Boolean(homeSrc.showHero) : fallback.home.showHero !== false,
+      showTelemetry:
+        homeSrc.showTelemetry !== undefined
+          ? Boolean(homeSrc.showTelemetry)
+          : fallback.home.showTelemetry !== false,
+      showListingsSection:
+        homeSrc.showListingsSection !== undefined
+          ? Boolean(homeSrc.showListingsSection)
+          : fallback.home.showListingsSection !== false,
+      showFeaturesSection:
+        homeSrc.showFeaturesSection !== undefined
+          ? Boolean(homeSrc.showFeaturesSection)
+          : fallback.home.showFeaturesSection !== false,
+      showSlashCommands:
+        homeSrc.showSlashCommands !== undefined
+          ? Boolean(homeSrc.showSlashCommands)
+          : fallback.home.showSlashCommands !== false,
       badgeText: sanitizePlainPageText(homeSrc.badgeText, fallback.home.badgeText, 80),
+      primaryCtaLabel: sanitizePlainPageText(
+        homeSrc.primaryCtaLabel,
+        fallback.home.primaryCtaLabel || defHome.primaryCtaLabel || "Add to Discord",
+        50
+      ),
       sectionBadge: sanitizePlainPageText(homeSrc.sectionBadge, fallback.home.sectionBadge, 80),
       sectionTitle: sanitizePlainPageText(homeSrc.sectionTitle, fallback.home.sectionTitle, 120),
       sectionSubtitle: sanitizePlainPageText(homeSrc.sectionSubtitle, fallback.home.sectionSubtitle, 340),
@@ -2083,13 +2575,79 @@ export function normalizeSitePagesConfig(
         fallback.home.archiveEmptyDescription,
         340
       ),
+      featureColumns: sanitizeColumns(homeSrc.featureColumns, fallback.home.featureColumns || 3),
+      spacingPreset: sanitizeSpacingPreset(homeSrc.spacingPreset, fallback.home.spacingPreset || "standard"),
+      sectionAlignment: sanitizeSectionAlignment(
+        homeSrc.sectionAlignment,
+        fallback.home.sectionAlignment || "center"
+      ),
+      surfaceStyle: sanitizeSurfaceStyle(homeSrc.surfaceStyle, fallback.home.surfaceStyle || "elevated"),
+      sectionOrder: normalizeSectionOrder(
+        homeSrc.sectionOrder ?? fallback.home.sectionOrder,
+        DEFAULT_HOME_SECTION_ORDER
+      ),
+      featureCards: normalizeFeatureCardsList(
+        homeSrc.featureCards ?? fallback.home.featureCards ?? defHome.featureCards,
+        fallback.home.featureCards || defHome.featureCards || [],
+        9
+      ),
     },
     features: {
+      showHeader:
+        featSrc.showHeader !== undefined
+          ? Boolean(featSrc.showHeader)
+          : fallback.features.showHeader !== false,
+      showPreviews:
+        featSrc.showPreviews !== undefined
+          ? Boolean(featSrc.showPreviews)
+          : fallback.features.showPreviews !== false,
+      showWorkflow:
+        featSrc.showWorkflow !== undefined
+          ? Boolean(featSrc.showWorkflow)
+          : fallback.features.showWorkflow !== false,
+      showMetadataDemo:
+        featSrc.showMetadataDemo !== undefined
+          ? Boolean(featSrc.showMetadataDemo)
+          : fallback.features.showMetadataDemo !== false,
+      showGalleries:
+        featSrc.showGalleries !== undefined
+          ? Boolean(featSrc.showGalleries)
+          : fallback.features.showGalleries !== false,
+      showWidgetShowcase:
+        featSrc.showWidgetShowcase !== undefined
+          ? Boolean(featSrc.showWidgetShowcase)
+          : fallback.features.showWidgetShowcase !== false,
+      showArchiveShowcase:
+        featSrc.showArchiveShowcase !== undefined
+          ? Boolean(featSrc.showArchiveShowcase)
+          : fallback.features.showArchiveShowcase !== false,
+      showServerControls:
+        featSrc.showServerControls !== undefined
+          ? Boolean(featSrc.showServerControls)
+          : fallback.features.showServerControls !== false,
+      showCapabilities:
+        featSrc.showCapabilities !== undefined
+          ? Boolean(featSrc.showCapabilities)
+          : fallback.features.showCapabilities !== false,
+      showSlashCommands:
+        featSrc.showSlashCommands !== undefined
+          ? Boolean(featSrc.showSlashCommands)
+          : fallback.features.showSlashCommands !== false,
+      showCta:
+        featSrc.showCta !== undefined ? Boolean(featSrc.showCta) : fallback.features.showCta !== false,
       badgeText: sanitizePlainPageText(featSrc.badgeText, fallback.features.badgeText, 80),
       heading: sanitizePlainPageText(featSrc.heading, fallback.features.heading, 160),
       subheading: sanitizePlainPageText(featSrc.subheading, fallback.features.subheading, 400),
       primaryCtaLabel: sanitizePlainPageText(featSrc.primaryCtaLabel, fallback.features.primaryCtaLabel, 50),
       secondaryCtaLabel: sanitizePlainPageText(featSrc.secondaryCtaLabel, fallback.features.secondaryCtaLabel, 50),
+      primaryCtaIcon: sanitizeSiteIconKey(
+        featSrc.primaryCtaIcon,
+        fallback.features.primaryCtaIcon || defFeat.primaryCtaIcon || "bot"
+      ),
+      secondaryCtaIcon: sanitizeSiteIconKey(
+        featSrc.secondaryCtaIcon,
+        fallback.features.secondaryCtaIcon || defFeat.secondaryCtaIcon || "history"
+      ),
       capabilitiesHeading: sanitizePlainPageText(
         featSrc.capabilitiesHeading,
         fallback.features.capabilitiesHeading,
@@ -2100,7 +2658,15 @@ export function normalizeSitePagesConfig(
         fallback.features.capabilitiesSubheading,
         340
       ),
-      capabilities: normalizeFeatureCardsList(featSrc.capabilities, fallback.features.capabilities, 8),
+      capabilitiesColumns: sanitizeColumns(
+        featSrc.capabilitiesColumns,
+        fallback.features.capabilitiesColumns || 3
+      ),
+      capabilities: normalizeFeatureCardsList(
+        featSrc.capabilities ?? fallback.features.capabilities,
+        fallback.features.capabilities.length > 0 ? fallback.features.capabilities : defFeat.capabilities,
+        12
+      ),
       previewsHeading: sanitizePlainPageText(featSrc.previewsHeading, fallback.features.previewsHeading, 120),
       previewsSubheading: sanitizePlainPageText(
         featSrc.previewsSubheading,
@@ -2113,46 +2679,162 @@ export function normalizeSitePagesConfig(
         fallback.features.workflowSubheading,
         340
       ),
+      workflowSteps: normalizeFeatureCardsList(
+        featSrc.workflowSteps ?? fallback.features.workflowSteps ?? defFeat.workflowSteps,
+        fallback.features.workflowSteps || defFeat.workflowSteps || [],
+        8
+      ),
       ctaTitle: sanitizePlainPageText(featSrc.ctaTitle, fallback.features.ctaTitle, 140),
       ctaDescription: sanitizePlainPageText(featSrc.ctaDescription, fallback.features.ctaDescription, 340),
+      spacingPreset: sanitizeSpacingPreset(featSrc.spacingPreset, fallback.features.spacingPreset || "standard"),
+      sectionAlignment: sanitizeSectionAlignment(
+        featSrc.sectionAlignment,
+        fallback.features.sectionAlignment || "center"
+      ),
+      surfaceStyle: sanitizeSurfaceStyle(featSrc.surfaceStyle, fallback.features.surfaceStyle || "elevated"),
+      sectionOrder: normalizeSectionOrder(
+        featSrc.sectionOrder ?? fallback.features.sectionOrder,
+        DEFAULT_FEATURES_SECTION_ORDER
+      ),
     },
     about: {
+      showHeader:
+        aboutSrc.showHeader !== undefined
+          ? Boolean(aboutSrc.showHeader)
+          : fallback.about.showHeader !== false,
+      showMission:
+        aboutSrc.showMission !== undefined
+          ? Boolean(aboutSrc.showMission)
+          : fallback.about.showMission !== false,
+      showWorkflow:
+        aboutSrc.showWorkflow !== undefined
+          ? Boolean(aboutSrc.showWorkflow)
+          : fallback.about.showWorkflow !== false,
+      showArchitecture:
+        aboutSrc.showArchitecture !== undefined
+          ? Boolean(aboutSrc.showArchitecture)
+          : fallback.about.showArchitecture !== false,
+      showDisclaimer:
+        aboutSrc.showDisclaimer !== undefined
+          ? Boolean(aboutSrc.showDisclaimer)
+          : fallback.about.showDisclaimer !== false,
       badgeText: sanitizePlainPageText(aboutSrc.badgeText, fallback.about.badgeText, 80),
       heading: sanitizePlainPageText(aboutSrc.heading, fallback.about.heading, 160),
       subheading: sanitizePlainPageText(aboutSrc.subheading, fallback.about.subheading, 400),
       missionHeading: sanitizePlainPageText(aboutSrc.missionHeading, fallback.about.missionHeading, 120),
       missionBody: sanitizePlainPageText(aboutSrc.missionBody, fallback.about.missionBody, 1200),
+      missionIcon: sanitizeSiteIconKey(
+        aboutSrc.missionIcon,
+        fallback.about.missionIcon || defAbout.missionIcon || "layers"
+      ),
       workflowHeading: sanitizePlainPageText(aboutSrc.workflowHeading, fallback.about.workflowHeading, 120),
-      workflowSteps: normalizeFeatureCardsList(aboutSrc.workflowSteps, fallback.about.workflowSteps, 6),
+      workflowColumns: sanitizeColumns(
+        aboutSrc.workflowColumns,
+        fallback.about.workflowColumns || 2
+      ),
+      workflowSteps: normalizeFeatureCardsList(
+        aboutSrc.workflowSteps ?? fallback.about.workflowSteps,
+        fallback.about.workflowSteps.length > 0 ? fallback.about.workflowSteps : defAbout.workflowSteps,
+        8
+      ),
       architectureHeading: sanitizePlainPageText(
         aboutSrc.architectureHeading,
         fallback.about.architectureHeading,
         120
       ),
       architectureBody: sanitizePlainPageText(aboutSrc.architectureBody, fallback.about.architectureBody, 1200),
+      architectureIcon: sanitizeSiteIconKey(
+        aboutSrc.architectureIcon,
+        fallback.about.architectureIcon || defAbout.architectureIcon || "database"
+      ),
       disclaimerHeading: sanitizePlainPageText(aboutSrc.disclaimerHeading, fallback.about.disclaimerHeading, 120),
       disclaimerBody: sanitizePlainPageText(aboutSrc.disclaimerBody, fallback.about.disclaimerBody, 1000),
+      disclaimerIcon: sanitizeSiteIconKey(
+        aboutSrc.disclaimerIcon,
+        fallback.about.disclaimerIcon || defAbout.disclaimerIcon || "shield-check"
+      ),
       primaryCtaLabel: sanitizePlainPageText(aboutSrc.primaryCtaLabel, fallback.about.primaryCtaLabel, 50),
       secondaryCtaLabel: sanitizePlainPageText(aboutSrc.secondaryCtaLabel, fallback.about.secondaryCtaLabel, 50),
+      spacingPreset: sanitizeSpacingPreset(aboutSrc.spacingPreset, fallback.about.spacingPreset || "standard"),
+      sectionAlignment: sanitizeSectionAlignment(
+        aboutSrc.sectionAlignment,
+        fallback.about.sectionAlignment || "center"
+      ),
+      surfaceStyle: sanitizeSurfaceStyle(aboutSrc.surfaceStyle, fallback.about.surfaceStyle || "elevated"),
+      sectionOrder: normalizeSectionOrder(
+        aboutSrc.sectionOrder ?? fallback.about.sectionOrder,
+        DEFAULT_ABOUT_SECTION_ORDER
+      ),
     },
     privacy: {
+      showHeader:
+        privSrc.showHeader !== undefined
+          ? Boolean(privSrc.showHeader)
+          : fallback.privacy.showHeader !== false,
+      showSections:
+        privSrc.showSections !== undefined
+          ? Boolean(privSrc.showSections)
+          : fallback.privacy.showSections !== false,
+      showContact:
+        privSrc.showContact !== undefined
+          ? Boolean(privSrc.showContact)
+          : fallback.privacy.showContact !== false,
       badgeText: sanitizePlainPageText(privSrc.badgeText, fallback.privacy.badgeText, 80),
       heading: sanitizePlainPageText(privSrc.heading, fallback.privacy.heading, 120),
       subheading: sanitizePlainPageText(privSrc.subheading, fallback.privacy.subheading, 400),
       effectiveDate: sanitizePlainPageText(privSrc.effectiveDate, fallback.privacy.effectiveDate, 60),
       operatorName: sanitizePlainPageText(privSrc.operatorName, fallback.privacy.operatorName, 120),
       contactEmail: sanitizePlainPageText(privSrc.contactEmail, fallback.privacy.contactEmail, 120),
-      sections: normalizeTextSectionsList(privSrc.sections, fallback.privacy.sections, 12),
+      spacingPreset: sanitizeSpacingPreset(privSrc.spacingPreset, fallback.privacy.spacingPreset || "standard"),
+      sectionAlignment: sanitizeSectionAlignment(
+        privSrc.sectionAlignment,
+        fallback.privacy.sectionAlignment || "left"
+      ),
+      sections: normalizeTextSectionsList(
+        privSrc.sections ?? fallback.privacy.sections,
+        fallback.privacy.sections,
+        {
+          maxItems: 14,
+          requiredIds: ["priv-1", "priv-2", "priv-3"],
+          defaultRequiredSource: defPriv.sections,
+        }
+      ),
     },
     terms: {
+      showHeader:
+        termsSrc.showHeader !== undefined
+          ? Boolean(termsSrc.showHeader)
+          : fallback.terms.showHeader !== false,
+      showSections:
+        termsSrc.showSections !== undefined
+          ? Boolean(termsSrc.showSections)
+          : fallback.terms.showSections !== false,
+      showContact:
+        termsSrc.showContact !== undefined
+          ? Boolean(termsSrc.showContact)
+          : fallback.terms.showContact !== false,
       badgeText: sanitizePlainPageText(termsSrc.badgeText, fallback.terms.badgeText, 80),
       heading: sanitizePlainPageText(termsSrc.heading, fallback.terms.heading, 120),
       subheading: sanitizePlainPageText(termsSrc.subheading, fallback.terms.subheading, 400),
       effectiveDate: sanitizePlainPageText(termsSrc.effectiveDate, fallback.terms.effectiveDate, 60),
       operatorName: sanitizePlainPageText(termsSrc.operatorName, fallback.terms.operatorName, 120),
       contactEmail: sanitizePlainPageText(termsSrc.contactEmail, fallback.terms.contactEmail, 120),
-      sections: normalizeTextSectionsList(termsSrc.sections, fallback.terms.sections, 12),
+      spacingPreset: sanitizeSpacingPreset(termsSrc.spacingPreset, fallback.terms.spacingPreset || "standard"),
+      sectionAlignment: sanitizeSectionAlignment(
+        termsSrc.sectionAlignment,
+        fallback.terms.sectionAlignment || "left"
+      ),
+      sections: normalizeTextSectionsList(
+        termsSrc.sections ?? fallback.terms.sections,
+        fallback.terms.sections,
+        {
+          maxItems: 14,
+          requiredIds: ["terms-3"],
+          defaultRequiredSource: defTerms.sections,
+        }
+      ),
     },
   };
 }
+
 

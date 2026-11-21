@@ -30,7 +30,11 @@ import {
   WidgetDeployment,
   WidgetSyncHistoryEntry,
 } from "./kv";
-import { fetchDiscordChannelMessage, fetchDiscordWithRetry } from "./discord";
+import {
+  fetchDiscordChannelMessage,
+  fetchDiscordWithRetry,
+  validateBotChannelPermissions,
+} from "./discord";
 import { MIN_STORE_CHECK_INTERVAL_MS } from "./shared/appConfig";
 import { getD1Database } from "./d1";
 import {
@@ -40,6 +44,7 @@ import {
   computeWidgetContentHash,
   PresentationConfigBundle,
   resolveEffectiveWidgetTemplate,
+  WIDGET_RENDER_VERSION,
   WidgetTemplateConfig,
 } from "./shared/presentation";
 import { VehicleMetadataOverride } from "./shared/features";
@@ -1514,13 +1519,26 @@ export async function inspectRecoverableDiscordEmbed(
         };
       }
     } else if (chRes.status === 404 || chRes.status === 403) {
+      if (chRes.status === 403) {
+        const perm = await validateBotChannelPermissions(token, params.guildId, effectiveChannelId, {
+          requireView: true,
+          requireHistory: true,
+          requireSend: true,
+          requireEmbed: true,
+          botUserId: env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID,
+        });
+        return {
+          ok: false,
+          httpStatus: 403,
+          error:
+            perm.remediation ||
+            "Bot cannot access that Discord channel (HTTP 403). Check View Channel & Read Message History permissions.",
+        };
+      }
       return {
         ok: false,
-        httpStatus: chRes.status,
-        error:
-          chRes.status === 403
-            ? "Bot cannot access that Discord channel (HTTP 403). Check View Channel & Read Message History permissions."
-            : "Target Discord channel not found (HTTP 404).",
+        httpStatus: 404,
+        error: "Target Discord channel not found (HTTP 404).",
       };
     }
   } catch {
@@ -1529,6 +1547,22 @@ export async function inspectRecoverableDiscordEmbed(
 
   const msgRes = await fetchDiscordChannelMessage(token, effectiveChannelId, parsedRef.messageId);
   if (!msgRes.ok || !msgRes.message) {
+    if (msgRes.httpStatus === 403) {
+      const perm = await validateBotChannelPermissions(token, params.guildId, effectiveChannelId, {
+        requireView: true,
+        requireHistory: true,
+        requireSend: true,
+        requireEmbed: true,
+        botUserId: env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID,
+      });
+      if (perm.checked && !perm.valid && perm.remediation) {
+        return {
+          ok: false,
+          httpStatus: 403,
+          error: perm.remediation,
+        };
+      }
+    }
     return {
       ok: false,
       httpStatus: msgRes.httpStatus || 502,
@@ -1874,6 +1908,7 @@ export async function deployStatusWidgetToChannel(
     configVersion: bundle.version,
     lastCatalogVersion: snapshot.version,
     lastContentHash: contentHash,
+    renderVersion: WIDGET_RENDER_VERSION,
     history: [entry],
   });
 
@@ -1953,13 +1988,25 @@ export async function refreshWidgetById(
   };
 
   const res = await editDiscordChannelMessage(token, widget.channelId, widget.messageId, payload);
-  const errorDetail = res.ok
+  let errorDetail = res.ok
     ? undefined
     : res.httpStatus === 404
       ? "Discord message not found (404 — message may have been deleted). Remove or redeploy this widget."
       : res.httpStatus === 403
         ? "Missing Discord permissions (403) in target channel."
         : res.error;
+  if (!res.ok && res.httpStatus === 403) {
+    const perm = await validateBotChannelPermissions(token, widget.guildId, widget.channelId, {
+      requireView: true,
+      requireSend: true,
+      requireEmbed: true,
+    }).catch(() => null);
+    if (perm && !perm.valid && (perm.remediation || perm.missingPermissions.length > 0)) {
+      errorDetail =
+        perm.remediation ||
+        `Missing Discord permissions in target channel: ${perm.missingPermissions.join(", ")}.`;
+    }
+  }
 
   const entry: WidgetSyncHistoryEntry = {
     timestamp: now,
@@ -1979,6 +2026,7 @@ export async function refreshWidgetById(
     configVersion: bundle.version,
     lastCatalogVersion: snapshot.version,
     lastContentHash: res.ok ? contentHash : widget.lastContentHash,
+    renderVersion: res.ok ? WIDGET_RENDER_VERSION : widget.renderVersion,
     history: [entry, ...(widget.history || [])].slice(0, 15),
   });
 
@@ -2021,7 +2069,6 @@ export async function refreshAllWidgets(
     options?.preloadedBundle ? Promise.resolve(options.preloadedBundle) : getPresentationConfig(env),
   ]);
 
-  // Fast-skip when catalog didn't change, config didn't change, and all widgets are already synced cleanly
   if (
     !options?.force &&
     options?.catalogChanged === false &&
@@ -2030,7 +2077,8 @@ export async function refreshAllWidgets(
         w.lastSyncStatus === "ok" &&
         Boolean(w.lastContentHash) &&
         w.lastCatalogVersion === snapshot.version &&
-        w.configVersion === bundle.version
+        w.configVersion === bundle.version &&
+        w.renderVersion === WIDGET_RENDER_VERSION
     )
   ) {
     return { refreshed: 0, skipped: targetWidgets.length, failed: 0 };
@@ -2125,6 +2173,7 @@ export async function refreshAllWidgets(
       configVersion: bundle.version,
       lastCatalogVersion: snapshot.version,
       lastContentHash: res.ok ? contentHash : widget.lastContentHash,
+      renderVersion: res.ok ? WIDGET_RENDER_VERSION : widget.renderVersion,
       history: [entry, ...(widget.history || [])].slice(0, 15),
     });
 

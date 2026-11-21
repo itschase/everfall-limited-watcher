@@ -9,17 +9,23 @@ import type {
 } from "../../shared/features";
 import type {
   AboutPageContentConfig,
+  AboutSectionKey,
   AnnouncementSectionKey,
   AnnouncementTemplate,
   DiscordEmojiRef,
   EditableFeatureCard,
   EditableTextSection,
   FeaturesPageContentConfig,
+  FeaturesSectionKey,
   HeroAnimationStyle,
   HeroConfig,
   HeroMessageItem,
   HomePageContentConfig,
+  HomeSectionKey,
   LegalPageContentConfig,
+  PageLayoutSpacing,
+  PageSectionAlignment,
+  PageSurfaceStyle,
   PresentationConfigBundle,
   SitePagesConfig,
   TemplateCustomSection,
@@ -27,6 +33,7 @@ import type {
   WidgetSectionKey,
   WidgetTemplateConfig,
 } from "../../shared/presentation";
+import type { SiteIconDefinition, SiteIconKey } from "../../shared/icons";
 import type {
   TemplateVariableCategory,
   TemplateVariableDef,
@@ -36,6 +43,7 @@ import type {
 
 export type {
   AboutPageContentConfig,
+  AboutSectionKey,
   EditableFeatureCard,
   EditableTextSection,
   EmojiReference,
@@ -43,9 +51,16 @@ export type {
   FeatureIconName,
   FeatureSurface,
   FeaturesPageContentConfig,
+  FeaturesSectionKey,
   HomePageContentConfig,
+  HomeSectionKey,
   LegalPageContentConfig,
   NormalizedListingPresentation,
+  PageLayoutSpacing,
+  PageSectionAlignment,
+  PageSurfaceStyle,
+  SiteIconDefinition,
+  SiteIconKey,
   SitePagesConfig,
   VehicleFeature,
   VehicleMetadataOverride,
@@ -246,10 +261,27 @@ export interface HistoryResponse {
   monitorHealth?: MonitorHealth;
 }
 
+export interface PublicHistoryDetailResponse {
+  ok: boolean;
+  listing: ListingItem;
+  monitorStatus: MonitorStatus | null;
+  monitorHealth?: MonitorHealth;
+  publicOrigin?: string;
+}
+
 export interface GuildChannelOption {
   id: string;
   name: string;
   type: number;
+  parent_id?: string | null;
+  canView?: boolean;
+  canSend?: boolean;
+  canEmbed?: boolean;
+  canReadHistory?: boolean;
+  writable?: boolean;
+  permissionsChecked?: boolean;
+  missingPermissions?: string[];
+  remediation?: string;
 }
 
 export interface GuildRoleOption {
@@ -272,6 +304,9 @@ export interface ManagedServer {
     channelId: string;
     channelName: string | null;
     channelMissing: boolean;
+    channelPermissionError?: boolean;
+    channelMissingPermissions?: string[];
+    channelRemediation?: string | null;
     roleIds: string[];
     environment: "production" | "test";
     widgetTemplateId?: string;
@@ -356,6 +391,7 @@ export interface WidgetDeployment {
   configVersion?: number;
   lastCatalogVersion?: number;
   lastContentHash?: string;
+  renderVersion?: number;
   history?: WidgetSyncHistoryEntry[];
 }
 
@@ -366,6 +402,11 @@ export interface AdminConnectedGuild {
   memberCount: number | null;
   inBotGuilds: boolean;
   channelId: string;
+  channelName?: string | null;
+  channelMissing?: boolean;
+  channelPermissionError?: boolean;
+  channelMissingPermissions?: string[];
+  channelRemediation?: string | null;
   roleIds: string[];
   environment: "production" | "test";
   configured: boolean;
@@ -685,9 +726,17 @@ export interface RecoverExecuteResponse {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  missingPermissions?: string[];
+  remediation?: string;
+  constructor(
+    message: string,
+    status: number,
+    details?: { missingPermissions?: string[]; remediation?: string }
+  ) {
     super(message);
     this.status = status;
+    this.missingPermissions = details?.missingPermissions;
+    this.remediation = details?.remediation;
   }
 }
 
@@ -712,7 +761,12 @@ export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const message = parsed?.error || parsed?.message || `Request failed (${res.status})`;
-    throw new ApiError(message, res.status);
+    throw new ApiError(message, res.status, {
+      missingPermissions: Array.isArray(parsed?.missingPermissions)
+        ? parsed.missingPermissions
+        : undefined,
+      remediation: typeof parsed?.remediation === "string" ? parsed.remediation : undefined,
+    });
   }
 
   return parsed as T;

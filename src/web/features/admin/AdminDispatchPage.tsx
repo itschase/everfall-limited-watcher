@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner";
 import {
   apiFetch,
+  ApiError,
   DeliveryLogEntry,
   RecoverExecuteResponse,
   RecoverPreviewResponse,
@@ -74,7 +75,7 @@ export function AdminDispatchPage() {
   const [confirmMode, setConfirmMode] = useState<"publish" | "edit" | null>(null);
   const [inspectDelivery, setInspectDelivery] = useState<DeliveryLogEntry | null>(null);
   const [editingGuildId, setEditingGuildId] = useState<string | null>(null);
-  const [removingWidgetGuildId, setRemovingWidgetGuildId] = useState<string | null>(null);
+  const [removingWidgetId, setRemovingWidgetId] = useState<string | null>(null);
 
   // Recover Existing Embed dialog state
   const [recoverOpen, setRecoverOpen] = useState(false);
@@ -111,6 +112,11 @@ export function AdminDispatchPage() {
     return Boolean(selectedListing && guild?.sentMessages?.[selectedListing.id]?.messageId);
   }).length;
 
+  const formatApiErr = (err: Error, fallback: string) => {
+    const apiErr = err as ApiError;
+    return apiErr?.remediation ? `${apiErr.message} ${apiErr.remediation}` : err.message || fallback;
+  };
+
   const dispatchMutation = useMutation({
     mutationFn: () =>
       apiFetch<{
@@ -132,13 +138,20 @@ export function AdminDispatchPage() {
       setConfirmMode(null);
       setSelectedGuildIds([]);
       void queryClient.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });
-      toast.success(
-        `Dispatch finished: ${res.deliveredCount} delivered, ${res.skippedCount} skipped (already sent), ${res.failedCount} failed.`
-      );
+      const summary = `Dispatch finished: ${res.deliveredCount} delivered, ${res.skippedCount} skipped (already sent), ${res.failedCount} failed.`;
+      if (res.deliveredCount === 0 && res.failedCount > 0) {
+        toast.error(summary);
+      } else if (res.failedCount > 0) {
+        toast.warning(summary);
+      } else if (res.deliveredCount === 0 && res.skippedCount > 0) {
+        toast.info(summary);
+      } else {
+        toast.success(summary);
+      }
     },
     onError: (err: Error) => {
       setConfirmMode(null);
-      toast.error(err.message || "Dispatch failed.");
+      toast.error(formatApiErr(err, "Dispatch failed."));
     },
   });
 
@@ -163,46 +176,66 @@ export function AdminDispatchPage() {
       setConfirmMode(null);
       setEditingGuildId(null);
       void queryClient.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });
-      toast.success(
-        `Embed update complete: ${res.updatedCount} updated in-place, ${res.skippedCount} skipped (no tracked message), ${res.failedCount} failed.`
-      );
+      const summary = `Embed update complete: ${res.updatedCount} updated in-place, ${res.skippedCount} skipped (no tracked message), ${res.failedCount} failed.`;
+      if (res.updatedCount === 0 && res.failedCount > 0) {
+        toast.error(summary);
+      } else if (res.failedCount > 0) {
+        toast.warning(summary);
+      } else if (res.updatedCount === 0 && res.skippedCount > 0) {
+        toast.info(summary);
+      } else {
+        toast.success(summary);
+      }
     },
     onError: (err: Error) => {
       setConfirmMode(null);
       setEditingGuildId(null);
-      toast.error(err.message || "Failed to update deployed Discord embed.");
+      toast.error(formatApiErr(err, "Failed to update deployed Discord embed."));
     },
   });
 
   const refreshWidgetsMutation = useMutation({
     mutationFn: () =>
-      apiFetch<{ ok: boolean; refreshed: number; failed: number }>("/api/admin/widgets/refresh", {
-        method: "POST",
-      }),
+      apiFetch<{ ok: boolean; refreshed: number; skipped?: number; failed: number }>(
+        "/api/admin/widgets/refresh",
+        {
+          method: "POST",
+          body: JSON.stringify({ force: true }),
+        }
+      ),
     onSuccess: (res) => {
       void queryClient.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });
-      toast.success(
-        `Refreshed ${res.refreshed} deployed status widget(s)${res.failed ? ` (${res.failed} failed)` : ""}.`
-      );
+      const skippedText = res.skipped ? `, ${res.skipped} unchanged` : "";
+      if (res.refreshed === 0 && res.failed > 0) {
+        toast.error(`Failed to refresh ${res.failed} deployed status widget(s).`);
+      } else if (res.failed > 0) {
+        toast.warning(
+          `Refreshed ${res.refreshed} deployed widget(s)${skippedText}, ${res.failed} failed.`
+        );
+      } else {
+        toast.success(
+          `Refreshed ${res.refreshed} deployed status widget(s)${res.skipped ? ` (${res.skipped} already up to date)` : ""}.`
+        );
+      }
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to refresh live status widgets.");
+      toast.error(formatApiErr(err, "Failed to refresh live status widgets."));
     },
   });
 
   const removeWidgetMutation = useMutation({
-    mutationFn: (guildId: string) =>
-      apiFetch<{ ok: boolean }>(`/api/admin/widgets/${guildId}`, {
+    mutationFn: (widgetId: string) =>
+      apiFetch<{ ok: boolean }>(`/api/admin/widgets/${encodeURIComponent(widgetId)}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
-      setRemovingWidgetGuildId(null);
+      setRemovingWidgetId(null);
       void queryClient.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });
       toast.success("Removed status widget deployment from server registry.");
     },
     onError: (err: Error) => {
-      setRemovingWidgetGuildId(null);
-      toast.error(err.message || "Failed to remove widget.");
+      setRemovingWidgetId(null);
+      toast.error(formatApiErr(err, "Failed to remove widget."));
     },
   });
 
@@ -230,7 +263,7 @@ export function AdminDispatchPage() {
     },
     onError: (err: Error) => {
       setRecoverPreview(null);
-      setRecoverError(err.message || "Failed to inspect Discord message.");
+      setRecoverError(formatApiErr(err, "Failed to inspect Discord message."));
     },
   });
 
@@ -260,7 +293,7 @@ export function AdminDispatchPage() {
       );
     },
     onError: (err: Error) => {
-      setRecoverError(err.message || "Failed to recover Discord embed.");
+      setRecoverError(formatApiErr(err, "Failed to recover Discord embed."));
     },
   });
 
@@ -349,7 +382,7 @@ export function AdminDispatchPage() {
     >
       {isLoading ? (
         <div className="space-y-6">
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-6 @3xl/main:grid-cols-2">
             <Skeleton className="h-96 w-full rounded-xl" />
             <Skeleton className="h-96 w-full rounded-xl" />
           </div>
@@ -357,7 +390,7 @@ export function AdminDispatchPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-6 @3xl/main:grid-cols-2">
             {/* Step 1: Select Listing */}
             <Card>
               <CardHeader>
@@ -489,7 +522,7 @@ export function AdminDispatchPage() {
                         <div
                           key={guild.id}
                           onClick={() => toggleGuild(guild.id)}
-                          className="flex cursor-pointer flex-col gap-2 rounded-lg border border-border bg-zinc-950 px-3.5 py-2.5 text-xs transition hover:bg-secondary/40 sm:flex-row sm:items-center sm:justify-between"
+                          className="flex cursor-pointer flex-col gap-2 rounded-lg border border-border bg-zinc-950 px-3.5 py-2.5 text-xs transition hover:bg-secondary/40 @xl/main:flex-row @xl/main:items-center @xl/main:justify-between"
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <div onClick={(e) => e.stopPropagation()}>
@@ -508,6 +541,12 @@ export function AdminDispatchPage() {
                                 Ch #{sentMeta?.channelId || guild.channelId}
                                 {sentMeta?.messageId ? ` • Msg ${sentMeta.messageId.slice(-6)}` : ""}
                               </p>
+                              {guild.channelPermissionError && (
+                                <p className="mt-0.5 text-[11px] text-red-300">
+                                  Missing permissions:{" "}
+                                  {guild.channelMissingPermissions?.join(", ") || "Verify Discord channel access"}
+                                </p>
+                              )}
                             </div>
                           </div>
                           <div
@@ -517,6 +556,17 @@ export function AdminDispatchPage() {
                             <Badge variant={guild.environment === "test" ? "warning" : "secondary"}>
                               {guild.environment}
                             </Badge>
+                            {guild.channelPermissionError && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant="destructive">Missing Permissions</Badge>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  {guild.channelRemediation ||
+                                    `Grant bot access in #${guild.channelId}: ${guild.channelMissingPermissions?.join(", ") || "View Channel, Send Messages, Embed Links"}.`}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
                             {alreadySent && (
                               <Badge variant={sentMeta?.isSoldOutRendered ? "outline" : "info"}>
                                 {sentMeta?.isSoldOutRendered ? "Rendered: Sold Out" : "Deployed"}
@@ -589,7 +639,7 @@ export function AdminDispatchPage() {
                   </div>
                 )}
 
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 @xl/main:grid-cols-2">
                   <Button
                     disabled={
                       !selectedListing ||
@@ -622,19 +672,20 @@ export function AdminDispatchPage() {
 
           {/* Deployed Server Status Widgets (/widget) */}
           <Card>
-            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardHeader className="flex flex-col gap-3 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <LayoutPanelTop className="h-4 w-4 text-zinc-300" />
                   Deployed Server Status Widgets ({deployedWidgets.length})
                 </CardTitle>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Deployed strictly by server administrators running <code className="text-zinc-200">/widget</code> in Discord. Automatically synced after every store check.
+                  Deployed via Discord <code className="text-zinc-200">/widget</code> or Web Dashboard. Automatically synced whenever limited stock, metadata, or template configuration changes.
                 </p>
               </div>
               <Button
                 variant="outline"
                 size="sm"
+                className="self-start @2xl/main:self-auto shrink-0"
                 disabled={deployedWidgets.length === 0 || refreshWidgetsMutation.isPending}
                 onClick={() => refreshWidgetsMutation.mutate()}
               >
@@ -649,19 +700,19 @@ export function AdminDispatchPage() {
             <CardContent>
               {deployedWidgets.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  No server administrators have deployed a <code className="text-zinc-200">/widget</code> embed yet.
+                  No Discord status widgets are deployed yet.
                 </p>
               ) : (
                 <>
                   {/* Mobile Cards */}
-                  <div className="space-y-3 md:hidden">
+                  <div className="space-y-3 @3xl/main:hidden">
                     {deployedWidgets.map((guild) => {
                       const w = guild.widget!;
                       const isRemoving =
-                        removingWidgetGuildId === guild.id && removeWidgetMutation.isPending;
+                        removingWidgetId === w.id && removeWidgetMutation.isPending;
                       return (
                         <div
-                          key={`m-widget-${guild.id}`}
+                          key={`m-widget-${w.id}`}
                           className="space-y-2 rounded-lg border border-border bg-zinc-950 p-3.5 text-xs"
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -684,8 +735,8 @@ export function AdminDispatchPage() {
                               size="sm"
                               disabled={isRemoving}
                               onClick={() => {
-                                setRemovingWidgetGuildId(guild.id);
-                                removeWidgetMutation.mutate(guild.id);
+                                setRemovingWidgetId(w.id);
+                                removeWidgetMutation.mutate(w.id);
                               }}
                               className="h-7 px-2 text-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
                             >
@@ -703,7 +754,7 @@ export function AdminDispatchPage() {
                   </div>
 
                   {/* Desktop Table */}
-                  <div className="hidden md:block">
+                  <div className="hidden @3xl/main:block">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -718,9 +769,9 @@ export function AdminDispatchPage() {
                         {deployedWidgets.map((guild) => {
                           const w = guild.widget!;
                           const isRemoving =
-                            removingWidgetGuildId === guild.id && removeWidgetMutation.isPending;
+                            removingWidgetId === w.id && removeWidgetMutation.isPending;
                           return (
-                            <TableRow key={`widget-${guild.id}`}>
+                            <TableRow key={`widget-${w.id}`}>
                               <TableCell className="font-medium text-white">{guild.name}</TableCell>
                               <TableCell className="select-text font-mono text-xs text-muted-foreground">
                                 #{w.channelId} &bull; Msg {w.messageId}
@@ -741,8 +792,8 @@ export function AdminDispatchPage() {
                                   size="sm"
                                   disabled={isRemoving}
                                   onClick={() => {
-                                    setRemovingWidgetGuildId(guild.id);
-                                    removeWidgetMutation.mutate(guild.id);
+                                    setRemovingWidgetId(w.id);
+                                    removeWidgetMutation.mutate(w.id);
                                   }}
                                   className="h-7 px-2 text-xs text-red-400 hover:bg-red-950/40 hover:text-red-300"
                                 >
@@ -779,7 +830,7 @@ export function AdminDispatchPage() {
               ) : (
                 <>
                   {/* Mobile Card List */}
-                  <div className="space-y-2.5 md:hidden">
+                  <div className="space-y-2.5 @3xl/main:hidden">
                     {pagedDeliveryLogs.map((log) => (
                       <button
                         key={`m-log-${log.id}`}
@@ -817,7 +868,7 @@ export function AdminDispatchPage() {
                   </div>
 
                   {/* Desktop Table */}
-                  <div className="hidden rounded-lg border border-border bg-zinc-950/40 md:block">
+                  <div className="hidden rounded-lg border border-border bg-zinc-950/40 @3xl/main:block">
                     <Table containerClassName="thin-scrollbar max-h-[470px] overflow-y-auto overflow-x-auto">
                       <TableHeader className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
                         <TableRow>
@@ -1318,24 +1369,20 @@ export function AdminDispatchPage() {
                         )}
                       </div>
                     </div>
-                    <label className="flex cursor-pointer items-center gap-2 rounded border border-amber-500/30 bg-zinc-950/70 px-2.5 py-2 text-[11px] text-amber-100">
-                      <input
-                        type="checkbox"
+                    <label className="flex cursor-pointer items-center gap-2.5 rounded border border-amber-500/30 bg-zinc-950/70 px-2.5 py-2 text-[11px] text-amber-100">
+                      <Checkbox
                         checked={recoverAllowOverwrite}
-                        onChange={(e) => setRecoverAllowOverwrite(e.target.checked)}
-                        className="h-3.5 w-3.5 accent-white"
+                        onCheckedChange={(v) => setRecoverAllowOverwrite(Boolean(v))}
                       />
                       <span>Overwrite existing message tracking record for this pairing</span>
                     </label>
                   </div>
                 )}
 
-                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-zinc-900/50 px-3 py-2.5 text-zinc-200">
-                  <input
-                    type="checkbox"
+                <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-border bg-zinc-900/50 px-3 py-2.5 text-zinc-200">
+                  <Checkbox
                     checked={recoverApplyTemplate}
-                    onChange={(e) => setRecoverApplyTemplate(e.target.checked)}
-                    className="h-4 w-4 accent-white"
+                    onCheckedChange={(v) => setRecoverApplyTemplate(Boolean(v))}
                   />
                   <span>
                     Apply current{" "}

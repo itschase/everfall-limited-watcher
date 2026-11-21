@@ -26,6 +26,11 @@ import {
   MonitorLogEntry,
   MonitorLogSource,
 } from "@/lib/api";
+import {
+  CHECK_INTERVAL_LABEL,
+  CHECK_INTERVAL_SHORT,
+  STORE_MONITOR_INTERVAL_MINUTES,
+} from "../../../shared/appConfig";
 import { formatLocalDateTime, formatLocalTime, safeExternalUrl } from "@/lib/utils";
 import { ADMIN_OVERVIEW_KEY, useAdminOverview } from "./useAdminOverview";
 import { AppShell } from "@/components/layout/AppShell";
@@ -290,7 +295,7 @@ export function AdminMonitorPage() {
       title="Store Monitoring"
       description="Inspect 7-day storefront verification telemetry, live auto-sync logs, and run read-only scans without triggering new drop alerts."
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary" className="gap-1.5 font-mono text-[11px] tabular-nums">
             <Radio className={`h-3 w-3 ${isDeltaFetching ? "animate-pulse text-emerald-400" : "text-emerald-400"}`} />
             Auto-Sync 30s
@@ -314,23 +319,23 @@ export function AdminMonitorPage() {
       <div className="space-y-6">
         {/* Monitor Diagnostics Summary Cards */}
         {isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 @xl/main:grid-cols-3">
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} className="h-28 w-full rounded-xl" />
             ))}
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 @xl/main:grid-cols-3">
             <Card className="p-5">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Verification Status</span>
                 <Activity className="h-4 w-4 text-zinc-400" />
               </div>
-              <div className="mt-2 flex items-center gap-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <p className="text-lg font-bold text-white">
                   {monitor?.authoritative === false ? "Blocked / Preserved" : "Authoritative"}
                 </p>
-                <Badge variant="secondary">Every 7m</Badge>
+                <Badge variant="secondary">{CHECK_INTERVAL_SHORT}</Badge>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 Latest check source: {formatSourceLabel(monitor?.lastSource)}
@@ -400,12 +405,12 @@ export function AdminMonitorPage() {
                   Cloudflare Scheduled Challenge Active — Scrapling Sync Recommended
                 </p>
                 <p className="text-zinc-300">
-                  Tebex&apos;s Cloudflare protection blocks raw HTTP checks (<code className="text-white">403</code>). Ensure <code className="text-white">CRON_SECRET</code> matches in both GitHub Secrets and Cloudflare Secrets so <strong className="text-white">Scheduled Store Monitor (Scrapling)</strong> automatically verifies the storefront every 7 minutes on <code className="text-white">master</code>.
+                  Tebex&apos;s Cloudflare protection blocks raw HTTP checks (<code className="text-white">403</code>). Ensure <code className="text-white">CRON_SECRET</code> matches in both GitHub Secrets and Cloudflare Secrets so <strong className="text-white">Scheduled Store Monitor (Scrapling)</strong> automatically verifies the storefront {CHECK_INTERVAL_LABEL.toLowerCase()} on <code className="text-white">master</code>.
                 </p>
                 <p className="text-[11px] text-amber-300/90">
                   {monitor?.lastFetchCronSuccessAt
                     ? `Latest automated Scrapling sync: ${formatLocalDateTime(monitor.lastFetchCronSuccessAt)}`
-                    : "No automated Scrapling sync recorded yet — waiting for the next 7-minute Scrapling run."}
+                    : `No automated Scrapling sync recorded yet — waiting for the next ${STORE_MONITOR_INTERVAL_MINUTES}-minute Scrapling run.`}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={() => void copyCronEndpoint()} className="shrink-0">
@@ -467,7 +472,7 @@ export function AdminMonitorPage() {
             ) : (
               <>
                 {/* Mobile Log Cards */}
-                <div className="space-y-2.5 md:hidden">
+                <div className="space-y-2.5 @3xl/main:hidden">
                   {pagedLogs.map((entry) => (
                     <div
                       key={`m-mon-${entry.id}`}
@@ -523,7 +528,7 @@ export function AdminMonitorPage() {
                 </div>
 
                 {/* Desktop Table */}
-                <div className="hidden rounded-lg border border-border bg-zinc-950/40 md:block">
+                <div className="hidden rounded-lg border border-border bg-zinc-950/40 @3xl/main:block">
                   <Table containerClassName="thin-scrollbar max-h-[470px] overflow-y-auto overflow-x-auto">
                     <TableHeader className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
                       <TableRow>
@@ -693,7 +698,7 @@ export function AdminMonitorPage() {
             ) : (
               <>
                 {/* Mobile Tracked Listings Cards */}
-                <div className="space-y-2.5 md:hidden">
+                <div className="space-y-2.5 @3xl/main:hidden">
                   {listings.map((item) => (
                     <div
                       key={`m-item-${item.id}`}
@@ -748,7 +753,7 @@ export function AdminMonitorPage() {
                 </div>
 
                 {/* Desktop Table */}
-                <div className="hidden md:block">
+                <div className="hidden @3xl/main:block">
                   <Table containerClassName="thin-scrollbar max-h-[470px] overflow-y-auto overflow-x-auto">
                     <TableHeader className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
                       <TableRow>

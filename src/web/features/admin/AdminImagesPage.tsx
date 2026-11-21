@@ -206,7 +206,7 @@ export function AdminImagesPage() {
       title="Image Manager & Placement"
       description="Upload, replace, and reorder up to 10 high-resolution angles per listing directly inside Cloudflare R2 (everfall-media)."
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" asChild>
             <Link to="/admin">Overview</Link>
           </Button>
@@ -241,7 +241,7 @@ export function AdminImagesPage() {
       {overviewLoading ? (
         <div className="space-y-6">
           <Skeleton className="h-28 w-full rounded-xl" />
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-5">
             {Array.from({ length: 5 }).map((_, i) => (
               <Skeleton key={i} className="h-64 w-full rounded-xl" />
             ))}
@@ -258,7 +258,7 @@ export function AdminImagesPage() {
         <div className="space-y-6">
           {/* Listing Selector & R2 Environment Summary */}
           <Card>
-            <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+            <CardContent className="flex flex-col gap-4 p-5 @3xl/main:flex-row @3xl/main:items-center @3xl/main:justify-between">
               <div className="flex-1 space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Selected Vehicle Listing
@@ -313,7 +313,7 @@ export function AdminImagesPage() {
           </Card>
 
           {/* Placement Role Callout */}
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 @2xl/main:grid-cols-2">
             <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3.5 text-xs">
               <Star className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
               <div>
@@ -336,7 +336,7 @@ export function AdminImagesPage() {
 
           {/* 10-Slot Interactive Grid & Placement Modifier */}
           <Card>
-            <CardHeader className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <CardHeader className="flex flex-col gap-1 @xl/main:flex-row @xl/main:items-center @xl/main:justify-between">
               <div>
                 <CardTitle>Image Slots (0 – 9)</CardTitle>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -352,13 +352,13 @@ export function AdminImagesPage() {
             </CardHeader>
             <CardContent>
               {imagesLoading ? (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="grid gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-5">
                   {Array.from({ length: 10 }).map((_, i) => (
                     <Skeleton key={i} className="h-72 w-full rounded-xl" />
                   ))}
                 </div>
               ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                <div className="grid gap-4 @xl/main:grid-cols-2 @3xl/main:grid-cols-3 @5xl/main:grid-cols-5">
                   {slots.map((slot) => {
                     const isPrimary = slot.index === 0;
                     const isWidgetSlot = slot.index === 3;

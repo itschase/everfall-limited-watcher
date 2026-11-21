@@ -1,22 +1,14 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity,
-  ArrowRight,
-  Bell,
   Check,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Copy,
   ExternalLink,
-  History,
   Images,
-  Loader2,
-  Plus,
   SlidersHorizontal,
-  Users,
 } from "lucide-react";
 import {
   apiFetch,
@@ -26,24 +18,13 @@ import {
   PublicListingsResponse,
   PublicStatusResponse,
 } from "@/lib/api";
-import {
-  formatScheduledCadence,
-  SCHEDULED_CRON_INTERVAL_MS,
-} from "../../../shared/appConfig";
+import { SCHEDULED_CRON_INTERVAL_MS } from "../../../shared/appConfig";
 import { resolveListingPresentation, sortAndFilterFeatures } from "../../../shared/features";
 import { DEFAULT_SITE_PAGES_CONFIG } from "../../../shared/presentation";
-import { cn, formatLocalDateTime, formatLocalTime, safeExternalUrl } from "@/lib/utils";
+import { formatLocalDateTime, safeExternalUrl } from "@/lib/utils";
 import { useAuthActions, useSession } from "@/features/auth/useAuthActions";
 import { PublicLayout } from "@/components/layout/PublicLayout";
-import { AnimatedHero } from "@/components/hero/AnimatedHero";
-import { SlashCommandsSection } from "@/components/discord/SlashCommandsSection";
-import {
-  FeatureChipList,
-  StockStatusPill,
-  VehicleCard,
-} from "@/components/listings/VehicleCard";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { FeatureChipList, StockStatusPill } from "@/components/listings/VehicleCard";
 import {
   Dialog,
   DialogContent,
@@ -51,56 +32,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-function BotHealthBadge({ status }: { status: BotStatus }) {
-  if (status === "offline") {
-    return (
-      <span className="inline-flex items-center gap-2 rounded-full border border-red-500/35 bg-red-950/60 px-3 py-1 text-xs font-medium text-red-300 backdrop-blur-sm">
-        <span className="h-2 w-2 rounded-full bg-red-400" />
-        Bot Offline
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-950/60 px-3 py-1 text-xs font-semibold text-emerald-300 backdrop-blur-sm shadow-[0_0_12px_rgba(16,185,129,0.25)]">
-      <span className="relative flex h-2 w-2">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-80 duration-1000" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)]" />
-      </span>
-      Bot Online
-    </span>
-  );
-}
-
-const FEATURES = [
-  {
-    title: "Limited Drop Posts",
-    description:
-      "Get notified when new limited vehicles are discovered. Each drop is posted to your configured Discord channel in a detailed embed with vehicle information and images.",
-    icon: Bell,
-  },
-  {
-    title: "Limited Drop Previews",
-    description:
-      "View multiple angles of each vehicle directly in Discord, with images organized into a single, easy-to-browse gallery.",
-    icon: Images,
-  },
-  {
-    title: "Mention Roles",
-    description:
-      "Choose which Discord roles to mention when a new limited drop is posted, so the right members receive notifications.",
-    icon: Users,
-  },
-];
+import { HomePageSections } from "./HomePageSections";
 
 export function HomePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const carouselRef = useRef<HTMLDivElement | null>(null);
-  const [desktopVisibleCount, setDesktopVisibleCount] = useState(3);
-  const [statusFilter, setStatusFilter] = useState<"all" | "in_stock" | "sold_out">("all");
   const [selectedListing, setSelectedListing] = useState<ListingItem | null>(null);
   const [modalImgIdx, setModalImgIdx] = useState(0);
   const [copiedId, setCopiedId] = useState(false);
@@ -139,16 +75,6 @@ export function HomePage() {
   }, [statusHeartbeat, listingsData, queryClient]);
 
   const allListings = listingsData?.listings || [];
-  const filteredListings = allListings.filter((car) => {
-    if (statusFilter === "in_stock") return car.isAvailable;
-    if (statusFilter === "sold_out") return !car.isAvailable;
-    return true;
-  });
-
-  const inStockCount = allListings.filter((c) => c.isAvailable).length;
-  const soldOutCount = allListings.filter((c) => !c.isAvailable).length;
-  const desktopListings = filteredListings.slice(0, Math.min(desktopVisibleCount, 10));
-
   const botStatus: BotStatus =
     statusHeartbeat?.botStatus || listingsData?.botStatus || session?.botStatus || "offline";
   const monitorHealth: MonitorHealth =
@@ -164,11 +90,13 @@ export function HomePage() {
     statusHeartbeat?.lastCheckedAt ||
     listingsData?.lastCheckedAt ||
     statusHeartbeat?.lastSuccessAt ||
-    listingsData?.lastSuccessAt;
+    listingsData?.lastSuccessAt ||
+    null;
   const lastVerifiedSuccessAt =
     statusHeartbeat?.lastSuccessAt ||
     listingsData?.lastSuccessAt ||
-    listingsData?.monitorStatus?.lastSuccessAt;
+    listingsData?.monitorStatus?.lastSuccessAt ||
+    null;
   const heroConfig = statusHeartbeat?.hero || listingsData?.hero;
   const homePageCopy =
     statusHeartbeat?.pages?.home || listingsData?.pages?.home || DEFAULT_SITE_PAGES_CONFIG.home;
@@ -188,12 +116,6 @@ export function HomePage() {
     setTimeout(() => setCopiedId(false), 2000);
   };
 
-  const scrollCarousel = (direction: "left" | "right") => {
-    if (!carouselRef.current) return;
-    const delta = direction === "left" ? -320 : 320;
-    carouselRef.current.scrollBy({ left: delta, behavior: "smooth" });
-  };
-
   const modalPresentation = selectedListing
     ? selectedListing.presentation ||
       resolveListingPresentation({
@@ -210,320 +132,27 @@ export function HomePage() {
 
   return (
     <PublicLayout>
-      {/* Hero Section powered by Homepage Hero Controller (zero visitor pagination arrows/dots) */}
-      <section className="relative overflow-hidden border-b border-border bg-background">
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="absolute -top-32 left-1/2 h-[450px] w-[700px] -translate-x-1/2 rounded-full bg-gradient-to-tr from-emerald-500/10 via-zinc-800/15 to-transparent blur-[140px] opacity-70" />
-        </div>
-
-        <div className="relative mx-auto max-w-4xl px-4 py-16 text-center sm:px-6 sm:py-24 lg:px-8">
-          <div className="mb-4 flex justify-center">
-            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3.5 py-1 text-xs font-medium text-zinc-300 backdrop-blur-sm">
-              {homePageCopy.badgeText}
-            </span>
-          </div>
-          <AnimatedHero config={heroConfig} />
-
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <a
-              href={inviteUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition-all duration-150 hover:bg-zinc-200 hover:shadow-white/10"
-            >
-              <Plus className="h-4 w-4" />
-              Add to Discord
-            </a>
-            <Link
-              to="/features"
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary px-5 py-3 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-800 hover:text-white"
-            >
-              {homePageCopy.featuresCtaLabel}
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-
-          {/* Truthful Operational Telemetry Metrics */}
-          <div className="mx-auto mt-12 grid max-w-xl grid-cols-1 gap-3.5 border-t border-border/60 pt-8 sm:grid-cols-2">
-            <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/75 p-3.5 text-center shadow-sm backdrop-blur-sm transition-all hover:border-zinc-700">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Clock className="h-3.5 w-3.5 text-zinc-400" />
-                <span>Scheduled Store Check</span>
-              </div>
-              <div className="mt-1 font-mono text-sm font-semibold text-white tabular-nums">
-                {formatScheduledCadence(scheduledIntervalMs, true)}
-              </div>
-              <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
-                {lastCheckedAt ? `Last check ${formatLocalTime(lastCheckedAt)}` : "Awaiting run"}
-              </p>
-            </div>
-
-            <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/75 p-3.5 text-center shadow-sm backdrop-blur-sm transition-all hover:border-zinc-700">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="relative flex h-2 w-2">
-                  <span
-                    className={cn(
-                      "absolute inline-flex h-full w-full animate-ping rounded-full opacity-80 duration-1000",
-                      monitorHealth.state === "verification_successful"
-                        ? "bg-emerald-400"
-                        : monitorHealth.state === "verification_blocked"
-                          ? "bg-red-400"
-                          : "bg-amber-400"
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "relative inline-flex h-2 w-2 rounded-full",
-                      monitorHealth.state === "verification_successful"
-                        ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)]"
-                        : monitorHealth.state === "verification_blocked"
-                          ? "bg-red-400"
-                          : "bg-amber-400"
-                    )}
-                  />
-                </span>
-                <Activity className="h-3.5 w-3.5 text-zinc-400" />
-                <span>Monitor Health</span>
-              </div>
-              <div className="mt-1 font-mono text-sm font-semibold text-white">
-                {monitorHealth.label}
-              </div>
-              <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
-                {lastVerifiedSuccessAt
-                  ? `Verified ${formatLocalTime(lastVerifiedSuccessAt)}`
-                  : `Bot: ${botStatus === "online" ? "Authenticated" : "Offline"}`}
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Limited Drop History Showcase */}
-      <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-              {homePageCopy.sectionBadge}
-            </p>
-            <h2 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              {homePageCopy.sectionTitle}
-            </h2>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              {homePageCopy.sectionSubtitle}
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2.5">
-              <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-zinc-300 tabular-nums">
-                {(isFetching || isStatusFetching) && listingsData ? (
-                  <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
-                ) : null}
-                Last Checked:{" "}
-                {lastCheckedAt ? formatLocalTime(lastCheckedAt) : "Awaiting scheduled check"}
-              </span>
-              <BotHealthBadge status={botStatus} />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Tabs
-              value={statusFilter}
-              onValueChange={(val) => setStatusFilter(val as any)}
-              className="w-auto"
-            >
-              <TabsList>
-                <TabsTrigger value="all">All ({allListings.length})</TabsTrigger>
-                <TabsTrigger value="in_stock">In Stock ({inStockCount})</TabsTrigger>
-                <TabsTrigger value="sold_out">Sold Out ({soldOutCount})</TabsTrigger>
-              </TabsList>
-            </Tabs>
-
-            {session?.authenticated ? (
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/history">
-                  <History className="h-4 w-4" />
-                  Full Archive
-                </Link>
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void startLogin({ targetAfter: "/history" })}
-                disabled={isLoggingIn}
-              >
-                <History className="h-4 w-4" />
-                Full Archive
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Listings Content */}
-        {isLoading ? (
-          <div className="mt-8 grid gap-6 md:grid-cols-3">
-            {[0, 1, 2].map((skeleton) => (
-              <Skeleton key={skeleton} className="h-[420px] w-full rounded-xl" />
-            ))}
-          </div>
-        ) : filteredListings.length === 0 ? (
-          <Card className="mt-8 p-10 text-center">
-            <p className="text-sm font-semibold text-white">
-              {statusFilter === "all" ? homePageCopy.archiveEmptyTitle : "No Matching Releases"}
-            </p>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              {statusFilter === "in_stock"
-                ? `No limited vehicles are currently in stock. Scheduled checks run ${formatScheduledCadence(scheduledIntervalMs).toLowerCase()}.`
-                : statusFilter === "all"
-                  ? homePageCopy.archiveEmptyDescription
-                  : "No limited vehicle releases recorded matching this filter."}
-            </p>
-          </Card>
-        ) : (
-          <>
-            <div className="mt-8 hidden gap-6 md:grid md:grid-cols-2 lg:grid-cols-3">
-              {desktopListings.map((car) => (
-                <VehicleCard
-                  key={car.id}
-                  listing={car}
-                  isRefreshing={false}
-                  onInspect={openInspect}
-                  editImagesHref={
-                    session?.user?.isAdmin
-                      ? `/admin/images?listingId=${encodeURIComponent(car.id)}`
-                      : undefined
-                  }
-                  editMetadataHref={
-                    session?.user?.isAdmin
-                      ? `/admin/metadata?listingId=${encodeURIComponent(car.id)}`
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
-
-            {filteredListings.length > desktopListings.length && desktopVisibleCount < 10 && (
-              <div className="mt-8 hidden justify-center md:flex">
-                <Button
-                  variant="secondary"
-                  onClick={() => setDesktopVisibleCount((c) => Math.min(10, c + 3))}
-                >
-                  Load More ({filteredListings.length - desktopListings.length} remaining)
-                </Button>
-              </div>
-            )}
-
-            {(listingsData?.hasMoreArchive ||
-              (desktopVisibleCount >= 10 && filteredListings.length >= 10)) && (
-              <div className="mt-6 hidden items-center justify-center gap-3 md:flex">
-                <span className="text-xs text-muted-foreground">
-                  Showing up to the 10 most recent public drops.
-                </span>
-                {session?.authenticated ? (
-                  <Link
-                    to="/history"
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-200 underline decoration-zinc-600 underline-offset-4 hover:text-white hover:decoration-white"
-                  >
-                    Open Full Drop History
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => void startLogin({ targetAfter: "/history" })}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-200 underline decoration-zinc-600 underline-offset-4 hover:text-white hover:decoration-white cursor-pointer"
-                  >
-                    Sign in to browse complete archive
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Mobile Carousel */}
-            <div className="mt-6 md:hidden">
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">
-                  Swipe to browse ({filteredListings.length})
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    aria-label="Scroll left"
-                    onClick={() => scrollCarousel("left")}
-                    className="rounded-lg border border-border bg-card p-1.5 text-zinc-300"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Scroll right"
-                    onClick={() => scrollCarousel("right")}
-                    className="rounded-lg border border-border bg-card p-1.5 text-zinc-300"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-              <div
-                ref={carouselRef}
-                className="thin-scrollbar flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3"
-              >
-                {filteredListings.map((car) => (
-                  <div
-                    key={`mobile-${car.id}`}
-                    className="w-[86vw] max-w-[360px] shrink-0 snap-start"
-                  >
-                    <VehicleCard
-                      listing={car}
-                      isRefreshing={false}
-                      onInspect={openInspect}
-                      editImagesHref={
-                        session?.user?.isAdmin
-                          ? `/admin/images?listingId=${encodeURIComponent(car.id)}`
-                          : undefined
-                      }
-                      editMetadataHref={
-                        session?.user?.isAdmin
-                          ? `/admin/metadata?listingId=${encodeURIComponent(car.id)}`
-                          : undefined
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-      </section>
-
-      {/* Feature Cards */}
-      <section className="border-t border-border bg-zinc-950/70">
-        <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-          <div className="grid gap-6 md:grid-cols-3">
-            {FEATURES.map((feature) => {
-              const Icon = feature.icon;
-              return (
-                <Card
-                  key={feature.title}
-                  className="flex flex-col p-6 transition-all duration-200 hover:border-zinc-700 hover:bg-card/90 hover:shadow-lg"
-                >
-                  <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-zinc-950">
-                    <Icon className="h-5 w-5 text-white" strokeWidth={1.75} />
-                  </div>
-                  <h3 className="mt-4 text-lg font-semibold text-white">{feature.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    {feature.description}
-                  </p>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Slash Commands Reference */}
-      <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-        <SlashCommandsSection variant="compact" />
-      </section>
+      <HomePageSections
+        homePageCopy={homePageCopy}
+        heroConfig={heroConfig}
+        listings={allListings}
+        isLoading={isLoading}
+        isFetching={isFetching}
+        isStatusFetching={isStatusFetching}
+        hasListingsData={Boolean(listingsData)}
+        hasMoreArchive={Boolean(listingsData?.hasMoreArchive)}
+        botStatus={botStatus}
+        monitorHealth={monitorHealth}
+        scheduledIntervalMs={scheduledIntervalMs}
+        lastCheckedAt={lastCheckedAt}
+        lastVerifiedSuccessAt={lastVerifiedSuccessAt}
+        inviteUrl={inviteUrl}
+        isAuthenticated={Boolean(session?.authenticated)}
+        isAdmin={Boolean(session?.user?.isAdmin)}
+        isLoggingIn={isLoggingIn}
+        onStartLogin={(targetAfter) => void startLogin({ targetAfter })}
+        onInspectListing={openInspect}
+      />
 
       {/* Vehicle Inspection Modal */}
       <Dialog

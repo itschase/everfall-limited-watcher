@@ -66,6 +66,7 @@ export type WidgetDeployment = {
   configVersion?: number;
   lastCatalogVersion?: number;
   lastContentHash?: string;
+  renderVersion?: number;
   history?: WidgetSyncHistoryEntry[];
 };
 

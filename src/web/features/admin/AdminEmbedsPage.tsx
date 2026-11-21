@@ -28,7 +28,11 @@ import {
   TemplateVariableValues,
   WidgetTemplateConfig,
 } from "@/lib/api";
-import { CHECK_INTERVAL_LABEL, STORE_CATEGORY_URL } from "../../../shared/appConfig";
+import {
+  CHECK_INTERVAL_LABEL,
+  DEFAULT_PUBLIC_ORIGIN,
+  STORE_CATEGORY_URL,
+} from "../../../shared/appConfig";
 import { resolveListingPresentation } from "../../../shared/features";
 import {
   createDefaultPresentationConfig,
@@ -39,6 +43,7 @@ import {
   normalizeAnnouncementTemplate,
 } from "../../../shared/presentation";
 import { findUnsupportedVariables } from "../../../shared/variables";
+import { useSession } from "@/features/auth/useAuthActions";
 import { ADMIN_OVERVIEW_KEY, useAdminOverview } from "./useAdminOverview";
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -856,6 +861,7 @@ function AnnouncementEditorForm({
 
 export function AdminEmbedsPage() {
   const queryClient = useQueryClient();
+  const { data: session } = useSession();
   const { data: overview } = useAdminOverview();
 
   const { data: presentationRes, isLoading } = useQuery<PresentationBundleResponse>({
@@ -1136,7 +1142,7 @@ export function AdminEmbedsPage() {
       }
     >
       {isLoading ? (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 @4xl/main:grid-cols-2">
           <Skeleton className="h-[520px] w-full rounded-xl" />
           <Skeleton className="h-[520px] w-full rounded-xl" />
         </div>
@@ -1151,7 +1157,7 @@ export function AdminEmbedsPage() {
             }}
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <TabsList>
+              <TabsList className="h-auto flex-wrap">
                 <TabsTrigger value="in_stock">In Stock Announcements</TabsTrigger>
                 <TabsTrigger value="sold_out">Sold Out Announcements</TabsTrigger>
                 <TabsTrigger value="widgets">
@@ -1190,7 +1196,7 @@ export function AdminEmbedsPage() {
 
             {/* Section 1: In Stock Announcements */}
             <TabsContent value="in_stock">
-              <div className="grid items-start gap-6 lg:grid-cols-2">
+              <div className="grid items-start gap-6 @4xl/main:grid-cols-2">
                 <Card>
                   <CardHeader>
                     <CardTitle>In Stock Drop Template</CardTitle>
@@ -1215,7 +1221,7 @@ export function AdminEmbedsPage() {
                   </CardContent>
                 </Card>
 
-                <div className="space-y-4 lg:sticky lg:top-6">
+                <div className="space-y-4 @4xl/main:sticky @4xl/main:top-6">
                   <VariablePicker
                     scope={variableScope}
                     activeFieldLabel={activeFieldLabel}
@@ -1246,7 +1252,7 @@ export function AdminEmbedsPage() {
 
             {/* Section 2: Sold Out Announcements */}
             <TabsContent value="sold_out">
-              <div className="grid items-start gap-6 lg:grid-cols-2">
+              <div className="grid items-start gap-6 @4xl/main:grid-cols-2">
                 <Card>
                   <CardHeader>
                     <CardTitle>Sold Out Update Template</CardTitle>
@@ -1271,7 +1277,7 @@ export function AdminEmbedsPage() {
                   </CardContent>
                 </Card>
 
-                <div className="space-y-4 lg:sticky lg:top-6">
+                <div className="space-y-4 @4xl/main:sticky @4xl/main:top-6">
                   <VariablePicker
                     scope={variableScope}
                     activeFieldLabel={activeFieldLabel}
@@ -1344,7 +1350,7 @@ export function AdminEmbedsPage() {
                 </label>
               </div>
 
-              <div className="grid items-start gap-6 lg:grid-cols-2">
+              <div className="grid items-start gap-6 @4xl/main:grid-cols-2">
                 <Card>
                   <CardHeader>
                     <CardTitle>
@@ -1368,7 +1374,7 @@ export function AdminEmbedsPage() {
                   </CardContent>
                 </Card>
 
-                <div className="space-y-4 lg:sticky lg:top-6">
+                <div className="space-y-4 @4xl/main:sticky @4xl/main:top-6">
                   <VariablePicker
                     scope="widget"
                     activeFieldLabel={activeFieldLabel}
@@ -1389,6 +1395,7 @@ export function AdminEmbedsPage() {
                         template={activeWidgetTpl || DEFAULT_WIDGET_TEMPLATE}
                         listings={simulateMissingData ? [] : listings}
                         monitorStatus={overview?.monitorStatus || null}
+                        portalOrigin={session?.publicOrigin || DEFAULT_PUBLIC_ORIGIN}
                       />
                     </CardContent>
                   </Card>

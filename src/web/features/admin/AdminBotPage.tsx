@@ -273,7 +273,7 @@ export function AdminBotPage() {
     >
       {isLoading || !data ? (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-4">
             {[0, 1, 2, 3].map((idx) => (
               <Skeleton key={idx} className="h-28 w-full rounded-xl" />
             ))}
@@ -301,7 +301,7 @@ export function AdminBotPage() {
           )}
 
           {/* Status Summary Cards */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-4">
             <Card className="p-5">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Slash Command Sync</span>
@@ -393,7 +393,7 @@ export function AdminBotPage() {
           </div>
 
           {!data.allInSync && (
-            <div className="flex flex-col items-start justify-between gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 p-4 sm:flex-row sm:items-center">
+            <div className="flex flex-col items-start justify-between gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 p-4 @2xl/main:flex-row @2xl/main:items-center">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
                 <div>
@@ -424,9 +424,9 @@ export function AdminBotPage() {
           )}
 
           {/* Main Control Grid */}
-          <div className="grid gap-6 lg:grid-cols-12">
+          <div className="grid gap-6 @4xl/main:grid-cols-12">
             {/* All 6 Bot Controls */}
-            <Card className="lg:col-span-7">
+            <Card className="@4xl/main:col-span-7">
               <CardHeader>
                 <CardTitle>Bot Operational Controls</CardTitle>
                 <CardDescription>
@@ -435,7 +435,7 @@ export function AdminBotPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 @xl/main:grid-cols-2">
                   <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-zinc-950 p-3.5 transition hover:border-zinc-700">
                     <Checkbox
                       checked={syncCommands}
@@ -600,7 +600,7 @@ export function AdminBotPage() {
             </Card>
 
             {/* Bot Runtime Identity & Environment Bindings */}
-            <Card className="lg:col-span-5">
+            <Card className="@4xl/main:col-span-5">
               <CardHeader>
                 <CardTitle>Bot Identity &amp; Bindings</CardTitle>
                 <CardDescription>
@@ -754,7 +754,7 @@ export function AdminBotPage() {
           {/* 3-Layer /widget Registration, Execution & Portal Readiness Diagnostics */}
           {data.readinessChecks && data.readinessChecks.length > 0 && (
             <Card>
-              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardHeader className="flex flex-col gap-3 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
                 <div>
                   <CardTitle>/widget Registration, Execution &amp; Portal Readiness</CardTitle>
                   <CardDescription>
@@ -770,7 +770,7 @@ export function AdminBotPage() {
                         ? "warning"
                         : "success"
                   }
-                  className="self-start sm:self-auto"
+                  className="self-start @2xl/main:self-auto shrink-0"
                 >
                   {data.readinessChecks.some((c) => c.status === "fail")
                     ? "Action Needed"
@@ -780,7 +780,7 @@ export function AdminBotPage() {
                 </Badge>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-3 @2xl/main:grid-cols-2">
                   {data.readinessChecks.map((check) => (
                     <div
                       key={check.id}
@@ -831,7 +831,7 @@ export function AdminBotPage() {
 
           {/* Per-Server Command Availability & Guild Override Diagnostics */}
           <Card>
-            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardHeader className="flex flex-col gap-3 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
               <div>
                 <CardTitle>Per-Server /widget &amp; Slash Command Availability</CardTitle>
                 <CardDescription>
@@ -880,7 +880,7 @@ export function AdminBotPage() {
               ) : (
                 <>
                   {/* Mobile Per-Server Availability Cards */}
-                  <div className="space-y-3 md:hidden">
+                  <div className="space-y-3 @3xl/main:hidden">
                     {data.availability.map((row) => {
                       const inviteUrl = guildInviteMap.get(row.guildId);
                       const busy = activeGuildId === row.guildId && guildCommandMutation.isPending;
@@ -986,7 +986,7 @@ export function AdminBotPage() {
                   </div>
 
                   {/* Desktop Per-Server Availability Table */}
-                  <div className="hidden md:block">
+                  <div className="hidden @3xl/main:block">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -1116,7 +1116,7 @@ export function AdminBotPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 @xl/main:grid-cols-2 @3xl/main:grid-cols-3">
                 {REQUIRED_PERMISSIONS.map((perm) => (
                   <div
                     key={perm.name}
@@ -1132,7 +1132,7 @@ export function AdminBotPage() {
 
           {/* Registered Slash Commands Table */}
           <Card>
-            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardHeader className="flex flex-col gap-3 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
               <div>
                 <CardTitle>Slash Command Definitions ({data.comparisons.length})</CardTitle>
                 <CardDescription>
@@ -1142,14 +1142,14 @@ export function AdminBotPage() {
               </div>
               <Badge
                 variant={data.allInSync ? "success" : "warning"}
-                className="self-start sm:self-auto"
+                className="self-start @2xl/main:self-auto shrink-0"
               >
                 {data.allInSync ? "All Commands Synced" : "Sync Recommended"}
               </Badge>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Mobile Slash Command Cards */}
-              <div className="space-y-3 md:hidden">
+              <div className="space-y-3 @3xl/main:hidden">
                 {data.comparisons.map((cmd) => (
                   <div
                     key={cmd.name}
@@ -1202,7 +1202,7 @@ export function AdminBotPage() {
               </div>
 
               {/* Desktop Slash Command Table */}
-              <div className="hidden md:block">
+              <div className="hidden @3xl/main:block">
                 <Table>
                   <TableHeader>
                     <TableRow>

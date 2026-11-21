@@ -49,7 +49,7 @@ export function AdminOverviewPage() {
     >
       {isLoading || !data ? (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-4">
             {[0, 1, 2, 3].map((i) => (
               <Skeleton key={i} className="h-28 w-full rounded-xl" />
             ))}
@@ -59,7 +59,7 @@ export function AdminOverviewPage() {
       ) : (
         <div className="space-y-6">
           {/* Summary Stats */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-4">
             <Card className="p-5">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Monitored Listings</span>
@@ -127,7 +127,7 @@ export function AdminOverviewPage() {
           </div>
 
           {/* Quick Operational Shortcuts */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 @xl/main:grid-cols-2 @3xl/main:grid-cols-3">
             <Link
               to="/admin/bot"
               className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition hover:border-white/20"
@@ -234,7 +234,7 @@ export function AdminOverviewPage() {
               ) : (
                 <>
                   {/* Mobile Recent Delivery Cards */}
-                  <div className="space-y-2.5 md:hidden">
+                  <div className="space-y-2.5 @3xl/main:hidden">
                     {recentDeliveries.map((entry) => (
                       <div
                         key={entry.id}
@@ -270,7 +270,7 @@ export function AdminOverviewPage() {
                   </div>
 
                   {/* Desktop Recent Delivery Table */}
-                  <div className="hidden md:block">
+                  <div className="hidden @3xl/main:block">
                     <Table>
                       <TableHeader>
                         <TableRow>

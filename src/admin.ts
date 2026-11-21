@@ -20,7 +20,15 @@ import {
   resolvePublicOrigin,
 } from "./scraper";
 import { EF_LOGO_BASE64 } from "./assets";
-import { fetchDiscordWithRetry } from "./discord";
+import {
+  computeBotChannelPermissions,
+  DiscordChannelLike,
+  DiscordGuildLike,
+  DiscordMemberLike,
+  DiscordRoleLike,
+  fetchDiscordWithRetry,
+  validateBotChannelPermissions,
+} from "./discord";
 import {
   consumeOAuthHandoff,
   consumeOAuthState,
@@ -59,6 +67,15 @@ export interface GuildChannelOption {
   id: string;
   name: string;
   type: number;
+  parent_id?: string | null;
+  canView?: boolean;
+  canSend?: boolean;
+  canEmbed?: boolean;
+  canReadHistory?: boolean;
+  writable?: boolean;
+  permissionsChecked?: boolean;
+  missingPermissions?: string[];
+  remediation?: string;
 }
 
 export interface GuildRoleOption {
@@ -204,18 +221,94 @@ export async function getGuildControlOptions(
   const task = (async () => {
     try {
       const headers = { Authorization: `Bot ${token}` };
-      const [channelsResponse, rolesResponse] = await Promise.all([
+      let botUserId = String(env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID || "").trim();
+      if (!/^\d{17,22}$/.test(botUserId)) {
+        try {
+          const meRes = await fetchDiscordWithRetry("https://discord.com/api/v10/users/@me", {
+            headers,
+          });
+          if (meRes.ok) {
+            const meData: any = await meRes.json();
+            if (typeof meData?.id === "string" && /^\d{17,22}$/.test(meData.id)) {
+              botUserId = meData.id;
+            }
+          }
+        } catch {
+          // Graceful fallback if /users/@me cannot be resolved
+        }
+      }
+
+      const [channelsResponse, rolesResponse, guildResponse, memberResponse] = await Promise.all([
         fetchDiscordWithRetry(`https://discord.com/api/v10/guilds/${guildId}/channels`, { headers }),
         fetchDiscordWithRetry(`https://discord.com/api/v10/guilds/${guildId}/roles`, { headers }),
+        fetchDiscordWithRetry(`https://discord.com/api/v10/guilds/${guildId}`, { headers }),
+        botUserId
+          ? fetchDiscordWithRetry(
+              `https://discord.com/api/v10/guilds/${guildId}/members/${botUserId}`,
+              { headers }
+            )
+          : Promise.resolve(null),
       ]);
-      const channels = channelsResponse.ok
-        ? ((await channelsResponse.json()) as GuildChannelOption[])
-            .filter((channel) => channel.type === 0 || channel.type === 5)
-            .sort((a, b) => a.name.localeCompare(b.name))
+
+      const rawChannels = channelsResponse.ok
+        ? ((await channelsResponse.json()) as DiscordChannelLike[])
         : [];
-      const roles = rolesResponse.ok
-        ? ((await rolesResponse.json()) as GuildRoleOption[])
+      const rawRoles = rolesResponse.ok
+        ? ((await rolesResponse.json()) as Array<DiscordRoleLike & GuildRoleOption>)
+        : [];
+      const rawGuild: DiscordGuildLike | null =
+        guildResponse.ok ? ((await guildResponse.json().catch(() => null)) as DiscordGuildLike | null) : null;
+      const rawMember: DiscordMemberLike | null =
+        memberResponse && memberResponse.ok
+          ? ((await memberResponse.json().catch(() => null)) as DiscordMemberLike | null)
+          : null;
+
+      const canComputePerms = Boolean(
+        rawGuild &&
+          typeof rawGuild.id === "string" &&
+          Array.isArray(rawRoles) &&
+          rawMember &&
+          Array.isArray(rawMember.roles)
+      );
+
+      const channels: GuildChannelOption[] = rawChannels
+        .filter((channel) => channel.type === 0 || channel.type === 5)
+        .map((channel): GuildChannelOption => {
+          const base: GuildChannelOption = {
+            id: channel.id,
+            name: String(channel.name || "channel"),
+            type: channel.type,
+            ...(channel.parent_id ? { parent_id: channel.parent_id } : {}),
+          };
+          if (!canComputePerms || !rawGuild || !rawMember) {
+            return { ...base, permissionsChecked: false };
+          }
+          const summary = computeBotChannelPermissions({
+            guild: rawGuild,
+            roles: rawRoles,
+            member: rawMember,
+            channel,
+            botUserId: botUserId || rawMember.user?.id || "",
+            requirements: { requireView: true, requireSend: true, requireEmbed: true },
+          });
+          return {
+            ...base,
+            permissionsChecked: true,
+            canView: summary.canView,
+            canSend: summary.canSend,
+            canEmbed: summary.canEmbed,
+            canReadHistory: summary.canReadHistory,
+            writable: summary.writable,
+            missingPermissions: summary.missingPermissions,
+            ...(summary.remediation ? { remediation: summary.remediation } : {}),
+          };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      const roles: GuildRoleOption[] = Array.isArray(rawRoles)
+        ? rawRoles
             .filter((role) => role.id !== guildId && !role.managed)
+            .map((role) => ({ id: role.id, name: role.name, managed: role.managed }))
             .sort((a, b) => a.name.localeCompare(b.name))
         : [];
       const error =
@@ -1691,9 +1784,23 @@ export async function handleSaveGuildSettings(request: Request, env: any): Promi
   }
   if (!controls.channels.some((channel) => channel.id === channelId)) {
     return Response.redirect(
-      `${origin}/dashboard?error=${encodeURIComponent("Invalid or inaccessible alert channel. Verify the bot can view that channel.")}`,
+      `${origin}/dashboard?error=${encodeURIComponent("Invalid or inaccessible alert channel. Verify the bot has View Channel access.")}`,
       303
     );
+  }
+  if (env.DISCORD_BOT_TOKEN) {
+    const perm = await validateBotChannelPermissions(env.DISCORD_BOT_TOKEN, guildId, channelId, {
+      requireView: true,
+      requireSend: true,
+      requireEmbed: true,
+      botUserId: env.DISCORD_APPLICATION_ID || env.DISCORD_CLIENT_ID,
+    });
+    if (!perm.valid) {
+      return Response.redirect(
+        `${origin}/dashboard?error=${encodeURIComponent(perm.remediation || perm.error || "Bot lacks required permissions in that channel.")}`,
+        303
+      );
+    }
   }
   const allowedRoleIds = new Set(controls.roles.map((role) => role.id));
   const roleIds = [...new Set(requestedRoleIds.filter((roleId) => allowedRoleIds.has(roleId)))];

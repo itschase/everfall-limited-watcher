@@ -18,7 +18,7 @@ import {
   postAllListingsToGuild,
   resolvePublicOrigin,
 } from "./scraper";
-import { fetchDiscordWithRetry } from "./discord";
+import { fetchDiscordWithRetry, validateBotChannelPermissions } from "./discord";
 import { CHECK_INTERVAL_LABEL } from "./shared/appConfig";
 import { getD1Database } from "./d1";
 
@@ -364,6 +364,48 @@ export async function handleInteraction(
       }
       const selectedChannel = data?.values?.[0];
       if (guild_id && selectedChannel) {
+        if (env.DISCORD_BOT_TOKEN) {
+          const perm = await validateBotChannelPermissions(
+            env.DISCORD_BOT_TOKEN,
+            guild_id,
+            selectedChannel,
+            {
+              requireView: true,
+              requireSend: true,
+              requireEmbed: true,
+              botUserId: appId,
+            }
+          );
+          if (!perm.valid) {
+            return jsonResponse({
+              flags: EPHEMERAL_FLAG,
+              embeds: [
+                {
+                  title: "Channel Missing Required Permissions",
+                  color: 0xef4444,
+                  description:
+                    `${perm.remediation || perm.error || "Bot lacks required permissions in that channel."}\n\n` +
+                    "Your existing server configuration was left unchanged.",
+                  fields: [
+                    ...(perm.missingPermissions.length > 0
+                      ? [
+                          {
+                            name: "Missing Permissions",
+                            value: perm.missingPermissions.map((p) => `• ${p}`).join("\n"),
+                            inline: false,
+                          },
+                        ]
+                      : []),
+                  ],
+                  footer: { text: "Everfall Limited Watcher • Setup Unchanged" },
+                  timestamp: new Date().toISOString(),
+                },
+              ],
+              components: actionComponents,
+            });
+          }
+        }
+
         const existing = (await getGuildConfig(env, guild_id)) ?? { channelId: "", roleIds: [] };
         await setGuildConfig(env, guild_id, { ...existing, channelId: selectedChannel });
 
@@ -484,6 +526,27 @@ export async function handleInteraction(
       runAsync(
         (async () => {
           try {
+            if (env.DISCORD_BOT_TOKEN) {
+              const perm = await validateBotChannelPermissions(
+                env.DISCORD_BOT_TOKEN,
+                guild_id,
+                targetChannelId,
+                {
+                  requireView: true,
+                  requireSend: true,
+                  requireEmbed: true,
+                  botUserId: appId,
+                }
+              );
+              if (!perm.valid) {
+                await editOriginalInteractionResponse(appId, interactionToken, {
+                  content: `⚠️ Cannot post status widget in <#${targetChannelId}>: ${perm.remediation || perm.error || "Missing permissions."}`,
+                  embeds: [],
+                  components: [],
+                });
+                return;
+              }
+            }
             const res = await deployStatusWidgetToChannel(
               env,
               guild_id,
@@ -565,6 +628,44 @@ export async function handleInteraction(
           content: "Please specify a valid channel.",
         });
       }
+
+      if (env.DISCORD_BOT_TOKEN) {
+        const perm = await validateBotChannelPermissions(env.DISCORD_BOT_TOKEN, guild_id, channel, {
+          requireView: true,
+          requireSend: true,
+          requireEmbed: true,
+          botUserId: appId,
+        });
+        if (!perm.valid) {
+          return jsonResponse({
+            flags: EPHEMERAL_FLAG,
+            embeds: [
+              {
+                title: "Cannot Save Alert Channel — Missing Permissions",
+                description:
+                  `${perm.remediation || perm.error || "The bot lacks required permissions in that channel."}\n\n` +
+                  "Your previous alert channel setting was not overwritten.",
+                color: 0xef4444,
+                fields: [
+                  ...(perm.missingPermissions.length > 0
+                    ? [
+                        {
+                          name: "Missing Permissions",
+                          value: perm.missingPermissions.map((p) => `• ${p}`).join("\n"),
+                          inline: false,
+                        },
+                      ]
+                    : []),
+                ],
+                footer: { text: "Everfall Limited Watcher • Setup Unchanged" },
+                timestamp: new Date().toISOString(),
+              },
+            ],
+            components: actionComponents,
+          });
+        }
+      }
+
       const existing = (await getGuildConfig(env, guild_id)) ?? { channelId: "", roleIds: [] };
       await setGuildConfig(env, guild_id, { ...existing, channelId: channel });
 
@@ -733,6 +834,29 @@ export async function handleInteraction(
       runAsync(
         (async () => {
           try {
+            if (env.DISCORD_BOT_TOKEN) {
+              const perm = await validateBotChannelPermissions(
+                env.DISCORD_BOT_TOKEN,
+                guild_id,
+                targetChannelId,
+                {
+                  requireView: true,
+                  requireSend: true,
+                  requireEmbed: true,
+                  botUserId: appId,
+                }
+              );
+              if (!perm.valid) {
+                await editOriginalInteractionResponse(appId, interactionToken, {
+                  content:
+                    `⚠️ **Cannot Deploy Widget in <#${targetChannelId}>**\n` +
+                    `${perm.remediation || perm.error || "Missing required channel permissions."}`,
+                  embeds: [],
+                  components: [],
+                });
+                return;
+              }
+            }
             const [previewPayload, pending] = await Promise.all([
               buildWidgetMessagePayload(env, portalOrigin, { guildId: guild_id }),
               createPendingWidgetConfirmation(env, {

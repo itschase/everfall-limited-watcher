@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FlaskConical, Loader2, ShieldAlert } from "lucide-react";
+import { AlertTriangle, FlaskConical, Loader2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, ApiError } from "@/lib/api";
 import { ADMIN_OVERVIEW_KEY, useAdminOverview } from "./useAdminOverview";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,10 @@ export function AdminTestingPage() {
 
   const guilds = data?.connectedGuilds || [];
   const testGuilds = guilds.filter((g) => g.environment === "test" && g.configured);
+  const selectedTestGuild = testGuilds.find((g) => g.id === selectedTestGuildId) || null;
+  const testChannelBlocked = Boolean(
+    !selectedTestGuild || selectedTestGuild.channelPermissionError || selectedTestGuild.channelMissing
+  );
   const listings = data?.listings || [];
 
   useEffect(() => {
@@ -67,7 +71,12 @@ export function AdminTestingPage() {
       void queryClient.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to send test notification.");
+      const apiErr = err as ApiError;
+      toast.error(
+        apiErr?.remediation
+          ? `${apiErr.message} ${apiErr.remediation}`
+          : err.message || "Failed to send test notification."
+      );
     },
   });
 
@@ -78,12 +87,12 @@ export function AdminTestingPage() {
       description="Designate dedicated test Discord servers and send verified preview notifications without pinging roles or touching production servers."
     >
       {isLoading ? (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 @3xl/main:grid-cols-2">
           <Skeleton className="h-96 w-full rounded-xl" />
           <Skeleton className="h-96 w-full rounded-xl" />
         </div>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 @3xl/main:grid-cols-2">
           {/* Server Environment Designations */}
           <Card>
             <CardHeader>
@@ -98,15 +107,28 @@ export function AdminTestingPage() {
                   return (
                     <div
                       key={guild.id}
-                      className="flex flex-col items-start justify-between gap-3 rounded-lg border border-border bg-zinc-950 p-3.5 sm:flex-row sm:items-center"
+                      className="flex flex-col items-start justify-between gap-3 rounded-lg border border-border bg-zinc-950 p-3.5 @xl/main:flex-row @xl/main:items-center"
                     >
-                      <div className="min-w-0">
+                      <div className="min-w-0 space-y-1">
                         <p className="truncate text-sm font-semibold text-white">{guild.name}</p>
                         <p className="text-xs text-muted-foreground">
                           {guild.configured ? `Channel #${guild.channelId}` : "Channel not configured"}
                         </p>
+                        {guild.channelPermissionError && (
+                          <p className="flex items-start gap-1 text-[11px] text-red-300">
+                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            <span>
+                              Missing:{" "}
+                              {guild.channelMissingPermissions?.join(", ") || "View/Send/Embed"}
+                              {guild.channelRemediation ? ` — ${guild.channelRemediation}` : ""}
+                            </span>
+                          </p>
+                        )}
                       </div>
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex flex-wrap shrink-0 items-center gap-2">
+                        {guild.channelPermissionError && (
+                          <Badge variant="destructive">Permissions</Badge>
+                        )}
                         <Badge variant={isTest ? "warning" : "secondary"}>
                           {isTest ? "Test" : "Production"}
                         </Badge>
@@ -163,10 +185,33 @@ export function AdminTestingPage() {
                         {testGuilds.map((guild) => (
                           <SelectItem key={guild.id} value={guild.id}>
                             {guild.name} (Channel #{guild.channelId})
+                            {guild.channelPermissionError ? " [Missing Permissions]" : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {selectedTestGuild?.channelPermissionError && (
+                      <div className="mt-2 flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-950/35 p-3 text-xs text-red-200">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                        <div className="space-y-1">
+                          <p className="font-semibold text-red-100">
+                            Bot lacks Discord permissions in #{selectedTestGuild.channelName || selectedTestGuild.channelId}
+                          </p>
+                          {selectedTestGuild.channelMissingPermissions &&
+                            selectedTestGuild.channelMissingPermissions.length > 0 && (
+                              <p className="text-[11px]">
+                                Missing:{" "}
+                                <strong>{selectedTestGuild.channelMissingPermissions.join(", ")}</strong>
+                              </p>
+                            )}
+                          {selectedTestGuild.channelRemediation && (
+                            <p className="text-[11px] text-red-200/85">
+                              {selectedTestGuild.channelRemediation}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-1.5">
@@ -195,7 +240,10 @@ export function AdminTestingPage() {
                   <Button
                     className="w-full"
                     disabled={
-                      !selectedTestGuildId || !selectedListingId || testSendMutation.isPending
+                      !selectedTestGuildId ||
+                      !selectedListingId ||
+                      testChannelBlocked ||
+                      testSendMutation.isPending
                     }
                     onClick={() => testSendMutation.mutate()}
                   >

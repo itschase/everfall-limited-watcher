@@ -47,6 +47,18 @@ const historyRoute = createRoute({
   component: HistoryPage,
 });
 
+const historyIndexRoute = createRoute({
+  getParentRoute: () => historyRoute,
+  path: "/",
+  component: () => null,
+});
+
+const historyDetailRoute = createRoute({
+  getParentRoute: () => historyRoute,
+  path: "/$packageId",
+  component: () => null,
+});
+
 const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/dashboard",
@@ -141,7 +153,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   featuresRoute,
   aboutRoute,
-  historyRoute,
+  historyRoute.addChildren([historyIndexRoute, historyDetailRoute]),
   dashboardRoute,
   termsRoute,
   privacyRoute,

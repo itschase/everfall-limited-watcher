@@ -456,7 +456,7 @@ export function AdminMetadataPage() {
       {overviewLoading ? (
         <div className="space-y-6">
           <Skeleton className="h-28 w-full rounded-xl" />
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 @3xl/main:grid-cols-2">
             <Skeleton className="h-64 w-full rounded-xl" />
             <Skeleton className="h-64 w-full rounded-xl" />
           </div>
@@ -473,7 +473,7 @@ export function AdminMetadataPage() {
         <div className="space-y-6">
           {/* Listing Selector */}
           <Card>
-            <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+            <CardContent className="flex flex-col gap-4 p-5 @3xl/main:flex-row @3xl/main:items-center @3xl/main:justify-between">
               <div className="flex-1 space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Selected Vehicle Listing
@@ -550,7 +550,7 @@ export function AdminMetadataPage() {
             draft && (
               <>
                 {/* Source vs Extracted Comparison */}
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div className="grid gap-4 @3xl/main:grid-cols-2">
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base">Original Storefront Record</CardTitle>
@@ -609,7 +609,7 @@ export function AdminMetadataPage() {
                         </div>
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-3 @2xl/main:grid-cols-2">
                         <div className="rounded-lg border border-border bg-zinc-950 p-3">
                           <span className="font-semibold uppercase tracking-wider text-muted-foreground">
                             Trading Restriction
@@ -659,7 +659,7 @@ export function AdminMetadataPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-4 @2xl/main:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label htmlFor="override-name">Display Name Override</Label>
                         <Input
@@ -710,7 +710,7 @@ export function AdminMetadataPage() {
 
                     {/* Feature Editor */}
                     <div className="space-y-4 rounded-xl border border-border bg-zinc-950/60 p-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-col gap-3 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
                         <div>
                           <div className="flex items-center gap-2">
                             <h3 className="text-sm font-semibold text-white">
@@ -787,8 +787,8 @@ export function AdminMetadataPage() {
                                     : "border-border"
                                 )}
                               >
-                                <div className="grid gap-3 md:grid-cols-12 md:items-end">
-                                  <div className="space-y-1 md:col-span-4">
+                                <div className="grid gap-3 @3xl/main:grid-cols-12 @3xl/main:items-end">
+                                  <div className="space-y-1 @3xl/main:col-span-4">
                                     <Label className="text-[11px]">
                                       Label <span className="font-mono text-muted-foreground">({feat.key})</span>
                                     </Label>
@@ -802,7 +802,7 @@ export function AdminMetadataPage() {
                                     />
                                   </div>
 
-                                  <div className="space-y-1 md:col-span-2">
+                                  <div className="space-y-1 @3xl/main:col-span-2">
                                     <Label className="text-[11px]">Value (Optional)</Label>
                                     <Input
                                       value={feat.value || ""}
@@ -817,7 +817,7 @@ export function AdminMetadataPage() {
                                     />
                                   </div>
 
-                                  <div className="space-y-1 md:col-span-2">
+                                  <div className="space-y-1 @3xl/main:col-span-2">
                                     <Label className="text-[11px]">Lucide Icon</Label>
                                     <Select
                                       value={feat.icon}
@@ -841,7 +841,7 @@ export function AdminMetadataPage() {
                                     </Select>
                                   </div>
 
-                                  <div className="space-y-1 md:col-span-2">
+                                  <div className="space-y-1 @3xl/main:col-span-2">
                                     <Label className="text-[11px]">Discord Emoji</Label>
                                     <EmojiPickerButton
                                       label={`${feat.label} Emoji`}
@@ -851,7 +851,7 @@ export function AdminMetadataPage() {
                                     />
                                   </div>
 
-                                  <div className="flex items-center justify-end gap-1 md:col-span-2">
+                                  <div className="flex items-center justify-end gap-1 @3xl/main:col-span-2">
                                     <Button
                                       type="button"
                                       variant="outline"
@@ -931,7 +931,7 @@ export function AdminMetadataPage() {
                     </div>
 
                     {/* Footer Save Bar */}
-                    <div className="flex flex-col gap-4 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-col gap-4 border-t border-border pt-4 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
                       <div className="flex items-center gap-2.5">
                         <Switch
                           id="update-deployed-embeds"
