@@ -4,6 +4,7 @@ import { DEFAULT_SITE_PAGES_CONFIG } from "../../../shared/presentation";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { PageSeo } from "@/components/seo/PageSeo";
 import { LegalPageSections } from "./LegalPageSections";
+import { AutomationNotice } from "./AutomationNotice";
 
 export function PrivacyPage() {
   const { data: statusData } = useQuery<PublicStatusResponse>({
@@ -32,6 +33,7 @@ export function PrivacyPage() {
         description={privacy.subheading}
       />
       <LegalPageSections kind="privacy" config={privacy} />
+      <AutomationNotice kind="privacy" />
     </PublicLayout>
   );
 }

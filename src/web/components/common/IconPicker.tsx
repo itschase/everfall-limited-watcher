@@ -86,6 +86,10 @@ export function IconPicker({
         </DialogHeader>
 
         <div className="space-y-3">
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => { onChange("none"); setOpen(false); }}>No icon</Button>
+            <Button size="sm" variant="ghost" onClick={() => { onChange(fallback); setOpen(false); }}>Restore default</Button>
+          </div>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input

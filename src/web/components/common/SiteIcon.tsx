@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { sanitizeSiteIconKey, type SiteIconKey } from "../../../shared/icons";
 
-const SITE_ICON_MAP: Record<SiteIconKey, LucideIcon> = {
+const SITE_ICON_MAP: Record<Exclude<SiteIconKey, "none">, LucideIcon> = {
   bell: Bell,
   megaphone: Megaphone,
   radio: Radio,
@@ -90,6 +90,7 @@ export function SiteIcon({
   strokeWidth?: number;
 }) {
   const key = sanitizeSiteIconKey(name, fallback);
-  const IconComponent = SITE_ICON_MAP[key] || SITE_ICON_MAP[fallback] || Sparkles;
+  if (key === "none") return null;
+  const IconComponent = SITE_ICON_MAP[key] || SITE_ICON_MAP[fallback === "none" ? "sparkles" : fallback] || Sparkles;
   return <IconComponent className={className} strokeWidth={strokeWidth} />;
 }

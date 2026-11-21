@@ -1,4 +1,5 @@
 export type SiteIconKey =
+  | "none"
   | "bell"
   | "car-front"
   | "sparkles"
@@ -43,6 +44,7 @@ export interface SiteIconDefinition {
 }
 
 export const SITE_ICON_DEFINITIONS: readonly SiteIconDefinition[] = [
+  { key: "none", label: "No icon", category: "Interface" },
   { key: "bell", label: "Bell Alert", category: "Alerts" },
   { key: "megaphone", label: "Announcement", category: "Alerts" },
   { key: "radio", label: "Live Signal", category: "Alerts" },

@@ -1,3 +1,4 @@
+import { PublicExtraSections } from "@/components/common/PublicExtraSections";
 import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -231,7 +232,7 @@ export function FeaturesPageSections({
                   ) : (
                     <>
                       <a
-                        href={inviteUrl}
+                        href={featuresCopy.primaryCtaUrl || inviteUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-zinc-200 sm:w-auto"
@@ -241,7 +242,7 @@ export function FeaturesPageSections({
                       </a>
                       <button
                         type="button"
-                        onClick={scrollToShowcase}
+                        onClick={() => { if (featuresCopy.secondaryCtaUrl) window.location.assign(featuresCopy.secondaryCtaUrl); else scrollToShowcase(); }}
                         className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-secondary px-6 py-3 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-800 hover:text-white cursor-pointer sm:w-auto"
                       >
                         <SiteIcon name={featuresCopy.secondaryCtaIcon} fallback="eye" className="h-4 w-4 text-zinc-300" />
@@ -1096,7 +1097,7 @@ export function FeaturesPageSections({
                   ) : (
                     <>
                       <a
-                        href={inviteUrl}
+                        href={featuresCopy.primaryCtaUrl || inviteUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-zinc-200 sm:w-auto"
@@ -1121,6 +1122,7 @@ export function FeaturesPageSections({
 
         return null;
       })}
+      <PublicExtraSections sections={featuresCopy.extraSections} previewMode={previewMode} />
     </>
   );
 }

@@ -301,6 +301,8 @@ export interface ManagedServer {
   status: ServerStatus;
   statusReason: string;
   config: {
+    customizations?: import("../../shared/customizations").ServerCustomizations;
+    automationStatus?: { eventId?: string; error?: string; checkedAt?: number } | null;
     channelId: string;
     channelName: string | null;
     channelMissing: boolean;

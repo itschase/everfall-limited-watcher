@@ -1,3 +1,4 @@
+import { PublicExtraSections } from "@/components/common/PublicExtraSections";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, History } from "lucide-react";
 import type { AboutPageContentConfig, AboutSectionKey } from "@/lib/api";
@@ -77,14 +78,14 @@ export function AboutPageSections({
               ) : (
                 <>
                   <Link
-                    to="/features"
+                    to={(about.primaryCtaUrl || "/features") as any}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-zinc-200 sm:w-auto"
                   >
                     {about.primaryCtaLabel}
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                   <Link
-                    to="/history"
+                    to={(about.secondaryCtaUrl || "/history") as any}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-secondary px-6 py-3 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-800 hover:text-white sm:w-auto"
                   >
                     <History className="h-4 w-4" />
@@ -203,5 +204,5 @@ export function AboutPageSections({
     return null;
   };
 
-  return <>{order.map((key) => renderSection(key))}</>;
+  return <>{order.map((key) => renderSection(key))}<PublicExtraSections sections={about.extraSections} previewMode={previewMode} /></>;
 }

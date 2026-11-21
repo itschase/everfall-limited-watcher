@@ -1,3 +1,4 @@
+import { PublicExtraSections } from "@/components/common/PublicExtraSections";
 import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -21,6 +22,7 @@ import type {
 import {
   formatScheduledCadence,
   SCHEDULED_CRON_INTERVAL_MS,
+  STORE_MONITOR_INTERVAL_MINUTES,
 } from "../../../shared/appConfig";
 import {
   DEFAULT_HOME_SECTION_ORDER,
@@ -158,18 +160,18 @@ export function HomePageSections({
         withTopBorder && "mt-12 border-t border-border/60 pt-8"
       )}
     >
-      <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/75 p-3.5 text-center shadow-sm backdrop-blur-sm transition-all hover:border-zinc-700">
+      {homePageCopy.showScheduledCheck !== false && <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/75 p-3.5 text-center shadow-sm backdrop-blur-sm transition-all hover:border-zinc-700">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Clock className="h-3.5 w-3.5 text-zinc-400" />
-          <span>Scheduled Store Check</span>
+          <span>{homePageCopy.scheduledCheckLabel || "Scheduled Store Check"}</span>
         </div>
         <div className="mt-1 font-mono text-sm font-semibold text-white tabular-nums">
-          {formatScheduledCadence(scheduledIntervalMs, true)}
+          {formatScheduledCadence(homePageCopy.scheduledCheckMode === "custom" ? (homePageCopy.scheduledCheckMinutes || STORE_MONITOR_INTERVAL_MINUTES) * 60000 : scheduledIntervalMs, true)}
         </div>
         <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
           {lastCheckedAt ? `Last check ${formatLocalTime(lastCheckedAt)}` : "Awaiting run"}
         </p>
-      </div>
+      </div>}
 
       <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/75 p-3.5 text-center shadow-sm backdrop-blur-sm transition-all hover:border-zinc-700">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -236,22 +238,21 @@ export function HomePageSections({
                   alignment.container
                 )}
               >
-                <div
+                {homePageCopy.showHeroBadge !== false && Boolean(homePageCopy.badgeText) && <div
                   className={cn(
                     "mb-4 flex",
                     homePageCopy.sectionAlignment === "left" ? "justify-start" : "justify-center"
                   )}
                 >
-                  <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 px-3.5 py-1 text-xs font-medium text-zinc-300 backdrop-blur-sm">
+                  <span className={cn("inline-flex max-w-full items-center gap-2 rounded-full border border-border px-3.5 py-1 text-xs font-medium", homePageCopy.heroBadgeStyle === "solid" ? "bg-zinc-200 text-zinc-950" : homePageCopy.heroBadgeStyle === "outline" ? "bg-transparent text-zinc-300" : "bg-card/80 text-zinc-300")}><SiteIcon name={homePageCopy.heroBadgeIcon || "none"} className="h-3.5 w-3.5 shrink-0" />
                     {homePageCopy.badgeText}
                   </span>
-                </div>
+                </div>}
 
                 <AnimatedHero
                   config={heroConfig}
                   previewIndex={previewHeroSelection}
                   replayNonce={previewReplayNonce}
-                  compact={previewMode}
                 />
 
                 <div className={cn("mt-8 flex flex-wrap items-center gap-3", alignment.ctaRow)}>
@@ -269,7 +270,7 @@ export function HomePageSections({
                   ) : (
                     <>
                       <a
-                        href={inviteUrl}
+                        href={homePageCopy.primaryCtaUrl || inviteUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition-all duration-150 hover:bg-zinc-200 hover:shadow-white/10"
@@ -278,7 +279,7 @@ export function HomePageSections({
                         {homePageCopy.primaryCtaLabel || "Add to Discord"}
                       </a>
                       <Link
-                        to="/features"
+                        to={(homePageCopy.secondaryCtaUrl || "/features") as any}
                         className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary px-5 py-3 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-800 hover:text-white"
                       >
                         {homePageCopy.featuresCtaLabel}
@@ -561,6 +562,7 @@ export function HomePageSections({
 
         return null;
       })}
+      <PublicExtraSections sections={homePageCopy.extraSections} previewMode={previewMode} />
     </>
   );
 }

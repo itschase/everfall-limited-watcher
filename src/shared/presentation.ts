@@ -1,5 +1,7 @@
+import { normalizePageExtensions, PublicPageExtensions } from "./pageSections";
 import {
   CHECK_INTERVAL_LABEL,
+  STORE_MONITOR_INTERVAL_MINUTES,
   DEFAULT_PUBLIC_ORIGIN,
   STORE_CATEGORY_URL as SHARED_STORE_CATEGORY_URL,
   STORE_HOME_URL as SHARED_STORE_HOME_URL,
@@ -272,7 +274,14 @@ export const DEFAULT_ABOUT_SECTION_ORDER: AboutSectionKey[] = [
   "architecture_disclaimer",
 ];
 
-export interface HomePageContentConfig {
+export interface HomePageContentConfig extends PublicPageExtensions {
+  showHeroBadge?: boolean;
+  heroBadgeIcon?: SiteIconKey;
+  heroBadgeStyle?: "subtle" | "outline" | "solid";
+  showScheduledCheck?: boolean;
+  scheduledCheckMode?: "automatic" | "custom";
+  scheduledCheckLabel?: string;
+  scheduledCheckMinutes?: number;
   showHero?: boolean;
   showTelemetry?: boolean;
   showListingsSection?: boolean;
@@ -294,7 +303,7 @@ export interface HomePageContentConfig {
   featureCards?: EditableFeatureCard[];
 }
 
-export interface FeaturesPageContentConfig {
+export interface FeaturesPageContentConfig extends PublicPageExtensions {
   showHeader?: boolean;
   showPreviews?: boolean;
   showWorkflow?: boolean;
@@ -330,7 +339,7 @@ export interface FeaturesPageContentConfig {
   sectionOrder?: FeaturesSectionKey[];
 }
 
-export interface AboutPageContentConfig {
+export interface AboutPageContentConfig extends PublicPageExtensions {
   showHeader?: boolean;
   showMission?: boolean;
   showWorkflow?: boolean;
@@ -2408,7 +2417,8 @@ function normalizeFeatureCardsList(
   fallback: EditableFeatureCard[],
   maxItems = 12
 ): EditableFeatureCard[] {
-  if (!Array.isArray(incoming) || incoming.length === 0) {
+  if (Array.isArray(incoming) && incoming.length === 0) return [];
+  if (!Array.isArray(incoming)) {
     return fallback.map((item) => ({
       ...item,
       icon: sanitizeSiteIconKey(item.icon, "sparkles"),
@@ -2542,6 +2552,7 @@ export function normalizeSitePagesConfig(
 
   return {
     home: {
+      ...normalizePageExtensions(homeSrc, fallback.home),
       showHero: homeSrc.showHero !== undefined ? Boolean(homeSrc.showHero) : fallback.home.showHero !== false,
       showTelemetry:
         homeSrc.showTelemetry !== undefined
@@ -2559,7 +2570,14 @@ export function normalizeSitePagesConfig(
         homeSrc.showSlashCommands !== undefined
           ? Boolean(homeSrc.showSlashCommands)
           : fallback.home.showSlashCommands !== false,
-      badgeText: sanitizePlainPageText(homeSrc.badgeText, fallback.home.badgeText, 80),
+      showHeroBadge: homeSrc.showHeroBadge ?? fallback.home.showHeroBadge ?? true,
+      heroBadgeIcon: sanitizeSiteIconKey(homeSrc.heroBadgeIcon, fallback.home.heroBadgeIcon || "none"),
+      heroBadgeStyle: ["subtle", "outline", "solid"].includes(homeSrc.heroBadgeStyle || "") ? homeSrc.heroBadgeStyle : fallback.home.heroBadgeStyle || "subtle",
+      showScheduledCheck: homeSrc.showScheduledCheck ?? fallback.home.showScheduledCheck ?? true,
+      scheduledCheckMode: (homeSrc.scheduledCheckMode ?? fallback.home.scheduledCheckMode) === "custom" ? "custom" : "automatic",
+      scheduledCheckLabel: sanitizePlainPageText(homeSrc.scheduledCheckLabel, fallback.home.scheduledCheckLabel || "Scheduled Store Check", 80),
+      scheduledCheckMinutes: Number.isFinite(homeSrc.scheduledCheckMinutes) ? Math.min(1440, Math.max(1, Math.round(homeSrc.scheduledCheckMinutes!))) : fallback.home.scheduledCheckMinutes || STORE_MONITOR_INTERVAL_MINUTES,
+      badgeText: typeof homeSrc.badgeText === "string" && !homeSrc.badgeText.trim() ? "" : sanitizePlainPageText(homeSrc.badgeText, fallback.home.badgeText, 80),
       primaryCtaLabel: sanitizePlainPageText(
         homeSrc.primaryCtaLabel,
         fallback.home.primaryCtaLabel || defHome.primaryCtaLabel || "Add to Discord",
@@ -2593,6 +2611,7 @@ export function normalizeSitePagesConfig(
       ),
     },
     features: {
+      ...normalizePageExtensions(featSrc, fallback.features),
       showHeader:
         featSrc.showHeader !== undefined
           ? Boolean(featSrc.showHeader)
@@ -2698,6 +2717,7 @@ export function normalizeSitePagesConfig(
       ),
     },
     about: {
+      ...normalizePageExtensions(aboutSrc, fallback.about),
       showHeader:
         aboutSrc.showHeader !== undefined
           ? Boolean(aboutSrc.showHeader)

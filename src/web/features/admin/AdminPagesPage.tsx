@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { STORE_MONITOR_INTERVAL_MINUTES } from "../../../shared/appConfig";
+import { PageExtensionsEditor } from "./PageExtensionsEditor";
+import { AutomationNotice } from "@/features/legal/AutomationNotice";
+import { ResponsivePreview } from "@/components/common/ResponsivePreview";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
@@ -149,7 +153,7 @@ const HOME_SECTION_META: Record<
   HomeSectionKey,
   { label: string; toggleField: keyof HomePageContentConfig }
 > = {
-  hero: { label: "Homepage Hero Banner", toggleField: "showHero" },
+  hero: { label: "Show Homepage Hero", toggleField: "showHero" },
   telemetry: { label: "Operational Telemetry Strip", toggleField: "showTelemetry" },
   listings: { label: "Verified Release Archive Grid", toggleField: "showListingsSection" },
   features: { label: "Feature Highlights Row", toggleField: "showFeaturesSection" },
@@ -207,7 +211,7 @@ function LayoutPresetSelectors({
   }) => void;
 }) {
   return (
-    <div className="grid gap-3 @xl/main:grid-cols-2 @4xl/main:grid-cols-4">
+    <div className="grid gap-3 @xl/card:grid-cols-2 @4xl/main:grid-cols-4">
       <div className="space-y-1.5">
         <Label className="text-xs">Section Spacing</Label>
         <Select
@@ -342,7 +346,7 @@ function FeatureCardCrudList({
 
   return (
     <Card>
-      <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <CardHeader className="flex flex-col gap-2 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
         <div>
           <CardTitle className="text-base">
             {title} ({items.length}/{maxItems})
@@ -364,7 +368,7 @@ function FeatureCardCrudList({
         {items.map((item, idx) => {
           const isEnabled = item.enabled !== false;
           return (
-            <div
+            <details
               key={item.id}
               className={cn(
                 "space-y-3 rounded-xl border p-3.5 transition",
@@ -373,7 +377,8 @@ function FeatureCardCrudList({
                   : "border-border/50 bg-zinc-950/30 opacity-65"
               )}
             >
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <summary className="cursor-pointer text-sm font-medium">{idx + 1}. {item.title || "Untitled card"}{!isEnabled && " (Hidden)"}</summary>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-xs font-semibold text-zinc-400">
                     #{idx + 1}
@@ -442,19 +447,24 @@ function FeatureCardCrudList({
                     size="icon"
                     className="h-7 w-7"
                     title="Delete"
-                    disabled={items.length <= 1}
                     onClick={() => onChange(items.filter((_, i) => i !== idx))}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
+                  <Button type="button" variant="outline" size="icon" className="h-7 w-7" title="Restore card defaults" onClick={() => {
+                    const defaults = [...(DEFAULT_SITE_PAGES_CONFIG.home.featureCards || []), ...(DEFAULT_SITE_PAGES_CONFIG.features.capabilities || []), ...(DEFAULT_SITE_PAGES_CONFIG.features.workflowSteps || []), ...DEFAULT_SITE_PAGES_CONFIG.about.workflowSteps];
+                    const original = defaults.find(card => card.id === item.id);
+                    onChange(items.map((card, index) => index === idx ? { ...(original || { id: item.id, title: newLabel, description: "", icon: defaultIcon, enabled: true }) } : card));
+                  }}><RotateCcw className="h-3 w-3" /></Button>
                 </div>
               </div>
 
-              <div className="grid gap-3 @lg/main:grid-cols-12">
-                <div className="space-y-1.5 @lg/main:col-span-5">
+              <div className="grid gap-3 @xl/card:grid-cols-12">
+                <div className="space-y-1.5 @xl/card:col-span-5">
                   <Label className="text-[11px]">Icon</Label>
                   <IconPicker
                     value={item.icon || defaultIcon || "sparkles"}
+                    fallback={defaultIcon}
                     onChange={(icon) => {
                       const next = [...items];
                       next[idx] = { ...next[idx], icon };
@@ -462,7 +472,7 @@ function FeatureCardCrudList({
                     }}
                   />
                 </div>
-                <div className="space-y-1.5 @lg/main:col-span-7">
+                <div className="space-y-1.5 @xl/card:col-span-7">
                   <Label className="text-[11px]">Title</Label>
                   <Input
                     value={item.title}
@@ -491,7 +501,7 @@ function FeatureCardCrudList({
                   }}
                 />
               </div>
-            </div>
+            </details>
           );
         })}
       </CardContent>
@@ -530,15 +540,21 @@ export function AdminPagesPage() {
   const [replayNonce, setReplayNonce] = useState<number>(0);
   const [resetTarget, setResetTarget] = useState<PageTabKey | null>(null);
 
+  const previousBaseline = useRef<{ hero: HeroConfig; pages: SitePagesConfig } | null>(null);
+  const saving = useRef(false);
+  const [failedSnapshot, setFailedSnapshot] = useState<string | null>(null);
   useEffect(() => {
-    if (presentationRes?.bundle?.hero) {
-      setHeroDraft(normalizeHeroConfig(presentationRes.bundle.hero));
-    }
-    if (presentationRes?.bundle?.pages) {
-      setPagesDraft(
-        normalizeSitePagesConfig(presentationRes.bundle.pages, DEFAULT_SITE_PAGES_CONFIG)
-      );
-    }
+    if (!presentationRes?.bundle) return;
+    const incoming = {
+      hero: normalizeHeroConfig(presentationRes.bundle.hero),
+      pages: normalizeSitePagesConfig(presentationRes.bundle.pages, DEFAULT_SITE_PAGES_CONFIG),
+    };
+    const previous = previousBaseline.current;
+    previousBaseline.current = incoming;
+    setHeroDraft(draft => !previous || JSON.stringify(draft) === JSON.stringify(previous.hero) ? incoming.hero : draft);
+    setPagesDraft(draft => Object.fromEntries((Object.keys(TAB_LABELS) as PageTabKey[]).map(key => [key,
+      !previous || JSON.stringify(draft[key]) === JSON.stringify(previous.pages[key]) ? incoming.pages[key] : draft[key],
+    ])) as unknown as SitePagesConfig);
   }, [presentationRes?.bundle?.hero, presentationRes?.bundle?.pages]);
 
   const savedNormalizedHero = useMemo(
@@ -573,6 +589,7 @@ export function AdminPagesPage() {
   }, [heroDraft, pagesDraft, presentationRes?.bundle, savedNormalizedHero, savedNormalizedPages]);
 
   const saveMutation = useMutation({
+    onMutate: () => { saving.current = true; },
     mutationFn: (payload: {
       tab: PageTabKey;
       hero?: HeroConfig;
@@ -587,18 +604,23 @@ export function AdminPagesPage() {
       }),
     onSuccess: (res, vars) => {
       queryClient.setQueryData(["admin-presentation"], res);
-      if (res.bundle.hero) setHeroDraft(normalizeHeroConfig(res.bundle.hero));
-      if (res.bundle.pages) {
-        setPagesDraft(
-          normalizeSitePagesConfig(res.bundle.pages, DEFAULT_SITE_PAGES_CONFIG)
-        );
-      }
+      // Preserve edits made during the request and drafts on every other page.
+      if (vars.hero) setHeroDraft(prev => JSON.stringify(prev) === JSON.stringify(vars.hero) ? normalizeHeroConfig(res.bundle.hero) : prev);
+      setPagesDraft(prev => {
+        const submitted = vars.pages?.[vars.tab];
+        return submitted && JSON.stringify(prev[vars.tab]) === JSON.stringify(submitted)
+          ? { ...prev, [vars.tab]: res.bundle.pages![vars.tab] } : prev;
+      });
+      saving.current = false;
+      setFailedSnapshot(null);
       void queryClient.invalidateQueries({ queryKey: ["public-listings"] });
       void queryClient.invalidateQueries({ queryKey: ["public-status"] });
       void queryClient.invalidateQueries({ queryKey: ["public-presentation"] });
-      toast.success(`Saved ${TAB_LABELS[vars.tab].label} page changes.`);
+
     },
-    onError: (err: Error) => {
+    onError: (err: Error, vars) => {
+      saving.current = false;
+      setFailedSnapshot(JSON.stringify(vars));
       toast.error(err.message || "Failed to save page changes.");
     },
   });
@@ -699,6 +721,8 @@ export function AdminPagesPage() {
   };
 
   const handleSaveTab = (tab: PageTabKey) => {
+    if (saving.current || !dirtyTabs[tab]) return;
+    saving.current = true;
     if (tab === "home") {
       saveMutation.mutate({
         tab: "home",
@@ -712,6 +736,29 @@ export function AdminPagesPage() {
       pages: { [tab]: pagesDraft[tab] },
     });
   };
+
+  const saveLatest = useRef(() => {});
+  saveLatest.current = () => {
+    const tab = (Object.keys(dirtyTabs) as PageTabKey[]).find(key => {
+      if (!dirtyTabs[key]) return false;
+      const payload = { tab: key, ...(key === "home" ? { hero: heroDraft } : {}), pages: { [key]: pagesDraft[key] } };
+      return JSON.stringify(payload) !== failedSnapshot;
+    });
+    if (!tab || saving.current) return;
+    const payload = { tab, ...(tab === "home" ? { hero: heroDraft } : {}), pages: { [tab]: pagesDraft[tab] } };
+    if (JSON.stringify(payload) !== failedSnapshot) handleSaveTab(tab);
+  };
+  useEffect(() => {
+    const timer = window.setTimeout(() => saveLatest.current(), 1000);
+    return () => window.clearTimeout(timer);
+  }, [heroDraft, pagesDraft, dirtyTabs, saveMutation.isPending, failedSnapshot]);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (Object.values(dirtyTabs).some(Boolean)) { event.preventDefault(); event.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirtyTabs]);
 
   const handleCancelTab = (tab: PageTabKey) => {
     if (tab === "home") {
@@ -755,7 +802,7 @@ export function AdminPagesPage() {
     return (
       <Card className={cn(isDirty && "border-amber-500/40")}>
         <CardContent className="flex flex-col gap-3 p-4 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <div aria-live="polite" className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <FileText className="h-3.5 w-3.5 text-zinc-400" />
             <span>
               Editing <strong className="text-white">{TAB_LABELS[tab].label}</strong> (
@@ -763,11 +810,11 @@ export function AdminPagesPage() {
             </span>
             {isDirty ? (
               <Badge variant="warning" className="text-[10px]">
-                Unsaved Changes
+                {saveMutation.isPending ? "Saving…" : failedSnapshot ? "Failed — retry available" : "Unsaved"}
               </Badge>
             ) : (
               <Badge variant="secondary" className="text-[10px]">
-                In Sync
+                Saved
               </Badge>
             )}
           </div>
@@ -806,7 +853,7 @@ export function AdminPagesPage() {
               ) : (
                 <>
                   <Save className="h-4 w-4" />
-                  Save {TAB_LABELS[tab].label}
+                  {failedSnapshot ? "Retry Save" : isDirty ? `Save ${TAB_LABELS[tab].label}` : "Saved"}
                 </>
               )}
             </Button>
@@ -815,13 +862,6 @@ export function AdminPagesPage() {
       </Card>
     );
   };
-
-  const previewViewportClass =
-    previewViewport === "mobile"
-      ? "mx-auto w-full max-w-[390px] border-x border-border shadow-2xl"
-      : previewViewport === "tablet"
-        ? "mx-auto w-full max-w-[768px] border-x border-border shadow-xl"
-        : "w-full";
 
   const renderLivePagePreview = (tab: PageTabKey) => {
     const publicListings = listingsData?.listings || [];
@@ -910,7 +950,7 @@ export function AdminPagesPage() {
                 variant={previewViewport === "mobile" ? "secondary" : "ghost"}
                 className="h-7 px-2.5 text-xs"
                 onClick={() => setPreviewViewport("mobile")}
-                title="Mobile 390px preview"
+                title="Mobile 375px preview"
               >
                 <Smartphone className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Mobile</span>
@@ -920,13 +960,15 @@ export function AdminPagesPage() {
         </CardHeader>
 
         <CardContent className="max-h-[640px] overflow-x-hidden overflow-y-auto bg-zinc-950/90 p-0 thin-scrollbar">
-          <div className={cn("min-h-[260px] bg-background transition-all duration-200", previewViewportClass)}>
+          <ResponsivePreview width={previewViewport === "mobile" ? 375 : previewViewport === "tablet" ? 768 : 1280}>
             {tab === "home" && (
               <HomePageSections
                 homePageCopy={pagesDraft.home}
                 heroConfig={heroDraft}
                 listings={publicListings}
-                botStatus="online"
+                botStatus={listingsData?.botStatus || "online"}
+                monitorHealth={listingsData?.monitorHealth}
+                scheduledIntervalMs={listingsData?.scheduledIntervalMs}
                 lastCheckedAt={listingsData?.lastCheckedAt || null}
                 lastVerifiedSuccessAt={listingsData?.lastSuccessAt || null}
                 previewMode
@@ -949,12 +991,12 @@ export function AdminPagesPage() {
               <AboutPageSections about={pagesDraft.about} previewMode />
             )}
             {tab === "privacy" && (
-              <LegalPageSections kind="privacy" config={pagesDraft.privacy} previewMode />
+              <><LegalPageSections kind="privacy" config={pagesDraft.privacy} previewMode /><AutomationNotice kind="privacy" /></>
             )}
             {tab === "terms" && (
-              <LegalPageSections kind="terms" config={pagesDraft.terms} previewMode />
+              <><LegalPageSections kind="terms" config={pagesDraft.terms} previewMode /><AutomationNotice kind="terms" /></>
             )}
-          </div>
+          </ResponsivePreview>
         </CardContent>
       </Card>
     );
@@ -1054,7 +1096,7 @@ export function AdminPagesPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 @xl/card:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Top Badge</Label>
                 <Input
@@ -1247,7 +1289,7 @@ export function AdminPagesPage() {
                       </div>
                     </div>
 
-                    <div className="grid gap-3 @lg/main:grid-cols-12">
+                    <div className="grid gap-3 @xl/card:grid-cols-12">
                       <div className="space-y-1 @lg/main:col-span-4">
                         <Label className="text-[11px]">Section Icon</Label>
                         <IconPicker
@@ -1351,6 +1393,7 @@ export function AdminPagesPage() {
             </span>
           </div>
 
+          <div onBlurCapture={(event) => { if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) saveLatest.current(); }}>
           <Tabs
             value={activeTab}
             onValueChange={(val) => setActiveTab(val as PageTabKey)}
@@ -1369,6 +1412,8 @@ export function AdminPagesPage() {
                 </TabsTrigger>
               ))}
             </TabsList>
+
+            {renderTabActionFooter(activeTab)}
 
             {/* ==================== TAB 1: HOME + HERO CONTROLLER ==================== */}
             <TabsContent value="home" className="space-y-6">
@@ -1538,7 +1583,7 @@ export function AdminPagesPage() {
                         />
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-3 @xl/card:grid-cols-2">
                         <div className="space-y-1.5">
                           <Label htmlFor="hero-interval">Cycle Interval (ms)</Label>
                           <Input
@@ -1575,7 +1620,7 @@ export function AdminPagesPage() {
                         </div>
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-3 @xl/card:grid-cols-2">
                         <div className="space-y-1.5">
                           <Label htmlFor="hero-delay">Token Stagger Delay (ms)</Label>
                           <Input
@@ -1643,7 +1688,7 @@ export function AdminPagesPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-3 @xl/card:grid-cols-2">
                         <div className="space-y-1.5">
                           <Label>Hero Eyebrow Badge</Label>
                           <Input
@@ -1661,7 +1706,7 @@ export function AdminPagesPage() {
                           />
                         </div>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-3 @xl/card:grid-cols-2">
                         <div className="space-y-1.5">
                           <Label>Features Button Label</Label>
                           <Input
@@ -1724,7 +1769,7 @@ export function AdminPagesPage() {
                 {/* Right Column: Hero Messages Queue + Feature Cards CRUD */}
                 <div className="space-y-6 @4xl/main:col-span-7">
                   <Card className="h-fit">
-                    <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <CardHeader className="flex flex-col gap-2 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
                       <div>
                         <CardTitle className="text-base">
                           Hero Messages ({heroDraft.messages.length}/12)
@@ -1850,7 +1895,7 @@ export function AdminPagesPage() {
                             </div>
                           </div>
 
-                          <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="grid gap-3 @xl/card:grid-cols-2">
                             <div className="space-y-1">
                               <Label className="text-[11px]">Primary Headline</Label>
                               <Input
@@ -1904,7 +1949,17 @@ export function AdminPagesPage() {
                 </div>
               </div>
 
-              {renderTabActionFooter("home")}
+              <Card><CardHeader><CardTitle>Hero badge & scheduled check display</CardTitle><CardDescription>Changes autosave. Frequency controls affect public display only.</CardDescription></CardHeader><CardContent className="grid gap-4 @2xl/main:grid-cols-2">
+  <label className="flex items-center justify-between gap-3">Show Hero Eyebrow Badge<Switch checked={pagesDraft.home.showHeroBadge !== false} onCheckedChange={showHeroBadge => patchHome({ showHeroBadge })} /></label>
+  <IconPicker value={pagesDraft.home.heroBadgeIcon || "none"} fallback="none" onChange={heroBadgeIcon => patchHome({ heroBadgeIcon })} />
+  <label className="space-y-1 text-sm">Badge appearance<Select value={pagesDraft.home.heroBadgeStyle || "subtle"} onValueChange={heroBadgeStyle => patchHome({ heroBadgeStyle: heroBadgeStyle as any })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="subtle">Subtle</SelectItem><SelectItem value="outline">Outline</SelectItem><SelectItem value="solid">Solid Zinc</SelectItem></SelectContent></Select></label>
+  <label className="flex items-center justify-between gap-3">Show Scheduled Store Check<Switch checked={pagesDraft.home.showScheduledCheck !== false} onCheckedChange={showScheduledCheck => patchHome({ showScheduledCheck })} /></label>
+  <label className="space-y-1 text-sm">Frequency display<Select value={pagesDraft.home.scheduledCheckMode || "automatic"} onValueChange={scheduledCheckMode => patchHome({ scheduledCheckMode: scheduledCheckMode as any })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="automatic">Automatic (configured interval)</SelectItem><SelectItem value="custom">Custom display only</SelectItem></SelectContent></Select></label>
+  <label className="space-y-1 text-sm">Indicator label<Input value={pagesDraft.home.scheduledCheckLabel ?? "Scheduled Store Check"} onChange={e => patchHome({ scheduledCheckLabel: e.target.value })} maxLength={80} /></label>
+  {pagesDraft.home.scheduledCheckMode === "custom" && <label className="space-y-1 text-sm">Displayed minutes<Input type="number" min={1} max={1440} value={pagesDraft.home.scheduledCheckMinutes || STORE_MONITOR_INTERVAL_MINUTES} onChange={e => patchHome({ scheduledCheckMinutes: Number(e.target.value) })} /></label>}
+</CardContent></Card>
+<PageExtensionsEditor page={pagesDraft.home} onChange={patch => setPagesDraft(prev => ({ ...prev, home: { ...prev.home, ...patch } }))} />
+{renderTabActionFooter("home")}
             </TabsContent>
 
             {/* ==================== TAB 2: FEATURES PAGE ==================== */}
@@ -2041,7 +2096,7 @@ export function AdminPagesPage() {
                       />
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 @xl/card:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label>Primary CTA Label</Label>
                         <Input
@@ -2177,7 +2232,8 @@ export function AdminPagesPage() {
                 </div>
               </div>
 
-              {renderTabActionFooter("features")}
+              <PageExtensionsEditor page={pagesDraft.features} onChange={patch => setPagesDraft(prev => ({ ...prev, features: { ...prev.features, ...patch } }))} />
+{renderTabActionFooter("features")}
             </TabsContent>
 
             {/* ==================== TAB 3: ABOUT PAGE ==================== */}
@@ -2300,7 +2356,7 @@ export function AdminPagesPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 @xl/card:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label>Hero Badge</Label>
                         <Input
@@ -2328,7 +2384,7 @@ export function AdminPagesPage() {
                         className={TEXTAREA_CLS}
                       />
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 @xl/card:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label>Primary CTA Label</Label>
                         <Input
@@ -2347,7 +2403,7 @@ export function AdminPagesPage() {
                       </div>
                     </div>
 
-                    <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
+                    <div className="grid gap-3 border-t border-border pt-3 @xl/main:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label>Mission Icon</Label>
                         <IconPicker
@@ -2375,7 +2431,7 @@ export function AdminPagesPage() {
                       />
                     </div>
 
-                    <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
+                    <div className="grid gap-3 border-t border-border pt-3 @xl/main:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label>Architecture Icon</Label>
                         <IconPicker
@@ -2403,7 +2459,7 @@ export function AdminPagesPage() {
                       />
                     </div>
 
-                    <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-2">
+                    <div className="grid gap-3 border-t border-border pt-3 @xl/main:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label>Disclaimer Icon</Label>
                         <IconPicker
@@ -2462,13 +2518,15 @@ export function AdminPagesPage() {
                 </div>
               </div>
 
-              {renderTabActionFooter("about")}
+              <PageExtensionsEditor page={pagesDraft.about} onChange={patch => setPagesDraft(prev => ({ ...prev, about: { ...prev.about, ...patch } }))} />
+{renderTabActionFooter("about")}
             </TabsContent>
 
             {/* ==================== TAB 4 & 5: LEGAL PAGES ==================== */}
             <TabsContent value="privacy">{renderLegalEditor("privacy")}</TabsContent>
             <TabsContent value="terms">{renderLegalEditor("terms")}</TabsContent>
           </Tabs>
+          </div>
         </div>
       )}
 

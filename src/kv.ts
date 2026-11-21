@@ -23,6 +23,7 @@ import {
 import { withKvMetrics } from "./kvMetrics";
 
 export type GuildConfig = {
+  customizations?: import("./shared/customizations").ServerCustomizations;
   channelId: string;
   roleIds: string[]; // Discord role IDs to mention
   environment?: "production" | "test";
@@ -50,6 +51,8 @@ export type WidgetSyncHistoryEntry = {
 };
 
 export type WidgetDeployment = {
+  automationPinned?: boolean;
+  lastStickyAt?: number;
   id: string;
   guildId: string;
   channelId: string;
@@ -1612,6 +1615,9 @@ function normalizeWidgetRecord(raw: any): WidgetDeployment | null {
     ...(raw.customTemplate ? { customTemplate: raw.customTemplate } : {}),
     ...(typeof raw.configVersion === "number" ? { configVersion: raw.configVersion } : {}),
     ...(typeof raw.lastCatalogVersion === "number" ? { lastCatalogVersion: raw.lastCatalogVersion } : {}),
+    ...(typeof raw.renderVersion === "number" ? { renderVersion: raw.renderVersion } : {}),
+    ...(typeof raw.automationPinned === "boolean" ? { automationPinned: raw.automationPinned } : {}),
+    ...(typeof raw.lastStickyAt === "number" ? { lastStickyAt: raw.lastStickyAt } : {}),
     ...(raw.lastContentHash ? { lastContentHash: String(raw.lastContentHash) } : {}),
     history: Array.isArray(raw.history) ? raw.history.slice(0, 15) : [],
   };
@@ -2234,6 +2240,30 @@ export async function getPresentationConfig(env: any): Promise<PresentationConfi
   );
   defaults.pages = normalizeSitePagesConfig(defaults.pages, DEFAULT_SITE_PAGES_CONFIG);
   return defaults;
+}
+
+export async function savePresentationPages(
+  env: any,
+  pages: Partial<import("./shared/presentation").SitePagesConfig>,
+  hero?: import("./shared/presentation").HeroConfig
+): Promise<PresentationConfigBundle> {
+  const current = await getPresentationConfig(env);
+  const keys = (Object.keys(pages) as Array<keyof typeof pages>).filter(key => ["home", "features", "about", "privacy", "terms"].includes(key));
+  const normalized = normalizeSitePagesConfig({ ...current.pages, ...pages }, current.pages || DEFAULT_SITE_PAGES_CONFIG);
+  if (keys.every(key => JSON.stringify(current.pages?.[key]) === JSON.stringify(normalized[key])) && (!hero || JSON.stringify(current.hero) === JSON.stringify(hero))) return current;
+  const db = getD1Database(env);
+  if (!db) return setPresentationConfig(env, { ...current, pages: normalized, ...(hero ? { hero } : {}) });
+  const now = Date.now();
+  await db.prepare("INSERT INTO monitor_state (key, updated_at, value_json) VALUES (?, ?, ?) ON CONFLICT(key) DO NOTHING").bind(PRESENTATION_CONFIG_KEY, now, JSON.stringify(current)).run();
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  for (const key of keys) { assignments.push("?, json(?)"); values.push(`$.pages.${key}`, JSON.stringify(normalized[key])); }
+  if (hero) { assignments.push("'$.hero', json(?)"); values.push(JSON.stringify(hero)); }
+  // Patch individual JSON paths atomically so concurrent saves to other pages,
+  // templates, and settings cannot be replaced by this request's stale snapshot.
+  await db.prepare(`UPDATE monitor_state SET updated_at = ?, value_json = json_set(value_json, ${assignments.join(", ")}, '$.version', COALESCE(json_extract(value_json, '$.version'), 1) + 1, '$.updatedAt', ?) WHERE key = ?`)
+    .bind(now, ...values, now, PRESENTATION_CONFIG_KEY).run();
+  return getPresentationConfig(env);
 }
 
 export async function setPresentationConfig(

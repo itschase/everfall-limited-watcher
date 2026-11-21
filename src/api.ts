@@ -33,6 +33,7 @@ import {
   setGuildConfig,
   setListingOverride,
   setPresentationConfig,
+  savePresentationPages,
   setWidgetDeployment,
   updateListingImages,
 } from "./kv";
@@ -64,7 +65,8 @@ import {
   updateSentListingEmbedForGuild,
 } from "./scraper";
 import { fetchDiscordWithRetry, validateBotChannelPermissions } from "./discord";
-import { getD1Database, reserveTestAlertCooldown } from "./d1";
+import { normalizeCustomizations } from "./shared/customizations";
+import { getD1Database, getMonitorStateValue, reserveTestAlertCooldown } from "./d1";
 import {
   buildBotReadinessChecks,
   checkBotHealthSnapshot,
@@ -670,6 +672,7 @@ export async function handleApiRequest(
           }
         }
 
+        const automationState = getD1Database(env) && config?.customizations ? await getMonitorStateValue<{ eventId?: string; error?: string; checkedAt?: number }>(getD1Database(env)!, `server-automation:${g.id}`) : null;
         const iconUrl = g.icon
           ? `https://cdn.discordapp.com/icons/${encodeURIComponent(g.id)}/${encodeURIComponent(g.icon)}.png?size=64`
           : null;
@@ -692,6 +695,8 @@ export async function handleApiRequest(
             roleIds: Array.isArray(config?.roleIds) ? config.roleIds : [],
             environment: config?.environment === "test" ? "test" : "production",
             widgetTemplateId: config?.widgetTemplateId || "default",
+            customizations: normalizeCustomizations(config?.customizations),
+            automationStatus: automationState ? { eventId: automationState.eventId, error: automationState.error, checkedAt: automationState.checkedAt } : null,
           },
           widgets: widgetsByGuild.get(g.id) || [],
           channels: controls.channels,
@@ -726,6 +731,22 @@ export async function handleApiRequest(
   }
 
   // 5. Save Server Configuration (never triggers auto-publish)
+  const customizationMatch = url.pathname.match(/^\/api\/dashboard\/servers\/(\d{17,20})\/customizations$/);
+  if (customizationMatch && method === "PUT") {
+    if (!user) return json({ error: "Authentication required." }, 401);
+    const guildId = customizationMatch[1];
+    const managedGuilds = await getManagedGuildsForUser(env, user.id);
+    if (!managedGuilds.some(g => g.id === guildId)) return json({ error: "Manage Server permission required." }, 403);
+    if (!getD1Database(env)) return json({ error: "D1 storage is required for customizations." }, 503);
+    let body: unknown;
+    try { body = await request.json(); } catch { return json({ error: "Invalid JSON payload." }, 400); }
+    const existing = await getGuildConfig(env, guildId) || { channelId: "", roleIds: [] };
+    const customizations = normalizeCustomizations(body);
+    if (JSON.stringify(normalizeCustomizations(existing.customizations)) !== JSON.stringify(customizations)) {
+      await setGuildConfig(env, guildId, { ...existing, customizations });
+    }
+    return json({ ok: true, customizations });
+  }
   const saveServerMatch = url.pathname.match(/^\/api\/dashboard\/servers\/(\d{17,20})$/);
   if (saveServerMatch && (method === "PUT" || method === "POST")) {
     if (!user) return json({ error: "Authentication required." }, 401);
@@ -1840,7 +1861,10 @@ export async function handleApiRequest(
           : current.recentEmojis,
       };
 
-      const savedBundle = await setPresentationConfig(env, nextBundle);
+      const pageOnly = Object.keys(body).every(key => key === "pages" || key === "hero");
+      const savedBundle = pageOnly && body.pages && typeof body.pages === "object"
+        ? await savePresentationPages(env, Object.fromEntries(Object.keys(body.pages).filter(key => ["home", "features", "about", "privacy", "terms"].includes(key)).map(key => [key, nextBundle.pages![key as keyof typeof nextBundle.pages]])), body.hero ? nextBundle.hero : undefined)
+        : await setPresentationConfig(env, nextBundle);
       await purgePublicEdgeCaches(resolvePublicOrigin(env, origin));
 
       let widgetRefresh: { refreshed: number; skipped: number; failed: number } | null = null;
