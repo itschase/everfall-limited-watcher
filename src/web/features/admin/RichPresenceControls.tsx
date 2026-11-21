@@ -169,16 +169,21 @@ export function RichPresenceControls() {
 
   const webhookActionMutation = useMutation({
     mutationFn: (action: "sync" | "delete") =>
-      apiFetch<{ ok: boolean; action: string }>("/api/admin/bot/presence/webhook-card", {
-        method: "POST",
-        body: JSON.stringify({ action }),
-      }),
-    onSuccess: (_response, action) => {
-      toast.success(
-        action === "sync"
-          ? "Status card update queued. The persistent service will create or refresh it."
-          : "Status card removal queued."
-      );
+      apiFetch<{ ok: boolean; action: string; warning?: string | null }>(
+        "/api/admin/bot/presence/webhook-card",
+        {
+          method: "POST",
+          body: JSON.stringify({ action }),
+        }
+      ),
+    onSuccess: (response, action) => {
+      if (response.warning) {
+        toast.warning(response.warning);
+      } else {
+        toast.success(
+          action === "sync" ? "Status card update queued." : "Status card removal queued."
+        );
+      }
       void queryClient.invalidateQueries({ queryKey: RICH_PRESENCE_KEY });
     },
     onError: (error: Error) => toast.error(error.message || "Failed to queue the webhook action."),
@@ -197,6 +202,14 @@ export function RichPresenceControls() {
   const serviceOnline = data?.service.online === true;
   const serviceConnected = serviceOnline && data?.service.connected === true;
   const webhookReady = serviceOnline && data?.service.webhookConfigured === true;
+  const presenceEnabled = data?.config.enabled === true || data?.config.webhookCardEnabled === true;
+  const connectionLabel = !presenceEnabled
+    ? "Disabled"
+    : serviceConnected
+      ? "Gateway connected"
+      : serviceOnline
+        ? "Connecting"
+        : "Offline";
   return (
     <Card>
       <CardHeader className="flex flex-col gap-3 @2xl/main:flex-row @2xl/main:items-start @2xl/main:justify-between">
@@ -212,8 +225,18 @@ export function RichPresenceControls() {
           </CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={serviceConnected ? "success" : serviceOnline ? "warning" : "destructive"}>
-            {serviceConnected ? "Gateway connected" : serviceOnline ? "Connecting" : "Service offline"}
+          <Badge
+            variant={
+              !presenceEnabled
+                ? "outline"
+                : serviceConnected
+                  ? "success"
+                  : serviceOnline
+                    ? "warning"
+                    : "destructive"
+            }
+          >
+            {connectionLabel}
           </Badge>
           {data?.service.lastHeartbeatAt && (
             <span className="text-[11px] text-muted-foreground">
@@ -223,15 +246,14 @@ export function RichPresenceControls() {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {!serviceConnected && (
+        {presenceEnabled && !serviceConnected && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
-            <p className="font-medium">A persistent Node Gateway service is required.</p>
+            <p className="font-medium">The Cloudflare Gateway is not connected.</p>
             <p className="mt-1 text-amber-100/80">
-              Run the included <code>Dockerfile.presence</code> on an always-on Node.js 22+ host.
-              Provide the existing <code>DISCORD_BOT_TOKEN</code> and the same{" "}
-              <code>PRESENCE_SYNC_SECRET</code> used by the Worker. The production endpoint is
-              automatic; set <code>PUBLIC_ORIGIN</code> or <code>PRESENCE_SYNC_URL</code> only for
-              staging or a custom domain. No webhook is needed for profile activity.
+              The Gateway runs automatically in Cloudflare when Rich Presence is enabled. Check
+              that <code>DISCORD_BOT_TOKEN</code> is configured as a Worker secret and that the
+              Durable Object binding is deployed. No separate process, sync secret, or webhook is
+              needed for profile activity.
             </p>
             {data?.service.error && (
               <p className="mt-1 text-amber-100/90">Last service error: {data.service.error}</p>
@@ -514,9 +536,9 @@ export function RichPresenceControls() {
                 </Button>
               </div>
               <p className="text-[11px] leading-relaxed text-muted-foreground">
-                Configure <code>DISCORD_STATUS_WEBHOOK_URL</code> as a secret on the Node service.
+                Configure <code>DISCORD_STATUS_WEBHOOK_URL</code> as an optional Cloudflare Worker secret.
                 This sends a single card to its configured channel and is not needed for profile
-                activity. Publishing is an explicit action; after creation, the service edits that
+                activity. Publishing is an explicit action; after creation, the Gateway edits that
                 same message as its live values change. Saving settings alone never posts a message.
               </p>
               {data?.webhookCard.error && (

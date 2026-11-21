@@ -42,7 +42,7 @@ export function TermsPage() {
             Discord activity settings apply globally to the Everfall Limited Watcher bot and are
             visible to Discord users. Activity text is based on public store-monitoring data.
             Administrators may separately configure a webhook status card and HTTPS link; publishing
-            the card requires an explicit action, after which the service edits the same message
+            the card requires an explicit action, after which the Cloudflare Gateway edits the same message
             rather than posting on every settings save. Administrators are responsible for the
             accuracy and destination of their configured text and links.
           </p>

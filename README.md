@@ -106,21 +106,18 @@ Public `[vars]` are configured in `wrangler.toml`. Sensitive values must only be
 - `DISCORD_CLIENT_SECRET` — Discord OAuth2 client secret (also signs `everfall_session` cookies).
 - `DISCORD_BOT_TOKEN` — Discord Bot token for fetching guilds, channels, roles, and posting alerts.
 - `CRON_SECRET` — Optional Bearer secret for invoking `POST /cron` or `/register-commands` externally.
-- `PRESENCE_SYNC_SECRET` — Shared secret for the optional persistent Rich Presence service; configure it as both a Worker secret and a Node-host environment variable.
-- `DISCORD_STATUS_WEBHOOK_URL` — Optional incoming webhook URL for one status-card channel only. It is not per-server and bot profile activity does not need it.
+- `DISCORD_STATUS_WEBHOOK_URL` — Optional Cloudflare Worker secret for one status-card channel. It is not per-server and bot profile activity does not need it.
 - `PUBLIC_ORIGIN` — Public Worker origin (`https://everfall-limited-watcher.itschase.workers.dev` in production).
 - `DISCORD_CLIENT_ID` / `DISCORD_APPLICATION_ID`, `DISCORD_PUBLIC_KEY` — Application identity and interaction-signature verification.
 - `DISCORD_PRIMARY_ADMINISTRATOR` — Discord user ID allowed to use master administration.
 
 Configure Discord's OAuth redirect as `<PUBLIC_ORIGIN>/auth/callback` and its interactions endpoint as `<PUBLIC_ORIGIN>/interactions`. Bot Control provides readiness and command-registration tools. Provision `DB` (D1) and `MEDIA_BUCKET` (R2) for production; staging must use separate resources and secrets.
 
-## Optional Discord Rich Presence service
+## Discord Rich Presence
 
-Discord bot presence requires a persistent Gateway connection and cannot run inside a stateless Cloudflare Worker invocation. Deploy one always-on Node.js 22+ service using the included `Dockerfile.presence`. It reuses the existing `DISCORD_BOT_TOKEN` (do not reset it) and the same random `PRESENCE_SYNC_SECRET` configured as a Worker secret. The service defaults to the production `/api/internal/bot/presence` endpoint; set `PUBLIC_ORIGIN` for staging or a custom domain, or set `PRESENCE_SYNC_URL` to override the endpoint directly.
+The Bot Status page stores activity settings in D1. When enabled, a Cloudflare Durable Object keeps the bot's Discord Gateway connection and refreshes the activity automatically; no external Node service or `PRESENCE_SYNC_SECRET` is needed. The Worker uses the existing `DISCORD_BOT_TOKEN` secret. Durable Object session and connection status are stored in its SQLite-backed storage.
 
-Build the image with `docker build -f Dockerfile.presence -t everfall-presence .`. On the host, create a private env file containing `DISCORD_BOT_TOKEN` and `PRESENCE_SYNC_SECRET`, then run `docker run -d --restart unless-stopped --name everfall-presence --env-file <private-env-file> everfall-presence`. Keep the service to one instance per bot token and inspect startup/sync errors with `docker logs everfall-presence`. These variables must be present in the Node service environment; setting them only as Worker secrets does not start the Gateway process. No webhook URL is needed for profile activity, and activity updates do not post messages.
-
-The Bot Status page stores activity settings in D1. Activity name/state can use live listing and check-time variables. Discord only allows bot profiles to set activity name, type, state, and a streaming URL; the optional webhook card provides editable details, relative timestamps, and a custom HTTPS link button in one configured channel. It is disabled by default, is not required for profile activity, and posts only after an explicit dashboard publish action; after creation, the service edits the same message as data changes.
+Activity name/state can use live listing and check-time variables. Discord only allows bot profiles to set activity name, type, state, and a streaming URL; the optional webhook card provides editable details, relative timestamps, and a custom HTTPS link button in one configured channel. It is disabled by default, is not required for profile activity, and publishes only after an explicit dashboard action; after creation, the Gateway edits that same message as data changes. Activity updates do not post messages.
 
 Production structured and temporary state uses D1, and media uploads are stored in R2. Workers KV remains bound for backward-compatible structured-data fallbacks/imports and reads of previously archived image blobs; new OAuth state/handoffs, user guild caches, widget confirmations, test-alert cooldowns, and media uploads do not write to KV.
 

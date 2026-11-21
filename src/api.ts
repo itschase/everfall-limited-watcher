@@ -133,13 +133,12 @@ function json(data: unknown, status = 200): Response {
 }
 
 const RICH_PRESENCE_CONFIG_KEY = "bot_rich_presence_config";
-const RICH_PRESENCE_SERVICE_KEY = "bot_rich_presence_service";
 const RICH_PRESENCE_WEBHOOK_KEY = "bot_rich_presence_webhook";
 const RICH_PRESENCE_SERVICE_STALE_MS = 3 * 60 * 1000;
 
-interface RichPresenceServiceStatus {
-  lastHeartbeatAt: number;
+interface RichPresenceGatewayStatus {
   connected: boolean;
+  lastHeartbeatAt: number | null;
   activity: string | null;
   error: string | null;
   webhookConfigured: boolean;
@@ -152,18 +151,6 @@ interface RichPresenceWebhookState {
   requestedAt: number | null;
   processedRequestId: string | null;
   error: string | null;
-}
-
-function isSecretEqual(expected: string, received: string): boolean {
-  const encoder = new TextEncoder();
-  const expectedBytes = encoder.encode(expected);
-  const receivedBytes = encoder.encode(received);
-  let mismatch = expectedBytes.length ^ receivedBytes.length;
-  const length = Math.max(expectedBytes.length, receivedBytes.length);
-  for (let index = 0; index < length; index++) {
-    mismatch |= (expectedBytes[index] || 0) ^ (receivedBytes[index] || 0);
-  }
-  return mismatch === 0;
 }
 
 function normalizeRichPresenceWebhookState(value: unknown): RichPresenceWebhookState {
@@ -183,85 +170,26 @@ function normalizeRichPresenceWebhookState(value: unknown): RichPresenceWebhookS
   };
 }
 
-async function handleRichPresenceServiceRequest(request: Request, env: any, url: URL) {
-  const method = request.method.toUpperCase();
-  const configuredSecret = typeof env.PRESENCE_SYNC_SECRET === "string" ? env.PRESENCE_SYNC_SECRET : "";
-  const authorization = request.headers.get("Authorization") || "";
-  const bearer = /^Bearer\s+(.+)$/i.exec(authorization)?.[1] || "";
-  if (!configuredSecret || !isSecretEqual(configuredSecret, bearer)) {
-    return json({ error: "Unauthorized presence service request." }, configuredSecret ? 401 : 503);
+function getRichPresenceGateway(env: any): any | null {
+  const namespace = env?.RICH_PRESENCE_GATEWAY;
+  if (
+    !namespace ||
+    typeof namespace.idFromName !== "function" ||
+    typeof namespace.get !== "function"
+  ) {
+    return null;
   }
+  return namespace.get(namespace.idFromName("everfall-bot-presence"));
+}
 
-  if (method !== "GET" && method !== "POST") {
-    return json({ error: "Method not allowed." }, 405);
-  }
-
-  const db = getD1Database(env);
-  if (!db) return json({ error: "The D1 database binding (DB) is not configured." }, 503);
-
-  if (method === "GET") {
-    const [storedConfig, serviceStatus, webhookState] = await Promise.all([
-      getMonitorStateValue<unknown>(db, RICH_PRESENCE_CONFIG_KEY),
-      getMonitorStateValue<RichPresenceServiceStatus>(db, RICH_PRESENCE_SERVICE_KEY),
-      getMonitorStateValue<RichPresenceWebhookState>(db, RICH_PRESENCE_WEBHOOK_KEY),
-    ]);
-    return json({
-      config: normalizeRichPresenceConfig(storedConfig ?? DEFAULT_RICH_PRESENCE_CONFIG),
-      publicOrigin: resolvePublicOrigin(env, url.origin),
-      serviceStatus,
-      webhookState: normalizeRichPresenceWebhookState(webhookState),
-    });
-  }
-
-  let body: any;
-  try {
-    body = await request.json();
-  } catch {
-    return json({ error: "Invalid JSON presence service update." }, 400);
-  }
-  if (!body || typeof body !== "object" || typeof body.connected !== "boolean") {
-    return json({ error: "Presence service update must include a connected boolean." }, 400);
-  }
-
-  const serviceStatus: RichPresenceServiceStatus = {
-    lastHeartbeatAt: Date.now(),
-    connected: body.connected,
-    activity: typeof body.activity === "string" ? body.activity.slice(0, 300) : null,
-    error: typeof body.error === "string" ? body.error.slice(0, 200) : null,
-    webhookConfigured: body.webhookConfigured === true,
-  };
-  await setMonitorStateValue(db, RICH_PRESENCE_SERVICE_KEY, serviceStatus);
-
-  const webhookResult = body.webhookResult;
-  if (webhookResult && typeof webhookResult === "object") {
-    const current = normalizeRichPresenceWebhookState(
-      await getMonitorStateValue<unknown>(db, RICH_PRESENCE_WEBHOOK_KEY)
-    );
-    if (
-      typeof webhookResult.requestId === "string" &&
-      webhookResult.requestId === current.requestId
-    ) {
-      const outcome = webhookResult.outcome;
-      if (outcome === "synced" || outcome === "deleted" || outcome === "error") {
-        const next: RichPresenceWebhookState = {
-          ...current,
-          messageId:
-            outcome === "deleted"
-              ? null
-              : outcome === "synced" && typeof webhookResult.messageId === "string"
-                ? webhookResult.messageId
-                : current.messageId,
-          processedRequestId: current.requestId,
-          error: outcome === "error" && typeof webhookResult.error === "string"
-            ? webhookResult.error.slice(0, 200)
-            : null,
-        };
-        await setMonitorStateValue(db, RICH_PRESENCE_WEBHOOK_KEY, next);
-      }
-    }
-  }
-
-  return json({ ok: true, receivedAt: serviceStatus.lastHeartbeatAt });
+async function requestRichPresenceGateway(
+  env: any,
+  action: "status" | "ensure" | "sync"
+): Promise<Response | null> {
+  const stub = getRichPresenceGateway(env);
+  if (!stub) return null;
+  const method = action === "status" ? "GET" : "POST";
+  return stub.fetch(`https://presence.internal/${action}`, { method });
 }
 
 function getEdgeCache(): Cache | null {
@@ -423,7 +351,7 @@ export async function handleApiRequest(
 
   const method = request.method.toUpperCase();
   if (url.pathname === "/api/internal/bot/presence") {
-    return handleRichPresenceServiceRequest(request, env, url);
+    return json({ error: "The external presence-service endpoint has been removed." }, 404);
   }
 
   const origin = getRequestOrigin(request, env);
@@ -3170,16 +3098,35 @@ export async function handleApiRequest(
     if (method === "GET" && url.pathname === "/api/admin/bot/presence") {
       const db = getD1Database(env);
       if (!db) return json({ error: "The D1 database binding (DB) is not configured." }, 503);
-      const [storedConfig, serviceStatus, storedWebhookState] = await Promise.all([
+      const [storedConfig, storedWebhookState] = await Promise.all([
         getMonitorStateValue<unknown>(db, RICH_PRESENCE_CONFIG_KEY),
-        getMonitorStateValue<RichPresenceServiceStatus>(db, RICH_PRESENCE_SERVICE_KEY),
         getMonitorStateValue<unknown>(db, RICH_PRESENCE_WEBHOOK_KEY),
       ]);
       const webhookState = normalizeRichPresenceWebhookState(storedWebhookState);
+      let serviceStatus: RichPresenceGatewayStatus | null = null;
+      let gatewayError: string | null = null;
+      let gatewayResponse: Response | null = null;
+      try {
+        gatewayResponse = await requestRichPresenceGateway(env, "status");
+      } catch {
+        gatewayError = "Could not reach the Rich Presence Durable Object.";
+      }
+      if (gatewayResponse?.ok) {
+        try {
+          serviceStatus = (await gatewayResponse.json()) as RichPresenceGatewayStatus;
+        } catch {
+          gatewayError = "Could not read the Durable Object Gateway status.";
+        }
+      } else if (gatewayResponse) {
+        gatewayError = "The Durable Object Gateway returned an error.";
+      } else if (!gatewayError) {
+        gatewayError = "The Rich Presence Durable Object binding is not configured.";
+      }
       const now = Date.now();
+      const lastHeartbeatAt = serviceStatus?.lastHeartbeatAt;
       const serviceOnline =
-        Boolean(serviceStatus?.lastHeartbeatAt) &&
-        now - serviceStatus!.lastHeartbeatAt < RICH_PRESENCE_SERVICE_STALE_MS;
+        typeof lastHeartbeatAt === "number" &&
+        now - lastHeartbeatAt < RICH_PRESENCE_SERVICE_STALE_MS;
       return json({
         ok: true,
         config: normalizeRichPresenceConfig(storedConfig ?? DEFAULT_RICH_PRESENCE_CONFIG),
@@ -3188,7 +3135,7 @@ export async function handleApiRequest(
           connected: serviceOnline && serviceStatus?.connected === true,
           lastHeartbeatAt: serviceStatus?.lastHeartbeatAt ?? null,
           activity: serviceStatus?.activity ?? null,
-          error: serviceOnline ? serviceStatus?.error ?? null : null,
+          error: serviceStatus?.error ?? gatewayError,
           webhookConfigured: serviceOnline && serviceStatus?.webhookConfigured === true,
         },
         webhookCard: {
@@ -3232,22 +3179,32 @@ export async function handleApiRequest(
       }
       const db = getD1Database(env);
       if (!db) return json({ error: "The D1 database binding (DB) is not configured." }, 503);
-      const [storedConfig, serviceStatus, storedWebhookState] = await Promise.all([
+      const [storedConfig, storedWebhookState] = await Promise.all([
         getMonitorStateValue<unknown>(db, RICH_PRESENCE_CONFIG_KEY),
-        getMonitorStateValue<RichPresenceServiceStatus>(db, RICH_PRESENCE_SERVICE_KEY),
         getMonitorStateValue<unknown>(db, RICH_PRESENCE_WEBHOOK_KEY),
       ]);
       const config = normalizeRichPresenceConfig(storedConfig ?? DEFAULT_RICH_PRESENCE_CONFIG);
       const webhookState = normalizeRichPresenceWebhookState(storedWebhookState);
+      let gatewayResponse: Response | null;
+      try {
+        gatewayResponse = await requestRichPresenceGateway(env, "status");
+      } catch {
+        return json({ error: "Could not reach the Rich Presence Durable Object." }, 503);
+      }
+      if (!gatewayResponse?.ok) {
+        return json({ error: "The Rich Presence Durable Object is unavailable." }, 503);
+      }
+      const serviceStatus = (await gatewayResponse.json()) as RichPresenceGatewayStatus;
       const now = Date.now();
+      const lastHeartbeatAt = serviceStatus.lastHeartbeatAt;
       const serviceOnline =
-        Boolean(serviceStatus?.lastHeartbeatAt) &&
-        now - serviceStatus!.lastHeartbeatAt < RICH_PRESENCE_SERVICE_STALE_MS;
+        typeof lastHeartbeatAt === "number" &&
+        now - lastHeartbeatAt < RICH_PRESENCE_SERVICE_STALE_MS;
       if (!serviceOnline) {
-        return json({ error: "The persistent Rich Presence service is not connected." }, 503);
+        return json({ error: "The Rich Presence Gateway is not connected." }, 503);
       }
       if (!serviceStatus?.webhookConfigured) {
-        return json({ error: "The Rich Presence service has no status webhook configured." }, 503);
+        return json({ error: "The optional status-card webhook is not configured." }, 503);
       }
       if (action === "sync" && !config.webhookCardEnabled) {
         return json({ error: "Enable the webhook status card and save it before publishing." }, 400);
@@ -3269,7 +3226,16 @@ export async function handleApiRequest(
         },
         now
       );
-      return json({ ok: true, requestId, action, queuedAt: now }, 202);
+      let warning: string | null = null;
+      try {
+        const syncResponse = await requestRichPresenceGateway(env, "sync");
+        if (!syncResponse?.ok) {
+          warning = "The card action is queued and will retry on the next Gateway sync.";
+        }
+      } catch {
+        warning = "The card action is queued, but the Gateway could not be woken immediately.";
+      }
+      return json({ ok: true, requestId, action, queuedAt: now, warning }, 202);
     }
 
     const buildBotStatePayload = async (forceRefreshGuilds = false, checkAvailability = true) => {
