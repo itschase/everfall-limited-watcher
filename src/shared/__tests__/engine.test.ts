@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createLocalD1 } from "../../server";
+import { createLocalD1 } from "../../localD1";
 import {
   extractVehicleMetadata,
   resolveListingPresentation,

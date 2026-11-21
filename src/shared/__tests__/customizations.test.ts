@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { decode, encode } from "fast-png";
-import { createLocalD1 } from "../../server";
+import { createLocalD1 } from "../../localD1";
 import {
   composeEventImage,
   decodeListingImage,

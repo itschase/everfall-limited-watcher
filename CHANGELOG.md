@@ -29,3 +29,9 @@
 - Stack shared tables into labeled row cards below 40rem of available width while retaining row controls, copy actions and pagination. Sortable header controls remain visible and table roles remain explicit.
 - Keep compact 16–20px card spacing, Zinc colors, Plus Jakarta Sans and Lucide icons. Clarify change-only Status Widget synchronization separately from optional sticky placement.
 - Record implementation behavior, remaining necessary legacy KV usage, local validation evidence, and the post-deployment Discord/zoom acceptance checklist in docs/validation/implementation.md.
+
+## 2026-11-21 — Deployment installation and CI startup fixes
+
+- Updated bun.lock alongside package-lock.json so Cloudflare Workers Builds can install the added Wrangler dependency with Bun's frozen-lockfile mode.
+- Extracted the Node-only local SQLite adapter into src/localD1.ts. Tests import this side-effect-free adapter instead of initializing the preview server and opening a shared on-disk database, preventing parallel Linux test processes from racing on SQLite startup.
+- Kept the preview server's existing database path explicit and preserved the same D1 adapter behavior. The application test suite, TypeScript validation, and production build pass after extraction.
