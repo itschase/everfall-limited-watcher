@@ -64,3 +64,11 @@
 - Replace per-pixel temporary array allocation and repeated coordinate math with precomputed columns and direct RGBA copying.
 - Use native streaming PNG compression with standard PNG chunks/checksums instead of synchronous JavaScript deflate, preserving 960×540 output, center crops, transparency and third-slot image fallback.
 - Added a high-resolution two/three-column regression covering native PNG decoding, pixel colors and repeated-source read avoidance. TypeScript, all 43 tests, the production build and Worker dry run pass.
+
+## 2026-11-21 — Versioned member Changelog
+
+- Added an authenticated Changelog page linked from dashboard navigation and the account menu. It presents readable, detailed release notes organized into Highlights, New additions, Improvements, and Fixes.
+- Added an administrator Release Notes editor for adding versions, editing release dates, introductions and section entries, previewing the member layout, saving drafts, publishing updates and withdrawing a version from member view.
+- Seeded an editable user-facing release focused on visible benefits and features, omitting implementation tools, providers and infrastructure details.
+- Store versions independently, require login for member reads, enforce administrator-only editing, and exclude draft content from member API responses. Updates preserve other versions and introduce no KV operations.
+- Added regression coverage for safe content/version/date validation, publication and draft isolation, independent updates, authentication, write authorization, duplicate-version handling and zero KV usage.

@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   Copy,
+  FileText,
   History,
   LayoutDashboard,
   LogOut,
@@ -70,6 +71,10 @@ export function UserAccountMenu({
             <Copy className="h-4 w-4 text-muted-foreground" />
           )}
           Copy Discord ID
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void navigate({ to: "/changelog" })}>
+          <FileText className="h-4 w-4" />
+          Changelog
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => void navigate({ to: "/dashboard" })}>

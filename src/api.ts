@@ -66,6 +66,8 @@ import {
 } from "./scraper";
 import { fetchDiscordWithRetry, validateBotChannelPermissions } from "./discord";
 import { normalizeCustomizations } from "./shared/customizations";
+import { getReleaseNotes, saveReleaseNote } from "./releaseNotes";
+import { normalizeReleaseNote } from "./shared/releaseNotes";
 import { deployTestEvent, endTestEvent, getTestEventStatus, previewTestEvent, TestEventError } from "./testEvents";
 import { getD1Database, getMonitorStateValue, reserveTestAlertCooldown } from "./d1";
 import {
@@ -530,6 +532,10 @@ export async function handleApiRequest(
 
   // Authenticated routes below
   const user = await getCurrentSessionUser(request, env);
+  if (method === "GET" && url.pathname === "/api/changelog") {
+    if (!user) return json({ error: "Authentication required." }, 401);
+    return json({ entries: await getReleaseNotes(env) });
+  }
 
   // 3. Complete Historical Archive (all authenticated users)
   if (method === "GET" && url.pathname === "/api/history") {
@@ -1218,6 +1224,20 @@ export async function handleApiRequest(
   if (url.pathname.startsWith("/api/admin/")) {
     if (!user) return json({ error: "Authentication required." }, 401);
     if (!user.isAdmin) return json({ error: "Master administrator access required." }, 403);
+    if (url.pathname === "/api/admin/changelog") {
+      if (method === "GET") return json({ entries: await getReleaseNotes(env, true) });
+      if (method === "POST" || method === "PUT") {
+        if (!getD1Database(env)) return json({ error: "Release-note storage is unavailable." }, 503);
+        let body: any;
+        try { body = await request.json(); } catch { return json({ error: "Invalid JSON payload." }, 400); }
+        try { body = normalizeReleaseNote(body); } catch (error) { return json({ error: error instanceof Error ? error.message : "Invalid release notes." }, 400); }
+        const exists = (await getReleaseNotes(env, true)).some(note => note.version === body?.version);
+        if (method === "POST" && exists) return json({ error: "That version already exists. Select it to edit its release notes." }, 409);
+        if (method === "PUT" && !exists) return json({ error: "Release version not found." }, 404);
+        try { return json({ entry: await saveReleaseNote(env, body) }); }
+        catch (error) { return json({ error: error instanceof Error ? error.message : "Could not save release notes." }, 400); }
+      }
+    }
 
     // 7. Admin Overview & Shared Data
     if (method === "GET" && url.pathname === "/api/admin/overview") {

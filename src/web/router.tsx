@@ -18,6 +18,8 @@ import { AdminWidgetsPage } from "@/features/admin/AdminWidgetsPage";
 import { AdminMetadataPage } from "@/features/admin/AdminMetadataPage";
 import { AdminPagesPage } from "@/features/admin/AdminPagesPage";
 import { AdminHeroPage } from "@/features/admin/AdminHeroPage";
+import { ChangelogPage } from "@/features/changelog/ChangelogPage";
+import { AdminChangelogPage } from "@/features/admin/AdminChangelogPage";
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
@@ -150,6 +152,8 @@ const adminHeroRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
+  createRoute({ getParentRoute: () => rootRoute, path: "/changelog", component: ChangelogPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/admin/changelog", component: AdminChangelogPage }),
   indexRoute,
   featuresRoute,
   aboutRoute,

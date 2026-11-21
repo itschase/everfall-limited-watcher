@@ -36,6 +36,7 @@ interface NavItem {
 const GENERAL_NAV: NavItem[] = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, exact: true },
   { label: "Limited Drop History", to: "/history", icon: History },
+  { label: "Changelog", to: "/changelog", icon: FileText },
 ];
 
 const ADMIN_NAV: NavItem[] = [
@@ -47,6 +48,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Image Manager", to: "/admin/images", icon: Images },
   { label: "Embed Manager", to: "/admin/embeds", icon: Palette },
   { label: "Pages", to: "/admin/pages", icon: FileText },
+  { label: "Release Notes", to: "/admin/changelog", icon: FileText },
   { label: "Store Monitoring", to: "/admin/monitor", icon: Activity },
   { label: "Dispatch & Deliveries", to: "/admin/dispatch", icon: Send },
   { label: "Testing", to: "/admin/testing", icon: FlaskConical },

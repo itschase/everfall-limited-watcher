@@ -36,6 +36,8 @@ Configuration commands enforce server-management permissions. Test notifications
 
 ### Administrators
 
+Signed-in members can open **Changelog** from dashboard navigation or their account menu to read versioned, member-friendly release notes. Administrators can use **Admin → Release Notes** to add a version, edit its introduction and Highlights/New additions/Improvements/Fixes, preview the member view, and save it as a draft or publish it. Unpublished drafts are visible only to administrators; updating one version preserves the others. Keep the public wording focused on member benefits rather than internal tools or hosting details.
+
 The configured master administrator can manage the bot, servers, monitoring, deliveries, embeds, vehicle metadata, images, and public content. **Admin → Pages** edits Home, Features, About, Privacy Policy, and Terms of Service through structured controls rather than arbitrary HTML.
 
 Pages supports independent hero/badge visibility, intentional blank badge text, visual Lucide/no-icon selection, cards, button destinations, section ordering/duplication/removal/reset, and layout presets. Additional paragraph/CTA sections appear after built-in content. Required legal content stays protected. Desktop/Tablet/Mobile previews render shared public components at 1280/768/375px.
