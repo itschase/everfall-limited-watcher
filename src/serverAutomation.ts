@@ -285,10 +285,9 @@ export async function runServerAutomations(
               messageId: oldId,
               startedAt: now,
               payload: {
-                content: message.content || "",
-                embeds: message.embeds,
+                ...(message.flags & 32768 ? {} : { content: message.content || "", embeds: message.embeds }),
                 components: message.components,
-                flags: message.flags & 32768,
+                flags: (message.flags & 32768) | 4096,
               },
             };
             await setMonitorStateValue(db, key, state);
@@ -312,10 +311,9 @@ export async function runServerAutomations(
               `/channels/${widget.channelId}/messages`,
               "POST",
               {
-                content: message.content || "",
-                embeds: message.embeds,
+                ...(message.flags & 32768 ? {} : { content: message.content || "", embeds: message.embeds }),
                 components: message.components,
-                flags: message.flags & 32768,
+                flags: (message.flags & 32768) | 4096,
                 allowed_mentions: { parse: [] },
                 nonce: oldId,
                 enforce_nonce: true,

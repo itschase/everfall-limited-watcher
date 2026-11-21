@@ -419,10 +419,14 @@ test("sticky replacement recovers a failed send, keeps one tracked widget, respe
             content: "Live widget",
             embeds: [],
             components: [],
-            flags: 0,
+            flags: 32768,
           });
     if (method === "POST") {
       sends++;
+      const payload = JSON.parse(String(init?.body));
+      assert.equal(payload.content, undefined, "Components v2 replacements omit legacy content");
+      assert.equal(payload.embeds, undefined, "Components v2 replacements omit legacy embeds");
+      assert.equal(payload.flags, 32768 | 4096, "Sticky replacements suppress notifications");
       if (failSend) return new Response(null, { status: 503 });
       return Response.json({ id: newId });
     }

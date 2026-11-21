@@ -41,3 +41,9 @@
 - Expanded the README with the application's purpose, visitor workflows, Discord setup and commands, manager customizations, admin Pages usage, Node setup, bindings/secrets, and verification commands.
 - Documented both frozen lockfiles and distinguished connected Cloudflare Builds from manually dispatched production GitHub Actions deployment.
 - Clarified actual monitoring cadence versus display-only settings and identified remaining deployed Discord/zoom acceptance work.
+
+## 2026-11-21 — Quiet Components v2 sticky replacements
+
+- Omit legacy content/embed fields when replacing Components v2 widgets so Discord accepts the component-only payload.
+- Set Suppress Notifications on sticky replacements in addition to disabling mentions, reducing channel notification noise.
+- Extend the sticky-send failure/recovery regression test to assert the Components v2 payload and notification flags.
