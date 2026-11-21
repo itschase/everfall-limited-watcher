@@ -182,7 +182,8 @@ test("Durable Object identifies, heartbeats, and updates the bot's activity", as
   }
 
   globalThis.WebSocket = MockGatewaySocket as unknown as typeof WebSocket;
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(init?.cache, undefined);
     const path = new URL(input.toString()).pathname;
     const data =
       path === "/api/public/status"
