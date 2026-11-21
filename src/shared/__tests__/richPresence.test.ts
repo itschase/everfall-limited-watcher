@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createLocalD1 } from "../../localD1";
 import { createSessionToken } from "../../admin";
 import { handleApiRequest } from "../../api";
+import { resolvePresenceSyncUrl } from "../../presenceServiceConfig";
 import {
   buildRichPresenceActivity,
   buildRichPresenceWebhookPayload,
@@ -84,6 +85,27 @@ test("webhook cards include relative timing and an optional link button", () => 
     label: "Open status",
     url: "https://example.com/status",
   });
+});
+
+test("presence service derives its endpoint from the public origin and validates overrides", () => {
+  assert.equal(
+    resolvePresenceSyncUrl({}),
+    "https://everfall-limited-watcher.itschase.workers.dev/api/internal/bot/presence",
+  );
+  assert.equal(
+    resolvePresenceSyncUrl({ PUBLIC_ORIGIN: "https://staging.example.test/app" }),
+    "https://staging.example.test/api/internal/bot/presence",
+  );
+  assert.equal(
+    resolvePresenceSyncUrl({
+      PRESENCE_SYNC_URL: "https://custom.example.test/api/internal/bot/presence",
+    }),
+    "https://custom.example.test/api/internal/bot/presence",
+  );
+  assert.throws(
+    () => resolvePresenceSyncUrl({ PRESENCE_SYNC_URL: "https://example.test/other" }),
+    /presence sync endpoint/,
+  );
 });
 
 test("presence service API is authenticated and admin webhook actions are explicitly queued in D1", async () => {

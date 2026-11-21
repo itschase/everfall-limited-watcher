@@ -1,4 +1,4 @@
-import { ActivityType, Client, Events, GatewayIntentBits, type PresenceStatusData } from "discord.js";
+import { ActivityType, Client, Events, type PresenceStatusData } from "discord.js";
 import {
   buildRichPresenceActivity,
   buildRichPresenceWebhookPayload,
@@ -7,6 +7,7 @@ import {
   type RichPresenceConfig,
   type RichPresenceSnapshot,
 } from "./shared/richPresence";
+import { resolvePresenceSyncUrl } from "./presenceServiceConfig";
 
 const SYNC_INTERVAL_MS = 60_000;
 
@@ -71,31 +72,11 @@ function requiredEnv(name: string): string {
 }
 
 function safeError(error: unknown): string {
-  return error instanceof Error ? error.name.slice(0, 100) : "UnknownError";
-}
-
-function validateSyncUrl(raw: string): string {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new Error("PRESENCE_SYNC_URL must be a valid URL.");
-  }
-  const isLocalHttp =
-    url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-  if (
-    (url.protocol !== "https:" && !isLocalHttp) ||
-    url.pathname !== "/api/internal/bot/presence" ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash
-  ) {
-    throw new Error(
-      "PRESENCE_SYNC_URL must be an HTTPS URL for /api/internal/bot/presence (HTTP is allowed only on localhost)."
-    );
-  }
-  return url.toString();
+  if (!(error instanceof Error)) return "UnknownError";
+  const message = error.message
+    .replace(/https?:\/\/[^\s"'<>]+/gi, "[URL]")
+    .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]");
+  return `${error.name}: ${message}`.slice(0, 200);
 }
 
 function buildSnapshot(
@@ -190,7 +171,7 @@ async function callWebhook(
 
 async function main() {
   const botToken = requiredEnv("DISCORD_BOT_TOKEN");
-  const syncUrl = validateSyncUrl(requiredEnv("PRESENCE_SYNC_URL"));
+  const syncUrl = resolvePresenceSyncUrl(process.env);
   const syncSecret = requiredEnv("PRESENCE_SYNC_SECRET");
   const webhookUrl = process.env.DISCORD_STATUS_WEBHOOK_URL?.trim()
     ? validateWebhookUrl(process.env.DISCORD_STATUS_WEBHOOK_URL.trim())
