@@ -332,15 +332,13 @@ test("admin presence API delegates to the Durable Object and queues webhook acti
       ...DEFAULT_RICH_PRESENCE_CONFIG,
       webhookCardEnabled: true,
     };
-    assert.equal(
-      (
-        await request("/api/admin/bot/presence", "PUT", {
-          token: adminToken,
-          body: savedConfig,
-        })
-      )?.status,
-      200,
-    );
+    const callsBeforeSave = gatewayCalls.length;
+    const saveResponse = await request("/api/admin/bot/presence", "PUT", {
+      token: adminToken,
+      body: savedConfig,
+    });
+    assert.equal(saveResponse?.status, 200);
+    assert.equal(gatewayCalls[callsBeforeSave], "/sync");
     const queued = await request("/api/admin/bot/presence/webhook-card", "POST", {
       token: adminToken,
       body: { action: "sync" },

@@ -155,13 +155,17 @@ export function RichPresenceControls() {
 
   const saveMutation = useMutation({
     mutationFn: (config: RichPresenceConfig) =>
-      apiFetch<{ ok: boolean; config: RichPresenceConfig }>("/api/admin/bot/presence", {
-        method: "PUT",
-        body: JSON.stringify(config),
-      }),
+      apiFetch<{ ok: boolean; config: RichPresenceConfig; warning?: string | null }>(
+        "/api/admin/bot/presence",
+        {
+          method: "PUT",
+          body: JSON.stringify(config),
+        }
+      ),
     onSuccess: (response) => {
       setDraft(response.config);
-      toast.success("Rich Presence settings saved.");
+      if (response.warning) toast.warning(response.warning);
+      else toast.success("Rich Presence settings saved.");
       void queryClient.invalidateQueries({ queryKey: RICH_PRESENCE_KEY });
     },
     onError: (error: Error) => toast.error(error.message || "Failed to save Rich Presence settings."),
@@ -243,6 +247,11 @@ export function RichPresenceControls() {
               Heartbeat {formatLocalDateTime(data.service.lastHeartbeatAt)}
             </span>
           )}
+          {data?.config.enabled && (
+            <span className="text-[11px] text-muted-foreground">
+              Last activity sent: {data.service.activity || "None yet"}
+            </span>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -255,9 +264,12 @@ export function RichPresenceControls() {
               Durable Object binding is deployed. No separate process, sync secret, or webhook is
               needed for profile activity.
             </p>
-            {data?.service.error && (
-              <p className="mt-1 text-amber-100/90">Last service error: {data.service.error}</p>
-            )}
+          </div>
+        )}
+
+        {data?.service.error && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
+            Last service error: {data.service.error}
           </div>
         )}
 
@@ -266,6 +278,8 @@ export function RichPresenceControls() {
           URL. Native activity details, elapsed-time fields, and Rich Presence buttons are not
           available to bots. Use the live timing placeholders in the state text; the optional
           webhook card can display details, Discord-relative timestamps, and a site-link button.
+          A heartbeat confirms the Gateway connection, not that Discord acknowledged a presence
+          update.
         </div>
 
         <div className="grid gap-6 @4xl/main:grid-cols-2">

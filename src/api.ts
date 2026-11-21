@@ -3163,7 +3163,16 @@ export async function handleApiRequest(
       const config = normalizeRichPresenceConfig(body);
       const savedAt = Date.now();
       await setMonitorStateValue(db, RICH_PRESENCE_CONFIG_KEY, config, savedAt);
-      return json({ ok: true, config, savedAt });
+      let warning: string | null = null;
+      try {
+        const syncResponse = await requestRichPresenceGateway(env, "sync");
+        if (!syncResponse?.ok) {
+          warning = "Settings were saved, but the Gateway did not respond to an immediate sync.";
+        }
+      } catch {
+        warning = "Settings were saved, but the Gateway could not be reached for an immediate sync.";
+      }
+      return json({ ok: true, config, savedAt, warning });
     }
 
     if (method === "POST" && url.pathname === "/api/admin/bot/presence/webhook-card") {
