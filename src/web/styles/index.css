@@ -94,7 +94,6 @@
     color-scheme: dark;
     font-family: var(--font-sans);
     max-width: 100%;
-    overflow-x: clip;
   }
 
   body {
@@ -102,7 +101,6 @@
     color: var(--foreground);
     min-height: 100vh;
     max-width: 100%;
-    overflow-x: clip;
     margin: 0;
   }
 

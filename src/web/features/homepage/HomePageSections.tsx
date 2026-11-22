@@ -486,7 +486,7 @@ export function HomePageSections({
                     </div>
                     <div
                       ref={carouselRef}
-                      className="thin-scrollbar flex w-full max-w-full snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain pb-3"
+                      className="thin-scrollbar relative flex w-full max-w-full snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain pb-3"
                     >
                       {filteredListings.map((car) => (
                         <div

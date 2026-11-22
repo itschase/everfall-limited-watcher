@@ -216,7 +216,7 @@ export function VehicleCard({
     <Card
       onClick={onInspect ? handleCardInspect : undefined}
       className={cn(
-        "group flex h-full flex-col overflow-hidden border-border/80 bg-card/95 transition-all duration-200 hover:border-zinc-700 hover:shadow-[0_4px_24px_rgba(0,0,0,0.5)]",
+        "group relative flex h-full flex-col overflow-hidden border-border/80 bg-card/95 transition-all duration-200 hover:border-zinc-700 hover:shadow-[0_4px_24px_rgba(0,0,0,0.5)]",
         onInspect && "cursor-pointer",
         className
       )}

@@ -32,7 +32,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
       : creatorProfile;
 
   return (
-    <div className="public-shell flex min-h-screen w-full max-w-full flex-col overflow-x-clip bg-background text-foreground">
+    <div className="public-shell relative flex min-h-screen w-full max-w-full flex-col overflow-x-clip bg-background text-foreground">
       <a href="#public-content" className="skip-link">
         Skip to content
       </a>
