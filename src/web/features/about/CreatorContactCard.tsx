@@ -14,6 +14,14 @@ function DiscordMark() {
   );
 }
 
+function GitHubMark() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+      <path d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.56.1.76-.24.76-.54v-1.9c-3.1.67-3.75-1.32-3.75-1.32-.5-1.28-1.24-1.62-1.24-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15 1 .1.75 2.48 3.55 1.77.1-.72.39-1.21.7-1.49-2.48-.28-5.08-1.24-5.08-5.53 0-1.22.44-2.22 1.15-3-.12-.28-.5-1.42.11-2.96 0 0 .94-.3 3.05 1.14a10.6 10.6 0 0 1 5.56 0c2.11-1.44 3.05-1.14 3.05-1.14.61 1.54.23 2.68.11 2.96.72.78 1.15 1.78 1.15 3 0 4.3-2.6 5.25-5.09 5.52.4.35.75 1.02.75 2.06v3.04c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z" />
+    </svg>
+  );
+}
+
 export function CreatorContactCard({ creator }: { creator: CreatorProfile }) {
   const displayName = creator.profile?.globalName || creator.username;
   const discordUrl =
@@ -85,17 +93,28 @@ export function CreatorContactCard({ creator }: { creator: CreatorProfile }) {
 
             <div className="my-4 border-t border-white/10" />
 
-            {discordUrl && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {discordUrl && (
+                <a
+                  href={discordUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-w-28 items-center justify-center gap-2 rounded-lg bg-zinc-950/65 px-4 py-2.5 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-950/90"
+                >
+                  <DiscordMark />
+                  Discord
+                </a>
+              )}
               <a
-                href={discordUrl}
+                href="https://github.com/itschase/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex min-w-28 items-center justify-center gap-2 rounded-lg bg-zinc-950/65 px-4 py-2.5 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-950/90"
               >
-                <DiscordMark />
-                Discord
+                <GitHubMark />
+                GitHub
               </a>
-            )}
+            </div>
           </div>
         </div>
       </Card>
