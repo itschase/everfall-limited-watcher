@@ -6,6 +6,7 @@ import { useSession } from "@/features/auth/useAuthActions";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { PageSeo } from "@/components/seo/PageSeo";
 import { AboutPageSections } from "./AboutPageSections";
+import { CreatorContactCard } from "./CreatorContactCard";
 
 export function AboutPage() {
   const { data: session } = useSession();
@@ -58,6 +59,9 @@ export function AboutPage() {
       />
 
       <AboutPageSections about={about} />
+      {session?.creatorProfile && (
+        <CreatorContactCard creator={session.creatorProfile} />
+      )}
     </PublicLayout>
   );
 }
