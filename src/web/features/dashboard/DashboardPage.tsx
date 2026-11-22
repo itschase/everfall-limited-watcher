@@ -1074,7 +1074,7 @@ export function DashboardPage() {
         <Card className="mb-6 overflow-hidden border-zinc-800 bg-zinc-950 p-0">
           <div
             className={cn(
-              "relative h-28 overflow-hidden",
+              "relative h-24 overflow-hidden sm:h-28",
               session.user.profile?.accentColor
                 ? "bg-zinc-900"
                 : "bg-gradient-to-br from-zinc-700/70 via-zinc-900 to-zinc-950"
@@ -1099,7 +1099,7 @@ export function DashboardPage() {
               avatarUrl={session.user.avatarUrl}
               decorationUrl={session.user.profile?.avatarDecorationUrl}
               alt={session.user.profile?.globalName || session.user.username}
-              className="-mt-10 h-24 w-24 rounded-full bg-zinc-950"
+              className="-mt-8 h-20 w-20 rounded-full bg-zinc-950 sm:-mt-10 sm:h-24 sm:w-24"
             />
             <div className="min-w-0 flex-1 pb-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -1126,7 +1126,7 @@ export function DashboardPage() {
               href={`https://discord.com/users/${session.user.id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-100 transition hover:border-zinc-600 hover:bg-zinc-800"
+              className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-100 transition hover:border-zinc-600 hover:bg-zinc-800 sm:w-auto"
             >
               Open Discord Profile
               <ExternalLink className="h-3.5 w-3.5" />
