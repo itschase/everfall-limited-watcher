@@ -5,8 +5,9 @@
   "scripts": {
     "changelog:generate": "tsx scripts/build-release-notes.ts",
     "build": "npm run changelog:generate && vite build && tsc",
-    "lint": "tsx scripts/build-release-notes.ts --check && tsc --noEmit",
-    "test": "tsx --test src/shared/__tests__/*.test.ts",
+    "lint": "node scripts/check-lockfiles.mjs && tsx scripts/build-release-notes.ts --check && tsc --noEmit",
+    "test": "node --test scripts/check-lockfiles.test.mjs && tsx --test src/shared/__tests__/*.test.ts",
+    "check:lockfiles": "node scripts/check-lockfiles.mjs && bun install --frozen-lockfile --lockfile-only && npm ci --dry-run --ignore-scripts --no-audit --no-fund",
     "check:worker": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
     "dev": "npm run changelog:generate && tsx watch src/server.ts",
     "start": "npm run changelog:generate && tsx src/server.ts"

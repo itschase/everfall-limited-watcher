@@ -99,6 +99,19 @@ Use **Node.js 24 or newer** because the local adapter uses `node:sqlite`. Run `n
 
 Both `package-lock.json` and `bun.lock` must be updated when dependencies change. GitHub Actions uses `npm ci`; Bun-based Cloudflare builds use `bun install --frozen-lockfile`. A stale Bun lockfile fails deployment even when npm installation succeeds.
 
+Use the Bun version recorded in `.bun-version` (the version used to reproduce the reported Cloudflare build). Keep `tsx` in runtime `dependencies`, since `start` and release generation use it. After changing dependencies or moving a package between groups, regenerate with `bun install` and `npm install --package-lock-only`, then run:
+
+```sh
+npm run check:lockfiles
+npm ci
+npm run lint
+npm test
+bun run build
+npm run check:worker
+```
+
+`npm run lint` first checks root dependency versions and groups against both lockfiles, including Bun's JSONC syntax. `check:lockfiles` also checks Bun's frozen dependency resolution without rewriting its lockfile and dry-runs npm's clean install. CI performs an actual clean Bun frozen install and build in a separate job, alongside the npm job. Both gate GitHub Actions deployment jobs. Connected Cloudflare Builds starts independently on a push; CI cannot retroactively stop that build, so commit both synchronized lockfiles before pushing.
+
 ## Required Environment Variables & Secrets
 
 Public `[vars]` are configured in `wrangler.toml`. Sensitive values must only be set in Cloudflare Dashboard secrets or your local environment:

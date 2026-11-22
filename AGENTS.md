@@ -23,3 +23,9 @@ Whenever modifying Discord OAuth scopes, collected user/server data, cookies, lo
 - Record engineering details in `CHANGELOG.md` outside the website release markers. For each user-visible update, also add a unique, plain-language release inside `website-releases:start` / `website-releases:end`; those entries are automatically published to signed-in members with deployment.
 - Follow the documented version/date/title and section format, describe user benefits, and omit internal tools, providers, credentials, and infrastructure details from website copy.
 - Run `npm run changelog:generate` and commit `src/shared/publishedReleaseNotes.json` with the source changelog. Never edit the generated catalog directly. Preserve existing releases and remember that website editor overrides, including withdrawn versions, take precedence for the same version.
+
+## 6. Dependency and Lockfile Integrity
+- Keep dependency versions and groups aligned across `package.json`, `bun.lock`, and `package-lock.json`. `tsx` remains a runtime dependency because `start` and release generation require it; do not move it only in a lockfile.
+- Use the Bun version in `.bun-version`. After adding, removing, upgrading, or moving a dependency, run `bun install` and `npm install --package-lock-only`; commit every changed manifest/lockfile together. Never hand-edit generated lockfiles.
+- Before pushing dependency changes, run `npm run check:lockfiles`, `npm ci`, `npm run lint`, `npm test`, `bun run build`, and `npm run check:worker`. A passing npm install alone does not validate Cloudflare's Bun frozen install.
+- Preserve both CI verification jobs. GitHub Actions deployments require the npm and frozen-Bun checks; connected Cloudflare Builds runs independently and must receive synchronized lockfiles in the pushed commit.

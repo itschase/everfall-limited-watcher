@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-22 — Frozen Bun and npm lockfile verification
+
+- Reproduced the reported Cloudflare failure with Bun 1.4.4 against the latest layout commit: its Bun lockfile moved `tsx` to development dependencies and omitted `wrangler` while the manifest retained their intended groups. Preserved the layout changes and kept `tsx` as a runtime dependency.
+- Regenerated dependency locks against the manifest and recorded the tested Bun version in `.bun-version`. Added `check:lockfiles` for Bun frozen resolution and an npm clean-install dry run.
+- Added an independent clean Bun frozen-install/build/Worker verification job alongside npm CI; both now gate GitHub Actions deployment jobs. Connected Cloudflare Builds remains independently triggered, so this does not claim a CI gate over its automatic build.
+- Made ordinary lint fail early on dependency version/group drift in either lockfile; regression cases cover the reported `tsx` move, missing `wrangler`, stale npm versions and malformed JSONC.
+- Added dependency-change instructions to AGENTS.md and README.md so versions and dependency groups must remain synchronized across both generated locks. No runtime, OAuth, data collection, privacy or Cloudflare setting changes are included.
+
 ## 2026-11-22 — One source for the monitoring interval
 
 - Set `STORE_MONITOR_INTERVAL_MINUTES` in `src/shared/appConfig.ts` to 15, matching the owner's externally managed job. Existing derived API values, Discord help/template variables, local check cooldowns and website labels share that source.
