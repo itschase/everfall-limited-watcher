@@ -323,7 +323,7 @@ export function VehicleCard({
       {images.length > 1 && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="thin-scrollbar flex items-center gap-1.5 overflow-x-auto border-b border-border bg-zinc-900/80 px-3 py-2"
+          className="thin-scrollbar flex items-center gap-1.5 overflow-x-auto overscroll-x-contain border-b border-border bg-zinc-900/80 px-3 py-2"
         >
           {images.map((src, idx) => (
             <button
@@ -371,12 +371,12 @@ export function VehicleCard({
                   e.stopPropagation();
                   onInspect(listing);
                 }}
-                className="text-left text-lg font-bold tracking-tight text-white transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded cursor-pointer"
+                className="min-w-0 break-words text-left text-lg font-bold tracking-tight text-white transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded cursor-pointer"
               >
                 {displayName}
               </button>
             ) : (
-              <h3 className="text-lg font-bold tracking-tight text-white">
+              <h3 className="min-w-0 break-words text-lg font-bold tracking-tight text-white">
                 {displayName}
               </h3>
             )}
@@ -568,9 +568,9 @@ export function VehicleCard({
               )}
             </div>
           ) : (
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
               <span className="text-sm font-semibold text-red-400">Sold Out<ListingPrice id={listing.id} inStock={false} inline /></span>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {editMetadataHref && (
                   <a
                     href={editMetadataHref}

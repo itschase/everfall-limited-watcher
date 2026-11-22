@@ -32,12 +32,12 @@ export function PublicLayout({ children }: { children: ReactNode }) {
       : creatorProfile;
 
   return (
-    <div className="public-shell flex min-h-screen flex-col bg-background text-foreground">
+    <div className="public-shell flex min-h-screen w-full max-w-full flex-col overflow-x-clip bg-background text-foreground">
       <a href="#public-content" className="skip-link">
         Skip to content
       </a>
       {/* 3-Zone Header */}
-      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-md">
+      <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6 lg:px-8">
           <Link
             to="/"
@@ -126,30 +126,30 @@ export function PublicLayout({ children }: { children: ReactNode }) {
         {/* Mobile Public Navigation */}
         <nav
           aria-label="Mobile Navigation"
-          className="flex items-center justify-around border-t border-border/60 bg-zinc-950/90 px-3 py-2 text-xs font-medium text-muted-foreground lg:hidden"
+          className="flex w-full items-center justify-around gap-1 border-t border-border/60 bg-zinc-950/90 px-2 py-2 text-xs font-medium text-muted-foreground lg:hidden"
         >
           <Link
             to="/"
             activeOptions={{ exact: true }}
-            className="rounded-md px-3 py-1 transition hover:text-white [&.active]:bg-zinc-900 [&.active]:font-semibold [&.active]:text-white"
+            className="whitespace-nowrap rounded-md px-2.5 py-1 transition hover:text-white [&.active]:bg-zinc-900 [&.active]:font-semibold [&.active]:text-white"
           >
             Home
           </Link>
           <Link
             to="/features"
-            className="rounded-md px-3 py-1 transition hover:text-white [&.active]:bg-zinc-900 [&.active]:font-semibold [&.active]:text-white"
+            className="whitespace-nowrap rounded-md px-2.5 py-1 transition hover:text-white [&.active]:bg-zinc-900 [&.active]:font-semibold [&.active]:text-white"
           >
             Features
           </Link>
           <Link
             to="/history"
-            className="rounded-md px-3 py-1 transition hover:text-white [&.active]:bg-zinc-900 [&.active]:font-semibold [&.active]:text-white"
+            className="whitespace-nowrap rounded-md px-2.5 py-1 transition hover:text-white [&.active]:bg-zinc-900 [&.active]:font-semibold [&.active]:text-white"
           >
             Drop History
           </Link>
           <Link
             to="/about"
-            className="rounded-md px-3 py-1 transition hover:text-white [&.active]:bg-zinc-900 [&.active]:font-semibold [&.active]:text-white"
+            className="whitespace-nowrap rounded-md px-2.5 py-1 transition hover:text-white [&.active]:bg-zinc-900 [&.active]:font-semibold [&.active]:text-white"
           >
             About
           </Link>
@@ -159,13 +159,13 @@ export function PublicLayout({ children }: { children: ReactNode }) {
       <main
         id="public-content"
         tabIndex={-1}
-        className="min-w-0 flex-1 outline-none"
+        className="w-full min-w-0 flex-1 outline-none"
       >
         {children}
       </main>
 
       {/* Public Footer */}
-      <footer className="border-t border-border bg-zinc-950">
+      <footer className="w-full min-w-0 border-t border-border bg-zinc-950">
         <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-6 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2.5 text-sm font-semibold text-white">

@@ -18,7 +18,7 @@ export function PublicExtraSections({
           <section
             key={section.id}
             className={cn(
-              "mx-auto w-full px-4 sm:px-6",
+              "mx-auto w-full min-w-0 overflow-x-clip px-4 sm:px-6",
               section.contentWidth === "wide" ? "max-w-7xl" : "max-w-5xl",
               section.spacing === "compact"
                 ? "py-4"
@@ -55,7 +55,7 @@ export function PublicExtraSections({
               </h2>
               <div className="mt-3 space-y-3 text-sm leading-relaxed text-muted-foreground">
                 {section.body.split(/\n\s*\n/).map((paragraph, index) => (
-                  <p key={index} className="whitespace-pre-line break-words">
+                  <p key={index} className="whitespace-pre-line break-words [overflow-wrap:anywhere]">
                     {paragraph}
                   </p>
                 ))}

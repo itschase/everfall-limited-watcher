@@ -224,10 +224,10 @@ export function HomePageSections({
           return (
             <section
               key="hero"
-              className="relative overflow-hidden border-b border-border bg-background"
+              className="relative w-full overflow-hidden overflow-x-clip border-b border-border bg-background"
             >
               <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                <div className="absolute -top-32 left-1/2 h-[450px] w-[700px] -translate-x-1/2 rounded-full bg-gradient-to-tr from-emerald-500/10 via-zinc-800/15 to-transparent blur-[140px] opacity-70" />
+                <div className="absolute -top-32 left-1/2 h-[450px] w-full max-w-[700px] -translate-x-1/2 rounded-full bg-gradient-to-tr from-emerald-500/10 via-zinc-800/15 to-transparent blur-[140px] opacity-70" />
               </div>
 
               <div
@@ -299,7 +299,7 @@ export function HomePageSections({
           return (
             <section
               key="telemetry"
-              className="border-b border-border bg-zinc-950/70"
+              className="w-full overflow-x-clip border-b border-border bg-zinc-950/70"
             >
               <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
                 {renderTelemetryGrid(false)}
@@ -313,7 +313,7 @@ export function HomePageSections({
           return (
             <section
               key="listings"
-              className={cn("mx-auto max-w-7xl px-4 sm:px-6 lg:px-8", spacing.sectionPadding)}
+              className={cn("mx-auto w-full min-w-0 max-w-7xl overflow-x-clip px-4 sm:px-6 lg:px-8", spacing.sectionPadding)}
             >
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
@@ -342,7 +342,7 @@ export function HomePageSections({
                   <Tabs
                     value={statusFilter}
                     onValueChange={(val) => setStatusFilter(val as any)}
-                    className="w-auto"
+                    className="w-full max-w-full sm:w-auto"
                   >
                     <TabsList>
                       <TabsTrigger value="all">All ({listings.length})</TabsTrigger>
@@ -460,7 +460,7 @@ export function HomePageSections({
                       </div>
                     )}
 
-                  <div className="mt-6 md:hidden">
+                  <div className="mt-6 w-full min-w-0 md:hidden">
                     <div className="mb-3 flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">
                         Swipe to browse ({filteredListings.length})
@@ -486,12 +486,12 @@ export function HomePageSections({
                     </div>
                     <div
                       ref={carouselRef}
-                      className="thin-scrollbar flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3"
+                      className="thin-scrollbar flex w-full max-w-full snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain pb-3"
                     >
                       {filteredListings.map((car) => (
                         <div
                           key={`mobile-${car.id}`}
-                          className="w-[82vw] max-w-[340px] shrink-0 snap-start"
+                          className="w-[82vw] max-w-[340px] min-w-0 shrink-0 snap-start"
                         >
                           <VehicleCard
                             listing={car}
@@ -511,7 +511,7 @@ export function HomePageSections({
         if (sectionKey === "features") {
           if (!showFeatures || featureCards.length === 0) return null;
           return (
-            <section key="features" className="border-t border-border bg-zinc-950/70">
+            <section key="features" className="w-full overflow-x-clip border-t border-border bg-zinc-950/70">
               <div className={cn("mx-auto max-w-7xl px-4 sm:px-6 lg:px-8", spacing.sectionPadding)}>
                 <div
                   className={cn(
@@ -552,7 +552,7 @@ export function HomePageSections({
           return (
             <section
               key="slash_commands"
-              className={cn("mx-auto max-w-7xl px-4 sm:px-6 lg:px-8", spacing.sectionPadding)}
+              className={cn("mx-auto w-full min-w-0 max-w-7xl overflow-x-clip px-4 sm:px-6 lg:px-8", spacing.sectionPadding)}
             >
               <SlashCommandsSection variant="compact" />
             </section>

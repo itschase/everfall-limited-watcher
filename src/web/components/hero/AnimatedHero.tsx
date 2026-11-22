@@ -101,7 +101,7 @@ function DecryptingTextLine({
   }
 
   return (
-    <span className="relative inline-block max-w-full align-top">
+    <span className="relative inline-block max-w-full overflow-hidden align-top">
       {/* Invisible settled text reserves final box width and height so scrambling never shifts layout */}
       <span
         aria-hidden="true"
@@ -328,10 +328,10 @@ export function AnimatedHero({
     >
       <div
         key={animationKey}
-        className={cn("w-full", wrapperAnimationClass)}
+        className={cn("w-full min-w-0", wrapperAnimationClass)}
         style={{ "--hero-duration": `${durationMs}ms` } as React.CSSProperties}
       >
-        <h1 className={cn("font-extrabold tracking-tight text-white", headingSizeClass)}>
+        <h1 className={cn("max-w-full break-words [overflow-wrap:anywhere] font-extrabold tracking-tight text-white", headingSizeClass)}>
           {primaryText
             ? renderTokenizedText(
                 primaryText,
@@ -368,7 +368,7 @@ export function AnimatedHero({
 
         <p
           className={cn(
-            "mx-auto max-w-2xl leading-relaxed text-muted-foreground",
+            "mx-auto max-w-2xl break-words [overflow-wrap:anywhere] leading-relaxed text-muted-foreground",
             compact ? "mt-3 text-sm" : "mt-5 text-base sm:text-lg"
           )}
         >

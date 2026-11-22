@@ -15,7 +15,7 @@ export function SlashCommandsSection({
   description?: string;
 }) {
   return (
-    <Card className="p-6 sm:p-8">
+    <Card className="w-full min-w-0 overflow-hidden p-5 sm:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <Terminal className="h-5 w-5 text-white" />
@@ -39,7 +39,7 @@ export function SlashCommandsSection({
           >
             <div>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <code className="select-all cursor-text font-mono text-xs font-semibold text-zinc-100">
+                <code className="select-all cursor-text break-words font-mono text-xs font-semibold text-zinc-100">
                   {item.command}
                 </code>
               </div>

@@ -186,10 +186,10 @@ export function FeaturesPageSections({
           return (
             <section
               key="header"
-              className="relative overflow-hidden border-b border-border bg-background"
+              className="relative w-full overflow-hidden overflow-x-clip border-b border-border bg-background"
             >
               <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                <div className="absolute -top-28 left-1/2 h-[420px] w-[720px] -translate-x-1/2 rounded-full bg-gradient-to-tr from-emerald-500/10 via-zinc-700/15 to-transparent blur-[140px] opacity-70" />
+                <div className="absolute -top-28 left-1/2 h-[420px] w-full max-w-[720px] -translate-x-1/2 rounded-full bg-gradient-to-tr from-emerald-500/10 via-zinc-700/15 to-transparent blur-[140px] opacity-70" />
               </div>
 
               <div
@@ -803,7 +803,7 @@ export function FeaturesPageSections({
                           </div>
 
                           {galleryImages.length > 1 && (
-                            <div className="thin-scrollbar flex items-center gap-2 overflow-x-auto pb-1">
+                            <div className="thin-scrollbar flex items-center gap-2 overflow-x-auto overscroll-x-contain pb-1">
                               {galleryImages.map((src, idx) => (
                                 <button
                                   key={`${latestListing?.id}-gallery-${idx}`}

@@ -281,7 +281,7 @@ export function HomePage() {
                   </div>
                 )}
                 {selectedListing.soldOutAt && (
-                  <div className="col-span-2">
+                  <div className="sm:col-span-2">
                     <span className="text-muted-foreground">Confirmed Sold Out</span>
                     <p className="mt-0.5 font-medium text-red-300">
                       {formatLocalDateTime(selectedListing.soldOutAt)}
