@@ -71,7 +71,10 @@ export function UserAccountMenu({
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80">
+      <DropdownMenuContent
+        align="end"
+        className="w-[min(20rem,calc(100vw-1.5rem))] max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain"
+      >
         <div className="relative -mx-1.5 -mt-1.5 mb-1 overflow-hidden rounded-t-lg">
           <div
             className={cn(
