@@ -48,6 +48,20 @@ export function TermsPage() {
           </p>
         </div>
       </section>
+      <section className="mx-auto w-full max-w-6xl px-4 pb-8" aria-labelledby="discord-profile-terms-title">
+        <div className="rounded-xl border border-border bg-card/70 p-5">
+          <h2 id="discord-profile-terms-title" className="text-base font-semibold text-foreground">
+            Discord Profiles and External Links
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            When you sign in, Discord profile appearance details it makes available may be shown
+            in your account menu and dashboard. The creator&apos;s Discord profile and GitHub link are
+            displayed publicly on the creator card. Everfall Limited Watcher does not control
+            Discord or GitHub, and your use of those services is subject to their respective terms
+            and policies.
+          </p>
+        </div>
+      </section>
       <AutomationNotice kind="terms" includeTestEvents />
     </PublicLayout>
   );

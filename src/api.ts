@@ -372,7 +372,10 @@ export async function handleApiRequest(
     if (
       user &&
       user.id === String(env.DISCORD_PRIMARY_ADMINISTRATOR || "").trim() &&
-      (storedCreatorProfile.avatarUrl !== user.avatarUrl || storedCreatorProfile.username !== user.username)
+      (storedCreatorProfile.avatarUrl !== user.avatarUrl ||
+        storedCreatorProfile.username !== user.username ||
+        (user.profile != null &&
+          JSON.stringify(storedCreatorProfile.profile) !== JSON.stringify(user.profile)))
     ) {
       creatorProfile = {
         ...storedCreatorProfile,
@@ -380,6 +383,7 @@ export async function handleApiRequest(
         username: user.username || storedCreatorProfile.username,
         avatarUrl: user.avatarUrl || storedCreatorProfile.avatarUrl,
         profileUrl: `https://discord.com/users/${user.id}`,
+        profile: user.profile ?? storedCreatorProfile.profile,
       };
       await setCreatorProfileInStore(env, creatorProfile);
     }
