@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-22 — One source for the monitoring interval
+
+- Set `STORE_MONITOR_INTERVAL_MINUTES` in `src/shared/appConfig.ts` to 15, matching the owner's externally managed job. Existing derived API values, Discord help/template variables, local check cooldowns and website labels share that source.
+- Removed the homepage-only frequency override from the Pages editor and rendering. Legacy saved cadence fields normalize to the shared value; other page settings remain intact. Updated the Rich Presence preview to use the same interval.
+- Refresh recognized built-in Features workflow cadence text from older saved pages without changing custom wording, delivery estimates or independent automation cooldowns. Updated monitoring guidance to describe the external trigger accurately.
+- Documented that changing the shared variable does not reschedule external jobs or the separately declared legacy GitHub workflow. No external scheduler, Cloudflare variables, Discord messages or deployment were changed.
+- Reviewed both legal page components: this change does not alter OAuth scopes, collected data, cookies, logging retention, third-party integrations or deletion behavior, so policy changes are not required.
+
 ## 2026-11-22 — Discord vehicle announcement previews for operators
 
 - Corrected the Server Manager Vehicle Cards tab to show the shared Discord announcement preview instead of the public website VehicleCard. Dashboard responses now include the saved in-stock and sold-out announcement formats so operator previews use the same configuration as delivery.
@@ -220,6 +228,19 @@
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.22.9 | 2026-11-22 | Consistent monitoring intervals
+
+Monitoring information now uses one shared interval throughout Everfall Limited Watcher.
+
+### Improvements
+
+- Scheduled-check labels, Discord help, message variables and activity previews now agree on the configured interval.
+- Removed a homepage-only frequency override that could show a different interval from the rest of the service.
+
+### Fixes
+
+- Updated older built-in workflow descriptions to follow the shared interval while preserving vehicle delivery information and custom page copy.
 
 ## 2026.11.22.8 | 2026-11-22 | Preview the Discord vehicle messages your members receive
 

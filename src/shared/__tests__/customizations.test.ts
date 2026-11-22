@@ -1,4 +1,5 @@
 import test from "node:test";
+import { STORE_MONITOR_INTERVAL_MINUTES } from "../appConfig";
 import assert from "node:assert/strict";
 import { decode, encode } from "fast-png";
 import { createLocalD1 } from "../../localD1";
@@ -106,7 +107,8 @@ test("hidden hero/badge configuration, blank badge text, empty feature lists, ic
   assert.equal(result.home.heroBadgeIcon, "car-front");
   assert.equal(result.home.heroBadgeStyle, "solid");
   assert.deepEqual(result.home.featureCards, []);
-  assert.equal(result.home.scheduledCheckMinutes, 19);
+  assert.equal(result.home.scheduledCheckMode, "automatic");
+  assert.equal(result.home.scheduledCheckMinutes, STORE_MONITOR_INTERVAL_MINUTES);
   assert.equal(result.home.extraSections?.[0].body, "Saved paragraphs");
   assert.equal(result.home.extraSections?.[0].enabled, false);
   for (const unsafe of [

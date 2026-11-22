@@ -1,5 +1,21 @@
 [
   {
+    "version": "2026.11.22.9",
+    "title": "Consistent monitoring intervals",
+    "summary": "Monitoring information now uses one shared interval throughout Everfall Limited Watcher.",
+    "date": "2026-11-22",
+    "published": true,
+    "highlights": [],
+    "additions": [],
+    "improvements": [
+      "Scheduled-check labels, Discord help, message variables and activity previews now agree on the configured interval.",
+      "Removed a homepage-only frequency override that could show a different interval from the rest of the service."
+    ],
+    "fixes": [
+      "Updated older built-in workflow descriptions to follow the shared interval while preserving vehicle delivery information and custom page copy."
+    ]
+  },
+  {
     "version": "2026.11.22.8",
     "title": "Preview the Discord vehicle messages your members receive",
     "summary": "The Vehicle Cards tab in Server Manager now previews Discord announcements using the published message format.",

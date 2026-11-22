@@ -127,7 +127,9 @@ Production uses connected **Cloudflare Workers Builds**, which installs from the
 
 GitHub Actions separately verifies pushes and pull requests with TypeScript, tests, frontend build, and Worker dry run. Pushing `staging` also runs its staging deployment job. The production Actions deployment job runs only on **manual workflow dispatch** from `master` or `main`, separately from connected Cloudflare Builds. Actions deployments require `CF_API_TOKEN` and `ACCOUNT_ID` secrets.
 
-Real store monitoring uses [the scheduled Scrapling workflow](.github/workflows/store-monitor.yml), currently targeting checks approximately every seven minutes and posting authenticated results to `POST /cron`. Its `CRON_SECRET` must match the Worker secret. Native Worker cron triggers are disabled because direct storefront requests can be challenged. The workflow and shared configuration control real cadence; homepage display controls do not.
+Production store monitoring is triggered by the externally managed job, currently configured for approximately every 15 minutes. **Change `STORE_MONITOR_INTERVAL_MINUTES` in `src/shared/appConfig.ts` to update the service's cadence in one place.** API responses, website copy, Discord help/template variables, presence previews and cadence-dependent local checks derive from it. The Pages editor shows this interval read-only; legacy homepage-only overrides no longer take precedence. Previously saved built-in Features workflow copy is refreshed to the shared interval without rewriting unrelated delivery estimates or custom text.
+
+Changing source code does not reschedule an external service: keep the external job's trigger and authentication aligned separately. The [legacy Scrapling workflow](.github/workflows/store-monitor.yml) has its own GitHub schedule declaration; its activation was not verified and this change does not modify it. Do not run a second automatic monitoring job unintentionally. The native Worker minute trigger only wakes Rich Presence; it does not run storefront verification.
 
 ## UI Foundation & License Attribution
 

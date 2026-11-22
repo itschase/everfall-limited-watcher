@@ -2,6 +2,7 @@ import { refreshPublicCopy } from "./publicCopy";
 import { normalizePageExtensions, PublicPageExtensions } from "./pageSections";
 import {
   CHECK_INTERVAL_LABEL,
+  refreshStoreMonitorCadenceCopy,
   STORE_MONITOR_INTERVAL_MINUTES,
   DEFAULT_PUBLIC_ORIGIN,
   STORE_CATEGORY_URL as SHARED_STORE_CATEGORY_URL,
@@ -280,6 +281,7 @@ export interface HomePageContentConfig extends PublicPageExtensions {
   heroBadgeIcon?: SiteIconKey;
   heroBadgeStyle?: "subtle" | "outline" | "solid";
   showScheduledCheck?: boolean;
+  /** Legacy display fields; normalized to the shared source cadence. */
   scheduledCheckMode?: "automatic" | "custom";
   scheduledCheckLabel?: string;
   scheduledCheckMinutes?: number;
@@ -2576,9 +2578,9 @@ export function normalizeSitePagesConfig(
       heroBadgeIcon: sanitizeSiteIconKey(homeSrc.heroBadgeIcon, fallback.home.heroBadgeIcon || "none"),
       heroBadgeStyle: ["subtle", "outline", "solid"].includes(homeSrc.heroBadgeStyle || "") ? homeSrc.heroBadgeStyle : fallback.home.heroBadgeStyle || "subtle",
       showScheduledCheck: homeSrc.showScheduledCheck ?? fallback.home.showScheduledCheck ?? true,
-      scheduledCheckMode: (homeSrc.scheduledCheckMode ?? fallback.home.scheduledCheckMode) === "custom" ? "custom" : "automatic",
+      scheduledCheckMode: "automatic",
       scheduledCheckLabel: sanitizePlainPageText(homeSrc.scheduledCheckLabel, fallback.home.scheduledCheckLabel || "Scheduled Store Check", 80),
-      scheduledCheckMinutes: Number.isFinite(homeSrc.scheduledCheckMinutes) ? Math.min(1440, Math.max(1, Math.round(homeSrc.scheduledCheckMinutes!))) : fallback.home.scheduledCheckMinutes || STORE_MONITOR_INTERVAL_MINUTES,
+      scheduledCheckMinutes: STORE_MONITOR_INTERVAL_MINUTES,
       badgeText: typeof homeSrc.badgeText === "string" && !homeSrc.badgeText.trim() ? "" : sanitizePlainPageText(homeSrc.badgeText, fallback.home.badgeText, 80),
       primaryCtaLabel: sanitizePlainPageText(
         homeSrc.primaryCtaLabel,
@@ -2704,7 +2706,7 @@ export function normalizeSitePagesConfig(
         featSrc.workflowSteps ?? fallback.features.workflowSteps ?? defFeat.workflowSteps,
         fallback.features.workflowSteps || defFeat.workflowSteps || [],
         8
-      ),
+      ).map((step) => ({ ...step, description: refreshStoreMonitorCadenceCopy(step.description) })),
       ctaTitle: sanitizePlainPageText(featSrc.ctaTitle, fallback.features.ctaTitle, 140),
       ctaDescription: sanitizePlainPageText(featSrc.ctaDescription, fallback.features.ctaDescription, 340),
       spacingPreset: sanitizeSpacingPreset(featSrc.spacingPreset, fallback.features.spacingPreset || "standard"),

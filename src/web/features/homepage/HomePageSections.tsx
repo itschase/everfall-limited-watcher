@@ -22,7 +22,6 @@ import type {
 import {
   formatScheduledCadence,
   SCHEDULED_CRON_INTERVAL_MS,
-  STORE_MONITOR_INTERVAL_MINUTES,
 } from "../../../shared/appConfig";
 import {
   DEFAULT_HOME_SECTION_ORDER,
@@ -166,7 +165,7 @@ export function HomePageSections({
           <span>{homePageCopy.scheduledCheckLabel || "Scheduled Store Check"}</span>
         </div>
         <div className="mt-1 font-mono text-sm font-semibold text-white tabular-nums">
-          {formatScheduledCadence(homePageCopy.scheduledCheckMode === "custom" ? (homePageCopy.scheduledCheckMinutes || STORE_MONITOR_INTERVAL_MINUTES) * 60000 : scheduledIntervalMs, true)}
+          {formatScheduledCadence(scheduledIntervalMs, true)}
         </div>
         <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
           {lastCheckedAt ? `Last check ${formatLocalTime(lastCheckedAt)}` : "Awaiting run"}

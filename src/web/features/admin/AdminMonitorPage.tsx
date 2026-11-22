@@ -405,12 +405,12 @@ export function AdminMonitorPage() {
                   Cloudflare Scheduled Challenge Active — Scrapling Sync Recommended
                 </p>
                 <p className="text-zinc-300">
-                  Tebex&apos;s Cloudflare protection blocks raw HTTP checks (<code className="text-white">403</code>). Ensure <code className="text-white">CRON_SECRET</code> matches in both GitHub Secrets and Cloudflare Secrets so <strong className="text-white">Scheduled Store Monitor (Scrapling)</strong> automatically verifies the storefront {CHECK_INTERVAL_LABEL.toLowerCase()} on <code className="text-white">master</code>.
+                  Scheduled store checks are triggered externally, {CHECK_INTERVAL_LABEL.toLowerCase()}. Keep the external job&apos;s authentication and trigger interval aligned with the service configuration. Blocked checks preserve verified history.
                 </p>
                 <p className="text-[11px] text-amber-300/90">
                   {monitor?.lastFetchCronSuccessAt
                     ? `Latest automated Scrapling sync: ${formatLocalDateTime(monitor.lastFetchCronSuccessAt)}`
-                    : `No automated Scrapling sync recorded yet — waiting for the next ${STORE_MONITOR_INTERVAL_MINUTES}-minute Scrapling run.`}
+                    : `No automated sync recorded yet — waiting for the next ${STORE_MONITOR_INTERVAL_MINUTES}-minute store check.`}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={() => void copyCronEndpoint()} className="shrink-0">

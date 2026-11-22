@@ -41,7 +41,7 @@ import {
   DEFAULT_SOLD_OUT_TEMPLATE,
   DEFAULT_WIDGET_TEMPLATE,
 } from "../../../shared/presentation";
-import { CHECK_INTERVAL_LABEL } from "../../../shared/appConfig";
+import { CHECK_INTERVAL_LABEL, refreshStoreMonitorCadenceCopy } from "../../../shared/appConfig";
 import { cn, formatLocalDateTime, safeExternalUrl } from "@/lib/utils";
 import { SiteIcon } from "@/components/common/SiteIcon";
 import {
@@ -548,7 +548,7 @@ export function FeaturesPageSections({
                         </div>
                         <h3 className="mt-4 text-base font-semibold text-white">{item.title}</h3>
                         <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                          {item.description}
+                          {refreshStoreMonitorCadenceCopy(item.description)}
                         </p>
                       </div>
                     </Card>

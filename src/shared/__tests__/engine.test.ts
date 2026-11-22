@@ -1218,9 +1218,7 @@ test("Shared DISCORD_SLASH_COMMANDS doc list covers all registered Discord slash
   assert.deepEqual(documentedNames, registeredNames);
 });
 
-test("Centralized schedule config matches 7-minute cadence across /api/public/status and /help command", async () => {
-  assert.equal(SCHEDULED_CRON_INTERVAL_MS, 7 * 60 * 1000);
-  assert.equal(CHECK_INTERVAL_LABEL, "Every 7 minutes");
+test("Centralized source cadence reaches /api/public/status and /help command", async () => {
 
   const kv = createMemoryKv();
   const env: any = {
@@ -1234,9 +1232,9 @@ test("Centralized schedule config matches 7-minute cadence across /api/public/st
     new URL("https://portal.example.com/api/public/status")
   );
   const statusJson: any = await statusRes!.json();
-  assert.equal(statusJson.scheduledIntervalMs, 7 * 60 * 1000);
+  assert.equal(statusJson.scheduledIntervalMs, SCHEDULED_CRON_INTERVAL_MS);
 
-  // Verify /help interaction response uses dynamic 7-minute cadence and not stale 15 minutes copy
+  // Verify /help uses the same shared cadence as the public API.
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
   const spki = publicKey.export({ type: "spki", format: "der" });
   env.DISCORD_PUBLIC_KEY = Buffer.from(spki.subarray(-32)).toString("hex");
@@ -1262,8 +1260,7 @@ test("Centralized schedule config matches 7-minute cadence across /api/public/st
   );
   const helpJson: any = await helpRes.json();
   const helpText = JSON.stringify(helpJson.data || {});
-  assert.match(helpText, /every 7 minutes/i);
-  assert.doesNotMatch(helpText, /every 15 minutes/i);
+  assert.ok(helpText.includes(CHECK_INTERVAL_LABEL));
 });
 
 test("resolveTemplateVariables handles variable substitution, missing-value collapsing, mention safety, and unsupported token detection", () => {
@@ -1331,7 +1328,7 @@ test("resolveTemplateVariables handles variable substitution, missing-value coll
   const body = String(container.components[0].content);
   assert.match(body, /# .*Drop 7815819: Seraph GTS/);
   assert.match(body, /Check Schedule/);
-  assert.match(body, /Every 7 minutes/);
+  assert.ok(body.includes(CHECK_INTERVAL_LABEL));
   assert.doesNotMatch(body, /Should be hidden when in stock/);
   const buttonsRow = container.components.find((c: any) => c.type === 1);
   assert.equal(buttonsRow.components[0].url, "https://store.everfallcommunity.com/package/7815819");

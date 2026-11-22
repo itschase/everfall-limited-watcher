@@ -7,6 +7,7 @@ import {
   RichPresenceAdminResponse,
 } from "@/lib/api";
 import { formatLocalDateTime } from "@/lib/utils";
+import { SCHEDULED_CRON_INTERVAL_MS } from "../../../shared/appConfig";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -110,7 +111,7 @@ const PREVIEW_SNAPSHOT = {
   now: Date.now(),
   lastCheckedAt: Date.now() - 3 * 60 * 1000,
   lastSuccessAt: Date.now() - 3 * 60 * 1000,
-  scheduledIntervalMs: 7 * 60 * 1000,
+  scheduledIntervalMs: SCHEDULED_CRON_INTERVAL_MS,
   totalCount: 18,
   availableCount: 7,
   soldOutCount: 11,

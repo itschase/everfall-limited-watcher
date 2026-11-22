@@ -478,7 +478,8 @@ async function startServer() {
     }
   });
 
-  // Mirror the automated store monitor cadence (every 7 minutes)
+  // Wake the Node wrapper on the shared interval. The external store job is
+  // configured separately; worker.scheduled only wakes Rich Presence.
   setInterval(() => {
     worker.scheduled({}, env, ctx).catch((err) => {
       console.error("Scheduled cron error:", err);

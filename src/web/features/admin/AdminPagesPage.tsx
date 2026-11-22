@@ -1,5 +1,5 @@
 import { QueryState } from "@/components/common/QueryState";
-import { STORE_MONITOR_INTERVAL_MINUTES } from "../../../shared/appConfig";
+import { CHECK_INTERVAL_LABEL } from "../../../shared/appConfig";
 import { PageExtensionsEditor } from "./PageExtensionsEditor";
 import { AutomationNotice } from "@/features/legal/AutomationNotice";
 import { ResponsivePreview } from "@/components/common/ResponsivePreview";
@@ -1958,14 +1958,13 @@ export function AdminPagesPage() {
                 </div>
               </div>
 
-              <Card><CardHeader><CardTitle>Hero badge & scheduled check display</CardTitle><CardDescription>Changes autosave. Frequency controls affect public display only.</CardDescription></CardHeader><CardContent className="grid gap-4 @2xl/main:grid-cols-2">
+              <Card><CardHeader><CardTitle>Hero badge & scheduled check display</CardTitle><CardDescription>Appearance changes autosave. The monitoring interval uses the shared service configuration.</CardDescription></CardHeader><CardContent className="grid gap-4 @2xl/main:grid-cols-2">
   <label className="flex items-center justify-between gap-3">Show Hero Eyebrow Badge<Switch checked={pagesDraft.home.showHeroBadge !== false} onCheckedChange={showHeroBadge => patchHome({ showHeroBadge })} /></label>
   <IconPicker value={pagesDraft.home.heroBadgeIcon || "none"} fallback="none" onChange={heroBadgeIcon => patchHome({ heroBadgeIcon })} />
   <label className="space-y-1 text-sm">Badge appearance<Select value={pagesDraft.home.heroBadgeStyle || "subtle"} onValueChange={heroBadgeStyle => patchHome({ heroBadgeStyle: heroBadgeStyle as any })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="subtle">Subtle</SelectItem><SelectItem value="outline">Outline</SelectItem><SelectItem value="solid">Solid Zinc</SelectItem></SelectContent></Select></label>
   <label className="flex items-center justify-between gap-3">Show Scheduled Store Check<Switch checked={pagesDraft.home.showScheduledCheck !== false} onCheckedChange={showScheduledCheck => patchHome({ showScheduledCheck })} /></label>
-  <label className="space-y-1 text-sm">Frequency display<Select value={pagesDraft.home.scheduledCheckMode || "automatic"} onValueChange={scheduledCheckMode => patchHome({ scheduledCheckMode: scheduledCheckMode as any })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="automatic">Automatic (configured interval)</SelectItem><SelectItem value="custom">Custom display only</SelectItem></SelectContent></Select></label>
+  <div className="space-y-1 text-sm"><p className="font-medium">Monitoring interval</p><p className="text-muted-foreground">{CHECK_INTERVAL_LABEL}</p><p className="text-xs text-muted-foreground">Shared across the service. The external scheduler trigger is managed separately.</p></div>
   <label className="space-y-1 text-sm">Indicator label<Input value={pagesDraft.home.scheduledCheckLabel ?? "Scheduled Store Check"} onChange={e => patchHome({ scheduledCheckLabel: e.target.value })} maxLength={80} /></label>
-  {pagesDraft.home.scheduledCheckMode === "custom" && <label className="space-y-1 text-sm">Displayed minutes<Input type="number" min={1} max={1440} value={pagesDraft.home.scheduledCheckMinutes || STORE_MONITOR_INTERVAL_MINUTES} onChange={e => patchHome({ scheduledCheckMinutes: Number(e.target.value) })} /></label>}
 </CardContent></Card>
 <PageExtensionsEditor page={pagesDraft.home} onChange={patch => setPagesDraft(prev => ({ ...prev, home: { ...prev.home, ...patch } }))} />
 {renderTabActionFooter("home")}
