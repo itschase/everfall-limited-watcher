@@ -50,44 +50,56 @@ export function useAuthActions(onSuccess?: (destination?: string) => void) {
       return;
     }
 
+    const popup = window.open("about:blank", "discord_oauth", "width=540,height=740");
+    if (!popup) {
+      window.location.href = options?.refresh ? "/login?refresh=1" : "/login";
+      return;
+    }
+
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data?.type !== "OAUTH_AUTH_SUCCESS") return;
+      window.removeEventListener("message", handleMessage);
+      try {
+        if (event.data.handoff) {
+          await apiFetch("/api/auth/handoff", {
+            method: "POST",
+            body: JSON.stringify({ handoff: event.data.handoff }),
+          });
+        }
+        await queryClient.invalidateQueries();
+        setIsLoggingIn(false);
+        if (onSuccess) {
+          onSuccess(options?.targetAfter || event.data.destination);
+        }
+      } catch (err: any) {
+        setIsLoggingIn(false);
+        toast.error(err?.message || "Failed to finish Discord authentication.");
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    const timer = window.setInterval(() => {
+      if (popup.closed) {
+        window.clearInterval(timer);
+        window.removeEventListener("message", handleMessage);
+        setIsLoggingIn(false);
+        void queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY });
+      }
+    }, 600);
+
     try {
       const data = await apiFetch<{ url: string }>("/api/auth/url");
-      const popup = window.open(data.url, "discord_oauth", "width=540,height=740");
-      if (!popup) {
-        window.location.href = options?.refresh ? "/login?refresh=1" : "/login";
+      if (popup.closed) {
+        window.clearInterval(timer);
+        window.removeEventListener("message", handleMessage);
+        setIsLoggingIn(false);
         return;
       }
-
-      const handleMessage = async (event: MessageEvent) => {
-        if (event.data?.type !== "OAUTH_AUTH_SUCCESS") return;
-        window.removeEventListener("message", handleMessage);
-        try {
-          if (event.data.handoff) {
-            await apiFetch("/api/auth/handoff", {
-              method: "POST",
-              body: JSON.stringify({ handoff: event.data.handoff }),
-            });
-          }
-          await queryClient.invalidateQueries();
-          setIsLoggingIn(false);
-          if (onSuccess) {
-            onSuccess(options?.targetAfter || event.data.destination);
-          }
-        } catch (err: any) {
-          setIsLoggingIn(false);
-          toast.error(err?.message || "Failed to finish Discord authentication.");
-        }
-      };
-
-      window.addEventListener("message", handleMessage);
-      const timer = window.setInterval(() => {
-        if (popup.closed) {
-          window.clearInterval(timer);
-          setIsLoggingIn(false);
-          void queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY });
-        }
-      }, 600);
+      popup.location.href = data.url;
     } catch (err: any) {
+      window.clearInterval(timer);
+      window.removeEventListener("message", handleMessage);
+      popup.close();
       setIsLoggingIn(false);
       toast.error(err?.message || "Discord OAuth is not available right now.");
     }
