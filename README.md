@@ -154,6 +154,10 @@ The website release editor remains available for drafts and wording corrections.
 
 ## Sidebar navigation
 
+## User-facing language
+
+Public page copy uses player- and server-owner-facing terminology. Exact legacy default phrases in saved Home, Features, and About configurations are refreshed during normalization; custom wording and legal pages are not rewritten. This introduces no migration writes. Vehicle HTTP diagnostics are expandable, and available prices are labeled as recorded store prices rather than checkout quotes.
+
 ## Member listing prices
 
 Store monitors record an explicit amount and currency from structured package data when available. Signed-in members see prices on in-stock cards, including the homepage. Sold-out cards omit pricing; archived detail views show the last recorded listing price to signed-in members. Missing prices are not estimated, and old archive entries without recorded pricing remain blank until a verified price is collected.

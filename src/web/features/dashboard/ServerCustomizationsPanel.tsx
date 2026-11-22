@@ -18,23 +18,23 @@ const OPTIONS: Array<[keyof ServerCustomizations, string, string]> = [
   ],
   [
     "autoCreateEvent",
-    "Create an active listings event",
+    "Create an Event for Available Vehicles",
     "Requires Create Events or Manage Events. Updates one tracked event while listings remain active.",
   ],
   [
     "autoEndEvent",
     "End the event when sold out",
-    "Completes the tracked event when no verified active listings remain.",
+    "Ends the listing event when all listed vehicles are confirmed sold out.",
   ],
   [
     "pinWidget",
     "Pin the live widget",
-    "Pins deployed widgets during the next successful monitoring cycle.",
+    "Pins your widgets after the next successful store check.",
   ],
   [
     "stickyWidget",
     "Keep widgets near recent messages",
-    "Checks during successful monitoring. Moves only when newer messages exist, with a 15-minute cooldown.",
+    "Moves widgets below newer messages after a successful store check, no more than once every 15 minutes.",
   ],
 ];
 

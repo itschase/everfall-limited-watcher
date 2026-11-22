@@ -92,7 +92,7 @@ function ServerStatusIndicator({ status }: { status: ServerStatus }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground">
       <span className="h-2 w-2 rounded-full bg-zinc-500" />
-      Not Installed
+      Bot Not Added
     </span>
   );
 }
@@ -1228,7 +1228,7 @@ export function DashboardPage() {
               Setup Required ({counts.setupRequired})
             </TabsTrigger>
             <TabsTrigger value="not_installed">
-              Not Installed ({counts.notInstalled})
+              Bot Not Added ({counts.notInstalled})
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -1328,7 +1328,7 @@ export function DashboardPage() {
                               </strong>
                             </span>
                             <span>
-                              Mention Roles:{" "}
+                              Roles to Notify:{" "}
                               <strong className="font-medium text-zinc-200">
                                 {server.config.roleIds.length > 0
                                   ? `${server.config.roleIds.length} selected`

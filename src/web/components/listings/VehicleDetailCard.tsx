@@ -133,7 +133,7 @@ export function VehicleDetailCard({
 
               {!listing.isAvailable && (
                 <span className="text-xs text-zinc-400">
-                  Archived permanently in Everfall Limited Watcher
+                  Saved in the vehicle archive
                 </span>
               )}
             </div>
@@ -242,7 +242,7 @@ export function VehicleDetailCard({
             <div>
               <span className="flex items-center gap-1.5 text-muted-foreground">
                 <Clock className="h-3.5 w-3.5 text-zinc-500" />
-                First Detected
+                First Recorded
               </span>
               <p className="mt-1 font-medium text-white">
                 {formatLocalDateTime(listing.detectedAt)}
@@ -251,7 +251,7 @@ export function VehicleDetailCard({
             <div>
               <span className="flex items-center gap-1.5 text-muted-foreground">
                 <ShieldCheck className="h-3.5 w-3.5 text-zinc-500" />
-                Last Verified
+                Last Checked
               </span>
               <p className="mt-1 font-medium text-white">
                 {formatLocalDateTime(listing.lastVerifiedAt)}
@@ -273,21 +273,22 @@ export function VehicleDetailCard({
                   listing.isAvailable ? "text-emerald-400" : "text-red-400"
                 )}
               >
-                {listing.isAvailable ? "Available in Store" : "Sold Out / Archived"}
+                {listing.isAvailable ? "Available in Store" : "Sold Out"}
               </p>
             </div>
             <div>
-              <span className="text-muted-foreground">Archived Images</span>
+              <span className="text-muted-foreground">Saved Photos</span>
               <p className="mt-1 font-medium text-zinc-200">
                 {images.length} angle{images.length === 1 ? "" : "s"}
               </p>
             </div>
-            <div>
-              <span className="text-muted-foreground">Last Store HTTP Status</span>
+            <details className="min-w-0">
+              <summary className="cursor-pointer text-muted-foreground">Technical Details</summary>
+              <span className="mt-2 block text-muted-foreground">Last store response</span>
               <p className="mt-1 font-mono font-medium text-zinc-200">
                 {listing.lastHttpStatus ? `HTTP ${listing.lastHttpStatus}` : "Archived Record"}
               </p>
-            </div>
+            </details>
             {presentation.effective.tradingRestriction && (
               <div>
                 <span className="text-muted-foreground">Trading Rule</span>
@@ -313,7 +314,7 @@ export function VehicleDetailCard({
             </h3>
             <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-300">
               {presentation.effective.fullDescription ||
-                "No additional storefront description was recorded for this vehicle."}
+                "No store description is available for this vehicle."}
             </p>
           </div>
 

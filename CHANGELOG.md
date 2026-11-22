@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-22 — Clearer player and server-owner language
+
+- Applied the approved copy review to homepage, Features, About, vehicle cards/history, sign-in, server settings and Changelog descriptions. Replaced infrastructure language with familiar benefits, removed unsupported immediacy/permanence/setup-time guarantees, and described the homepage as recent listings rather than the entire archive.
+- Refresh exact legacy default phrases during normalization of saved public page content so existing defaults receive the improvements without overwriting independently written text, changing layout settings, or modifying legal content. The refresh is idempotent and requires no database migration writes.
+- Label current pricing as Recorded store price, retain Last listed price for archived records, and move HTTP diagnostics behind Technical Details. Preserve pricing authorization, availability logic, and existing controls.
+- Added regression coverage for saved default updates, custom wording and legal text preservation, layout retention, idempotence, and non-mutation of incoming configuration.
+
 ## 2026-11-22 — Expanded vehicle close control
 
 - Anchor the expanded listing close button to the header's top-right corner instead of a wrapping flex row. Reserve horizontal space for its 40px target on mobile and desktop, and allow long listing content to wrap without overlapping the control.
@@ -174,6 +181,20 @@
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.22.2 | 2026-11-22 | Clearer descriptions and more familiar language
+
+The website now explains features and settings in language aimed at Everfall players, collectors, and Discord server owners.
+
+### Improvements
+
+- Homepage, Features, and About descriptions focus on vehicle alerts, galleries, listing history, and community updates. Wording more clearly reflects scheduled checks and recent listings.
+- History labels, sign-in guidance, role notification settings, and save feedback are easier to understand. Recorded prices are clearly distinguished from historical listing prices.
+- Technical listing diagnostics are available through an expandable details section, keeping the main vehicle information easier to scan.
+
+### Fixes
+
+- Existing page content that still uses the old default phrases receives the clearer wording. Individually written content, saved layouts, and legal text are preserved.
 
 ## 2026.11.22.1 | 2026-11-22 | Easier closing of expanded vehicle listings
 

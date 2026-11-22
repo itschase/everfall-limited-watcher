@@ -1,3 +1,4 @@
+import { refreshPublicCopy } from "./publicCopy";
 import { normalizePageExtensions, PublicPageExtensions } from "./pageSections";
 import {
   CHECK_INTERVAL_LABEL,
@@ -790,9 +791,9 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
     badgeText: "Independent Everfall Community Monitor",
     primaryCtaLabel: "Add to Discord",
     sectionBadge: "Limited Vehicles Archive",
-    sectionTitle: "Verified Release Archive",
+    sectionTitle: "Recent Limited Vehicles",
     sectionSubtitle:
-      "Every recorded Everfall limited edition vehicle with normalized features, archived high-res images, and real-time availability status.",
+      "Explore recent limited vehicles, browse their photos, and check their latest recorded availability.",
     featuresCtaLabel: "Explore Features",
     archiveEmptyTitle: "No Limited Releases Recorded Yet",
     archiveEmptyDescription:
@@ -805,23 +806,23 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
     featureCards: [
       {
         id: "home-posts",
-        title: "Limited Drop Posts",
+        title: "New Vehicle Alerts",
         description:
-          "Get notified when new limited vehicles are discovered. Each drop is posted to your configured Discord channel in a detailed embed with vehicle information and images.",
+          "Get new limited-vehicle announcements in your chosen Discord channel, with vehicle details and photos.",
         icon: "bell",
         enabled: true,
       },
       {
         id: "home-previews",
-        title: "Limited Drop Previews",
+        title: "Vehicle Galleries",
         description:
-          "View multiple angles of each vehicle directly in Discord, with images organized into a single, easy-to-browse gallery.",
+          "Browse vehicle photos from different angles without leaving Discord.",
         icon: "images",
         enabled: true,
       },
       {
         id: "home-roles",
-        title: "Mention Roles",
+        title: "Notify Your Community",
         description:
           "Choose which Discord roles to mention when a new limited drop is posted, so the right members receive notifications.",
         icon: "users",
@@ -844,14 +845,14 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
     badgeText: "Platform Capabilities & Live Previews",
     heading: "Built for Everfall Collectors and Server Owners",
     subheading:
-      "Automated limited-vehicle monitoring, permanent multi-angle media archiving, in-place Discord embed synchronization, and live storefront status widgets.",
+      "Follow limited-vehicle releases, browse saved galleries, and keep your Discord community informed.",
     primaryCtaLabel: "Add Bot to Discord",
     secondaryCtaLabel: "Browse Drop Archive",
     primaryCtaIcon: "bot",
     secondaryCtaIcon: "history",
     capabilitiesHeading: "Core Monitoring Capabilities",
     capabilitiesSubheading:
-      "Engineered to preserve verified availability history even when upstream storefront requests hit temporary bot challenges.",
+      "Recorded listing history stays available when a store check is interrupted.",
     capabilitiesColumns: 3,
     capabilities: [
       {
@@ -864,15 +865,15 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
       },
       {
         id: "cap-soldout",
-        title: "In-Place Sold Out Edits",
+        title: "Announcements Stay Updated",
         description:
-          "When a limited vehicle leaves the storefront, existing Discord announcements are edited in place to reflect Sold Out status without reposting or re-pinging roles.",
+          "When a vehicle is confirmed sold out, its original announcement is updated without posting again or mentioning roles again.",
         icon: "refresh-cw",
         enabled: true,
       },
       {
         id: "cap-widget",
-        title: "Live Server Status Widget",
+        title: "Live Vehicle Widget",
         description:
           "Deploy persistent status embeds with /widget or directly from your server settings dashboard. Widgets automatically update whenever meaningful vehicle data changes.",
         icon: "layout-panel-top",
@@ -880,15 +881,15 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
       },
       {
         id: "cap-media",
-        title: "R2 Media Archiving",
+        title: "Saved Vehicle Galleries",
         description:
-          "Mirrors vehicle gallery screenshots into Cloudflare R2 edge object storage so images stay crisp across embeds and web catalogs even after store packages rotate.",
+          "Keeps a saved vehicle gallery available after the listing leaves the store.",
         icon: "hard-drive",
         enabled: true,
       },
       {
         id: "cap-features",
-        title: "Normalized Specifications",
+        title: "Vehicle Details at a Glance",
         description:
           "Extracts and standardizes quantity-limited status, custom engine sounds, customization option counts, garage delivery notes, and trading rules.",
         icon: "sliders-horizontal",
@@ -896,9 +897,9 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
       },
       {
         id: "cap-recovery",
-        title: "Zero-Downtime Resilience",
+        title: "History Stays Available",
         description:
-          "Challenge-protected responses never erase verified drop records or trigger false Sold Out updates; full structured state persists safely in Cloudflare D1.",
+          "If a store check is blocked or inconclusive, existing listing history and availability are retained.",
         icon: "shield-check",
         enabled: true,
       },
@@ -906,7 +907,7 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
     previewsHeading: "Interactive Discord Output Previews",
     previewsSubheading:
       "Inspect how real vehicle drops and status widgets render inside Discord before inviting the bot to your community.",
-    workflowHeading: "Four-Step Verification Pipeline",
+    workflowHeading: "How It Works",
     workflowSubheading:
       "How Everfall Limited Watcher monitors the storefront, archives assets, and delivers verified notifications.",
     workflowSteps: [
@@ -921,7 +922,7 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
         id: "feat-step-archive",
         title: "Media Archival & Formatting",
         description:
-          "Vehicle details are normalized, missing metadata is preserved, and screenshots are archived to durable Cloudflare R2 storage.",
+          "We save vehicle details and photos, keeping previously recorded information when a check cannot provide an update.",
         icon: "hard-drive",
         enabled: true,
       },
@@ -935,7 +936,7 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
       },
       {
         id: "feat-step-sync",
-        title: "Persistent Stock Synchronization",
+        title: "Keep Availability Updated",
         description:
           "Sold Out status transitions edit original embeds and /widget boards in place automatically without reposting.",
         icon: "refresh-cw",
@@ -944,7 +945,7 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
     ],
     ctaTitle: "Ready to Track Everfall Drops in Your Server?",
     ctaDescription:
-      "Invite Everfall Limited Watcher, pick your alert channel, and deploy a live /widget status board in under two minutes.",
+      "Add Everfall Limited Watcher, choose an alert channel, and set up your server’s live widget.",
     spacingPreset: "standard",
     sectionAlignment: "center",
     surfaceStyle: "elevated",
@@ -959,50 +960,50 @@ export const DEFAULT_SITE_PAGES_CONFIG: SitePagesConfig = {
     badgeText: "About Everfall Limited Watcher",
     heading: "Reliable Tracking for Everfall Limited Drops",
     subheading:
-      "An independent community monitoring platform preserving limited-edition vehicle release history, media galleries, and verified Discord notifications.",
+      "An independent community project for following Everfall’s limited vehicles and keeping their release history accessible.",
     missionHeading: "Why We Built Everfall Limited Watcher",
     missionBody:
-      "Quantity-limited vehicles on Everfall sell out or rotate off the public storefront without a permanent historical index. Collectors and community server owners needed a single, dependable source of truth that verifies real store availability, archives multi-angle gallery screenshots, and updates existing Discord posts accurately without spamming channels.",
+      "Limited vehicles can disappear from the store after selling out. Everfall Limited Watcher keeps their details and photos together, tracks recorded availability, and helps server owners share updates with their communities.",
     missionIcon: "layers",
-    workflowHeading: "End-to-End Architecture & Verification",
+    workflowHeading: "How Listings Reach Your Community",
     workflowColumns: 2,
     workflowSteps: [
       {
         id: "step-scan",
-        title: "1. Verified Storefront Sweeps",
+        title: "1. Check the Store",
         description:
-          "Automated checks run via GitHub Actions and Cloudflare edge workers to inspect the Everfall Limited Cars category while validating genuine storefront markup against challenge pages.",
+          "We check the Everfall store and verify listing availability before recording changes.",
         icon: "activity",
         enabled: true,
       },
       {
         id: "step-store",
-        title: "2. Durable D1 & R2 Archiving",
+        title: "2. Save Vehicle Details and Photos",
         description:
-          "Verified vehicle records, availability timelines, delivery audit logs, and guild settings persist in Cloudflare D1 SQLite storage while high-resolution vehicle imagery is archived in R2 object storage.",
+          "Vehicle details, availability history, and photos are saved so you can revisit past releases.",
         icon: "database",
         enabled: true,
       },
       {
         id: "step-sync",
-        title: "3. Smart Discord Synchronization",
+        title: "3. Keep Discord Announcements Updated",
         description:
-          "New releases trigger configured channel alerts with optional role mentions. Stock transitions edit the original message in place, and server /widget boards refresh only when semantic content hashes change.",
+          "New releases appear in your chosen channel, with optional role notifications. Existing announcements and widgets update when listing information changes.",
         icon: "send",
         enabled: true,
       },
       {
         id: "step-recover",
-        title: "4. Continuity & Message Recovery",
+        title: "4. Manage Your Server’s Updates",
         description:
-          "Server owners control channels, pings, and status widgets from the web dashboard, while legacy bot messages can be relinked by message ID or URL so automatic updates continue seamlessly.",
+          "Choose alert channels, roles to notify, and widgets from your dashboard. Administrators can reconnect an existing bot announcement so its updates can continue.",
         icon: "wrench",
         enabled: true,
       },
     ],
-    architectureHeading: "Infrastructure & Data Integrity",
+    architectureHeading: "Keeping Listing History Reliable",
     architectureBody:
-      "Everfall Limited Watcher runs on Cloudflare Workers for low-latency global routing, backed by Cloudflare D1 for structured and short-lived state and Cloudflare R2 for media assets. Workers KV is retained only for legacy compatibility while existing records and media are imported into D1 and R2.",
+      "Saved listing history is retained when a store check is unavailable or inconclusive. Availability changes are recorded only when the store provides enough information to verify them.",
     architectureIcon: "database",
     disclaimerHeading: "Independent Community Project",
     disclaimerBody:
@@ -1483,14 +1484,14 @@ export function buildCarDropPayload(params: BuildCarDropPayloadParams) {
   const timeLines: string[] = [];
   if (tpl.showDetectionTime) {
     const fLabel =
-      resolveTemplateVariables(tpl.firstDetectedLabel || "First Detected", varValues) ||
-      "First Detected";
+      resolveTemplateVariables(tpl.firstDetectedLabel || "First Recorded", varValues) ||
+      "First Recorded";
     timeLines.push(`**${fLabel}:** <t:${detectedSec}:f> (<t:${detectedSec}:R>)`);
   }
   if (tpl.showLastVerified && verifiedSec) {
     const lLabel =
-      resolveTemplateVariables(tpl.lastVerifiedLabel || "Last Verified", varValues) ||
-      "Last Verified";
+      resolveTemplateVariables(tpl.lastVerifiedLabel || "Last Checked", varValues) ||
+      "Last Checked";
     timeLines.push(`**${lLabel}:** <t:${verifiedSec}:f>`);
   }
   if (isSoldOut && tpl.showSoldOutTime && soldOutSec) {
@@ -1882,8 +1883,8 @@ export function buildWidgetPayload(params: BuildWidgetPayloadParams) {
   }
   if (tpl.showLastVerifiedStock !== false) {
     const label =
-      resolveTemplateVariables(tpl.lastVerifiedStockLabel || "Last Verified Stock", varValues) ||
-      "Last Verified Stock";
+      resolveTemplateVariables(tpl.lastVerifiedStockLabel || "Last Checked Stock", varValues) ||
+      "Last Checked Stock";
     timestampLines.push(
       verifiedSec ? `**${label}:** <t:${verifiedSec}:R>` : `**${label}:** Pending verification`
     );
@@ -2537,7 +2538,8 @@ export function normalizeSitePagesConfig(
   incoming?: Partial<SitePagesConfig> | null,
   fallback: SitePagesConfig = DEFAULT_SITE_PAGES_CONFIG
 ): SitePagesConfig {
-  const src = incoming && typeof incoming === "object" ? incoming : {};
+  const raw = incoming && typeof incoming === "object" ? incoming : {};
+  const src = { ...raw, home: refreshPublicCopy(raw.home), features: refreshPublicCopy(raw.features), about: refreshPublicCopy(raw.about) };
   const defHome = DEFAULT_SITE_PAGES_CONFIG.home;
   const defFeat = DEFAULT_SITE_PAGES_CONFIG.features;
   const defAbout = DEFAULT_SITE_PAGES_CONFIG.about;

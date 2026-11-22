@@ -1,5 +1,22 @@
 [
   {
+    "version": "2026.11.22.2",
+    "title": "Clearer descriptions and more familiar language",
+    "summary": "The website now explains features and settings in language aimed at Everfall players, collectors, and Discord server owners.",
+    "date": "2026-11-22",
+    "published": true,
+    "highlights": [],
+    "additions": [],
+    "improvements": [
+      "Homepage, Features, and About descriptions focus on vehicle alerts, galleries, listing history, and community updates. Wording more clearly reflects scheduled checks and recent listings.",
+      "History labels, sign-in guidance, role notification settings, and save feedback are easier to understand. Recorded prices are clearly distinguished from historical listing prices.",
+      "Technical listing diagnostics are available through an expandable details section, keeping the main vehicle information easier to scan."
+    ],
+    "fixes": [
+      "Existing page content that still uses the old default phrases receives the clearer wording. Individually written content, saved layouts, and legal text are preserved."
+    ]
+  },
+  {
     "version": "2026.11.22.1",
     "title": "Easier closing of expanded vehicle listings",
     "summary": "Expanded vehicle listings now keep their close control in a predictable position, including on phones.",

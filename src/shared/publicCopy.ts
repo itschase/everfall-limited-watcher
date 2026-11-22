@@ -1,0 +1,67 @@
+const REPLACEMENTS: Readonly<Record<string,string>> = {
+  "1. Verified Storefront Sweeps": "1. Check the Store",
+  "2. Durable D1 & R2 Archiving": "2. Save Vehicle Details and Photos",
+  "3. Smart Discord Synchronization": "3. Keep Discord Announcements Updated",
+  "4. Continuity & Message Recovery": "4. Manage Your Server’s Updates",
+  "Every recorded Everfall limited edition vehicle with normalized features, archived high-res images, and real-time availability status.": "Explore recent limited vehicles, browse their photos, and check their latest recorded availability.",
+  "Verified Release Archive": "Recent Limited Vehicles",
+  "Zero-Downtime Resilience": "History Stays Available",
+  "Archived permanently in Everfall Limited Watcher": "Saved in the vehicle archive",
+  "Limited Drop Posts": "New Vehicle Alerts",
+  "Get notified when new limited vehicles are discovered. Each drop is posted to your configured Discord channel in a detailed embed with vehicle information and images.": "Get new limited-vehicle announcements in your chosen Discord channel, with vehicle details and photos.",
+  "Limited Drop Previews": "Vehicle Galleries",
+  "View multiple angles of each vehicle directly in Discord, with images organized into a single, easy-to-browse gallery.": "Browse vehicle photos from different angles without leaving Discord.",
+  "Mention Roles": "Roles to Notify",
+  "Full Archive": "View All Vehicles",
+  "Automated limited-vehicle monitoring, permanent multi-angle media archiving, in-place Discord embed synchronization, and live storefront status widgets.": "Follow limited-vehicle releases, browse saved galleries, and keep your Discord community informed.",
+  "In-Place Sold Out Edits": "Announcements Stay Updated",
+  "Live Server Status Widget": "Live Vehicle Widget",
+  "R2 Media Archiving": "Saved Vehicle Galleries",
+  "Normalized Specifications": "Vehicle Details at a Glance",
+  "Four-Step Verification Pipeline": "How It Works",
+  "Persistent Stock Synchronization": "Keep Availability Updated",
+  "An independent community monitoring platform preserving limited-edition vehicle release history, media galleries, and verified Discord notifications.": "An independent community project for following Everfall's limited vehicles and keeping their release history accessible.",
+  "End-to-End Architecture & Verification": "How Listings Reach Your Community",
+  "Verified Storefront Sweeps": "Check the Store",
+  "Durable D1 & R2 Archiving": "Save Vehicle Details and Photos",
+  "Smart Discord Synchronization": "Keep Discord Announcements Updated",
+  "Continuity & Message Recovery": "Manage Your Server's Updates",
+  "Infrastructure & Data Integrity": "Keeping Listing History Reliable",
+  "Complete preserved archive of Everfall Limited Edition vehicle discoveries, archived galleries, and verified stock transitions.": "Browse recorded limited vehicles, view their galleries, and check their availability history.",
+  "No archived vehicles match your search criteria.": "No vehicles match your search. Try another name or vehicle ID.",
+  "First Detected": "First Recorded",
+  "Last Verified": "Last Checked",
+  "Sold Out / Archived": "Sold Out",
+  "Archived Images": "Saved Photos",
+  "No additional storefront description was recorded for this vehicle.": "No store description is available for this vehicle.",
+  "Discord Login Required": "Sign In to Continue",
+  "Sign in with your Discord account to access Limited Drop History and Server Manager settings.": "Sign in with Discord to browse the full vehicle history and manage your servers.",
+  "Not Installed": "Bot Not Added",
+  "Create an active listings event": "Create an Event for Available Vehicles",
+  "Completes the tracked event when no verified active listings remain.": "Ends the listing event when all listed vehicles are confirmed sold out.",
+  "Pins deployed widgets during the next successful monitoring cycle.": "Pins your widgets after the next successful store check.",
+  "Checks during successful monitoring. Moves only when newer messages exist, with a 15-minute cooldown.": "Moves widgets below newer messages after a successful store check, no more than once every 15 minutes.",
+  "Failed - retry available": "Changes weren't saved. Try again.",
+  "When a limited vehicle leaves the storefront, existing Discord announcements are edited in place to reflect Sold Out status without reposting or re-pinging roles.": "When a vehicle is confirmed sold out, its original announcement is updated without posting again or mentioning roles again.",
+  "Mirrors vehicle gallery screenshots into Cloudflare R2 edge object storage so images stay crisp across embeds and web catalogs even after store packages rotate.": "Keeps a saved vehicle gallery available after the listing leaves the store.",
+  "Invite Everfall Limited Watcher, pick your alert channel, and deploy a live /widget status board in under two minutes.": "Add Everfall Limited Watcher, choose an alert channel, and set up your server's live widget.",
+  "Quantity-limited vehicles on Everfall sell out or rotate off the public storefront without a permanent historical index. Collectors and community server owners needed a single, dependable source of truth that verifies real store availability, archives multi-angle gallery screenshots, and updates existing Discord posts accurately without spamming channels.": "Limited vehicles can disappear from the store after selling out. Everfall Limited Watcher keeps their details and photos together, tracks recorded availability, and helps server owners share updates with their communities.",
+  "Challenge-protected responses never erase verified drop records or trigger false Sold Out updates; full structured state persists safely in Cloudflare D1.": "If a store check is blocked or inconclusive, existing listing history and availability are retained.",
+  "Engineered to preserve verified availability history even when upstream storefront requests hit temporary bot challenges.": "Recorded listing history stays available when a store check is interrupted.",
+  "Automated checks run via GitHub Actions and Cloudflare edge workers to inspect the Everfall Limited Cars category while validating genuine storefront markup against challenge pages.": "We check the Everfall store and verify listing availability before recording changes.",
+  "Verified vehicle records, availability timelines, delivery audit logs, and guild settings persist in Cloudflare D1 SQLite storage while high-resolution vehicle imagery is archived in R2 object storage.": "Vehicle details, availability history, and photos are saved so you can revisit past releases.",
+  "New releases trigger configured channel alerts with optional role mentions. Stock transitions edit the original message in place, and server /widget boards refresh only when semantic content hashes change.": "New releases appear in your chosen channel, with optional role notifications. Existing announcements and widgets update when listing information changes.",
+  "Server owners control channels, pings, and status widgets from the web dashboard, while legacy bot messages can be relinked by message ID or URL so automatic updates continue seamlessly.": "Choose alert channels, roles to notify, and widgets from your dashboard. Administrators can reconnect an existing bot announcement so its updates can continue.",
+  "Everfall Limited Watcher runs on Cloudflare Workers for low-latency global routing, backed by Cloudflare D1 for structured and short-lived state and Cloudflare R2 for media assets. Workers KV is retained only for legacy compatibility while existing records and media are imported into D1 and R2.": "Saved listing history is retained when a store check is unavailable or inconclusive. Availability changes are recorded only when the store provides enough information to verify them.",
+  "Vehicle details are normalized, missing metadata is preserved, and screenshots are archived to durable Cloudflare R2 storage.": "We save vehicle details and photos, keeping previously recorded information when a check cannot provide an update.",
+  "See what is new in Everfall Limited Watcher, with clear release notes about features, additions, and everyday improvements.": "See the latest features, improvements, and fixes."
+};
+export function refreshPublicCopy<T>(value: T): T {
+ if(typeof value === "string") return (REPLACEMENTS[value] ?? value) as T;
+ if(Array.isArray(value)) return value.map(item => refreshPublicCopy(item)) as T;
+ if(value && typeof value === "object") {
+   const record = value as Record<string, unknown>;
+   return Object.fromEntries(Object.entries(record).map(([key,item]) => [key,record.id === "home-roles" && key === "title" && item === "Mention Roles" ? "Notify Your Community" : refreshPublicCopy(item)])) as T;
+ }
+ return value;
+}

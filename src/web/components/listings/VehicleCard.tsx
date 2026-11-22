@@ -412,11 +412,11 @@ export function VehicleCard({
           <div className="mt-3 space-y-1 text-xs text-muted-foreground tabular-nums">
             <div className="flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-              <span>First Detected: {formatLocalDateTime(listing.detectedAt)}</span>
+              <span>First Recorded: {formatLocalDateTime(listing.detectedAt)}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-              <span>Last Verified: {formatLocalDateTime(listing.lastVerifiedAt)}</span>
+              <span>Last Checked: {formatLocalDateTime(listing.lastVerifiedAt)}</span>
             </div>
           </div>
 
@@ -479,12 +479,12 @@ export function VehicleCard({
                     >
                       {listing.isAvailable
                         ? "Available in Store"
-                        : "Sold Out / Archived"}
+                        : "Sold Out"}
                     </span>
                   </div>
                   <div>
                     <span className="block text-[11px] uppercase tracking-wider text-zinc-500">
-                      Archived Images
+                      Saved Photos
                     </span>
                     <span className="font-medium text-zinc-200">
                       {images.length} angle{images.length === 1 ? "" : "s"}

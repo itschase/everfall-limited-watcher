@@ -138,7 +138,7 @@ export function HistoryPage() {
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
               {detailError?.message ||
-                `No archived vehicle listing matching package ID #${activePackageId} could be found.`}
+                `We couldn’t find vehicle #${activePackageId} in the archive.`}
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <Button asChild>
@@ -177,7 +177,7 @@ export function HistoryPage() {
       return (
         <AppShell
           title="Limited Drop History"
-          description="Complete preserved archive of Everfall Limited Edition vehicle discoveries, archived galleries, and verified stock transitions."
+          description="Browse recorded limited vehicles, view their galleries, and check their availability history."
         >
           {detailContent}
           <Outlet />
@@ -207,7 +207,7 @@ export function HistoryPage() {
   return (
     <AppShell
       title="Limited Drop History"
-      description="Complete preserved archive of Everfall Limited Edition vehicle discoveries, archived galleries, and verified stock transitions."
+      description="Browse recorded limited vehicles, view their galleries, and check their availability history."
     >
       {/* Filters & Search */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -273,7 +273,7 @@ export function HistoryPage() {
       ) : items.length === 0 ? (
         <Card className="p-10 text-center">
           <p className="text-sm text-muted-foreground">
-            No archived vehicles match your search criteria.
+            No vehicles match your search. Try another name or vehicle ID.
           </p>
         </Card>
       ) : (

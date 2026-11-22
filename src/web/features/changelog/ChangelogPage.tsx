@@ -21,7 +21,7 @@ export function ChangelogPage() {
   return (
     <AppShell
       title="Changelog"
-      description="See what is new in Everfall Limited Watcher, with clear release notes about features, additions, and everyday improvements."
+      description="See the latest features, improvements, and fixes."
       actions={
         <>
           <Button

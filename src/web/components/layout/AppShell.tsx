@@ -99,11 +99,10 @@ export function AppShell({
             className="mx-auto mb-4 h-12 w-12 object-contain"
           />
           <h1 className="text-xl font-bold text-white">
-            Discord Login Required
+            Sign In to Continue
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Sign in with your Discord account to access Limited Drop History and
-            Server Manager settings.
+            Sign in with Discord to browse the full vehicle history and manage your servers.
           </p>
           <div className="mt-6 flex flex-col gap-3">
             <Button

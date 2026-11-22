@@ -355,13 +355,13 @@ export function HomePageSections({
                   {previewMode ? (
                     <Button variant="outline" size="sm" type="button">
                       <History className="h-4 w-4" />
-                      Full Archive
+                      View All Vehicles
                     </Button>
                   ) : isAuthenticated ? (
                     <Button variant="outline" size="sm" asChild>
                       <Link to="/history">
                         <History className="h-4 w-4" />
-                        Full Archive
+                        View All Vehicles
                       </Link>
                     </Button>
                   ) : (
@@ -372,7 +372,7 @@ export function HomePageSections({
                       disabled={isLoggingIn}
                     >
                       <History className="h-4 w-4" />
-                      Full Archive
+                      View All Vehicles
                     </Button>
                   )}
                 </div>
