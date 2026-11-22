@@ -89,6 +89,8 @@ export function CreatorProfileCard({
   const profileUrl =
     creator.profileUrl || (creator.id ? `https://discord.com/users/${creator.id}` : undefined);
   const displayName = creator.profile?.globalName || creator.username;
+  const bannerUrl = creator.profile?.bannerUrl;
+  const accentColor = creator.profile?.accentColor || "#18181b";
 
   return (
     <div
@@ -111,6 +113,7 @@ export function CreatorProfileCard({
             decorationUrl={creator.profile?.avatarDecorationUrl}
             alt={displayName}
             className="h-7 w-7 transition group-hover:scale-110"
+            borderless
           />
           <span className="max-w-[calc(100vw-7rem)] truncate group-hover:text-zinc-100 sm:max-w-none">
             {displayName}
@@ -127,30 +130,41 @@ export function CreatorProfileCard({
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
             <div
               className="absolute inset-0"
-              style={{ backgroundColor: creator.profile?.accentColor || "#18181b" }}
+              style={{ backgroundColor: accentColor }}
             />
-            {creator.profile?.bannerUrl && (
+            {bannerUrl && (
               <img
-                src={creator.profile.bannerUrl}
+                src={bannerUrl}
                 alt=""
-                className="absolute -inset-[12%] h-[124%] w-[124%] scale-110 object-cover blur-[16px] brightness-[0.42] saturate-75"
+                className="absolute inset-0 h-full w-full scale-105 object-cover object-center blur-[8px] brightness-[0.38] saturate-75"
               />
             )}
-            <div className="absolute inset-0 bg-zinc-950/35" />
+            <div className="absolute inset-0 bg-zinc-950/25" />
             <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/15 via-zinc-950/35 to-zinc-950/65" />
           </div>
 
           <div className="relative z-10">
-            <div className="relative h-24 px-4 pt-4 sm:px-5">
+            <div className="relative h-40 overflow-hidden px-4 pt-4 sm:px-5">
+              <div aria-hidden="true" className="absolute inset-0 overflow-hidden">
+                <div className="absolute inset-0" style={{ backgroundColor: accentColor }} />
+                {bannerUrl && (
+                  <img
+                    src={bannerUrl}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover object-center brightness-[0.86] saturate-90"
+                  />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/20 via-transparent to-zinc-950/55" />
+              </div>
               <button
                 type="button"
                 aria-label="Close Discord profile"
                 onClick={() => setIsOpen(false)}
-                className="absolute left-4 top-4 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/50 text-zinc-200 backdrop-blur transition hover:bg-black/70 sm:left-5"
+                className="absolute left-4 top-4 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/50 text-zinc-200 backdrop-blur transition hover:bg-black/70 sm:left-5"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
-              <span className="absolute right-4 top-4 rounded-full border border-white/10 bg-black/50 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-zinc-200 backdrop-blur sm:right-5">
+              <span className="absolute right-4 top-4 z-10 rounded-full border border-white/10 bg-black/50 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-zinc-200 backdrop-blur sm:right-5">
                 Discord Profile
               </span>
             </div>
@@ -160,6 +174,7 @@ export function CreatorProfileCard({
                 decorationUrl={creator.profile?.avatarDecorationUrl}
                 alt={displayName}
                 className="-mt-12 h-20 w-20 rounded-full bg-zinc-950 sm:h-24 sm:w-24"
+                borderless
               />
             </div>
 
