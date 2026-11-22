@@ -2515,13 +2515,14 @@ async function fetchPackageDetails(id: string): Promise<CarListing> {
       if (images.size >= 10) break;
     }
 
+    const price = extractListingPrice(html);
     return {
       id,
       name,
       description,
       url,
       images: [...images],
-      ...(extractListingPrice(html) ? { price: extractListingPrice(html) } : {}),
+      ...(price ? { price } : {}),
     };
   } catch (err) {
     console.error(`Failed to fetch package details for ${id}:`, err);
@@ -2653,10 +2654,12 @@ export async function fetchStoreListings(
       const listings: CarListing[] = [];
       for (const id of foundIds) {
         const known = KNOWN_LIMITED_CARS.find((c) => c.id === id);
+        const details = await fetchPackageDetails(id);
         if (known) {
-          listings.push(known);
+          // Refresh pricing without replacing the preserved historical metadata.
+          listings.push({ ...known, ...(details.price ? { price: details.price } : {}) });
         } else {
-          listings.push(await fetchPackageDetails(id));
+          listings.push(details);
         }
       }
 

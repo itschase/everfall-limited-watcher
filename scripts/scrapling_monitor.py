@@ -18,6 +18,7 @@ import urllib.request
 from typing import Any
 
 from scrapling.fetchers import StealthyFetcher
+from listing_price import extract_listing_price
 
 PUBLIC_ORIGIN = os.environ.get(
     "PUBLIC_ORIGIN", "https://everfall-limited-watcher.itschase.workers.dev"
@@ -29,9 +30,6 @@ STORE_URLS = [
     "https://store.everfallcommunity.com/category/limited-cars",
     "https://everfall.tebex.io/category/limited-cars",
 ]
-
-KNOWN_LISTING_IDS = {"7815813", "7815819"}
-
 
 def extract_html(page: Any) -> str:
     for attr in ("html_content", "text"):
@@ -158,6 +156,7 @@ def parse_package_details(pkg_id: str) -> dict[str, Any]:
                 if len(images) >= 10:
                     break
 
+        price = extract_listing_price(pkg_html)
         return {
             "id": pkg_id,
             "name": name,
@@ -326,10 +325,7 @@ def main() -> int:
 
             listings: list[dict[str, Any]] = []
             for pkg_id in found_ids:
-                if pkg_id in KNOWN_LISTING_IDS:
-                    listings.append({"id": pkg_id})
-                else:
-                    listings.append(parse_package_details(pkg_id))
+                listings.append(parse_package_details(pkg_id))
 
             current_available = get_currently_available_ids()
             confirmed_sold_out = [

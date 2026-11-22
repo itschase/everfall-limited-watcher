@@ -1,5 +1,19 @@
 [
   {
+    "version": "2026.11.22.5",
+    "title": "More reliable recorded listing prices",
+    "summary": "Recorded prices can now refresh for returning vehicles as well as newly discovered listings when the store supplies a clear amount and currency.",
+    "date": "2026-11-22",
+    "published": true,
+    "highlights": [],
+    "additions": [],
+    "improvements": [],
+    "fixes": [
+      "Fixed missed prices on known listings and a store-reading error that could discard package details.",
+      "Keep previously recorded prices when a later store response omits pricing or cannot be read."
+    ]
+  },
+  {
     "version": "2026.11.22.4",
     "title": "Add missing vehicle prices and see them beside stock status",
     "summary": "Administrators can now add or correct prices for current and past vehicles from Vehicle Metadata, including releases whose prices were not recorded originally.",

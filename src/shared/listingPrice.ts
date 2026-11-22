@@ -9,8 +9,14 @@ export function normalizeListingPrice(value: unknown): ListingPrice | undefined 
   return { amount: number, currency };
 }
 export function extractListingPrice(html: string): ListingPrice | undefined {
-  const amount = html.match(/(?:property|itemprop)=["'](?:product:price:amount|price)["'][^>]+content=["']([\d.]+)["']/i)?.[1];
-  const currency = html.match(/(?:property|itemprop)=["'](?:product:price:currency|priceCurrency)["'][^>]+content=["']([A-Za-z]{3})["']/i)?.[1]?.toUpperCase();
+  let amount: string | undefined;
+  let currency: string | undefined;
+  for (const tag of html.matchAll(/<meta\b[^>]*>/gi)) {
+    const attributes = new Map([...tag[0].matchAll(/([\w:-]+)\s*=\s*(["'])(.*?)\2/g)].map((match) => [match[1].toLowerCase(), match[3]]));
+    const property = (attributes.get("property") || attributes.get("itemprop") || "").toLowerCase();
+    if (property === "product:price:amount" || property === "price") amount = attributes.get("content");
+    if (property === "product:price:currency" || property === "pricecurrency") currency = attributes.get("content")?.toUpperCase();
+  }
   const meta = normalizeListingPrice({ amount, currency });
   if (meta) return meta;
   for (const match of html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {

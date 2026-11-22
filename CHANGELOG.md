@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-22 — Verified price capture in both store monitors
+
+- Fetch package pricing for known listings as well as newly discovered packages while keeping preserved historical metadata intact. Missing or blocked pricing leaves previously recorded amounts unchanged.
+- Fixed the external monitor's undefined price variable, which caused successfully fetched package details to fall back to placeholders. Added a standard-library parser for explicit amount/currency metadata and structured offers, and made Worker metadata extraction independent of attribute order.
+- Added offline regression coverage for both scan paths, known/new packages, structured offers, invalid or absent prices, submission payloads, and stored-price preservation.
+
 ## 2026-11-22 — Manual vehicle price metadata and inline stock pricing
 
 - Added administrator-only pricing controls in Vehicle Metadata for entering/correcting an amount and currency, hiding a price, or reverting to the recorded store price. Manual values persist independently of store refreshes and support archived vehicles with previously missing prices.
@@ -196,6 +202,15 @@
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.22.5 | 2026-11-22 | More reliable recorded listing prices
+
+Recorded prices can now refresh for returning vehicles as well as newly discovered listings when the store supplies a clear amount and currency.
+
+### Fixes
+
+- Fixed missed prices on known listings and a store-reading error that could discard package details.
+- Keep previously recorded prices when a later store response omits pricing or cannot be read.
 
 ## 2026.11.22.4 | 2026-11-22 | Add missing vehicle prices and see them beside stock status
 
