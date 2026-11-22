@@ -44,9 +44,11 @@ interface VehicleCardProps {
 export function StockStatusPill({
   isAvailable,
   isRefreshing,
+  listingId,
 }: {
   isAvailable: boolean;
   isRefreshing?: boolean;
+  listingId?: string;
 }) {
   if (isRefreshing) {
     return (
@@ -64,7 +66,7 @@ export function StockStatusPill({
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-80 duration-1000" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)]" />
         </span>
-        In Stock
+        <span>In Stock{listingId && <ListingPrice id={listingId} inStock inline />}</span>
       </span>
     );
   }
@@ -72,7 +74,7 @@ export function StockStatusPill({
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-zinc-700/60 bg-zinc-900/90 px-3 py-1 text-xs font-medium text-zinc-400 backdrop-blur-md">
       <span className="h-2 w-2 rounded-full bg-zinc-500" />
-      Sold Out
+      <span>Sold Out{listingId && <ListingPrice id={listingId} inStock={false} inline />}</span>
     </span>
   );
 }
@@ -283,6 +285,7 @@ export function VehicleCard({
 
         <div data-preview-region="vehicle-stock" className="pointer-events-none absolute right-3 top-3">
           <StockStatusPill
+            listingId={listing.id}
             isAvailable={listing.isAvailable}
             isRefreshing={isRefreshing}
           />
@@ -406,7 +409,7 @@ export function VehicleCard({
           </div>
 
           {/* Normalized Features (Quantity Limited -> Custom Sound -> Custom Options) */}
-          <div data-preview-region="vehicle-price"><ListingPrice id={listing.id} inStock={listing.isAvailable} /></div>
+
           <div data-preview-region="vehicle-features"><FeatureChipList features={cardFeatures} className="mt-2.5" /></div>
 
           {/* Timestamps */}
@@ -568,7 +571,7 @@ export function VehicleCard({
             </div>
           ) : (
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm font-semibold text-red-400">Sold Out</span>
+              <span className="text-sm font-semibold text-red-400">Sold Out<ListingPrice id={listing.id} inStock={false} inline /></span>
               <div className="flex items-center gap-2">
                 {editMetadataHref && (
                   <a

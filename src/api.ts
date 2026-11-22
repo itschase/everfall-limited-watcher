@@ -1,3 +1,4 @@
+import { getEffectiveListingPrice, getListingPriceOverrides, setManualListingPrice } from "./listingPrices";
 import { normalizeListingPrice } from "./shared/listingPrice";
 import { checkAutomationReadiness } from "./automationReadiness";
 import { runServerAutomations } from "./serverAutomation";
@@ -621,8 +622,9 @@ export async function handleApiRequest(
   if (method === "GET" && url.pathname === "/api/listing-prices") {
     if (!user) return json({ error: "Authentication required." }, 401);
     const snapshot = await getCatalogSnapshot(env);
+    const overrides = await getListingPriceOverrides(env);
     const prices = Object.fromEntries(snapshot.records.flatMap(record => {
-      const price = normalizeListingPrice(record.payload?.price);
+      const price = normalizeListingPrice(overrides.has(record.id) ? overrides.get(record.id)?.price : record.payload?.price);
       return price ? [[record.id, price]] : [];
     }));
     return new Response(JSON.stringify({ prices }), { headers: { "Content-Type": "application/json", "Cache-Control": "private, no-store", "Vary": "Cookie" } });
@@ -2047,6 +2049,20 @@ export async function handleApiRequest(
         recentEmojis: bundle.recentEmojis || [],
         errors: emojis.errors,
       });
+    }
+
+    const priceMatch = url.pathname.match(/^\/api\/admin\/listings\/(\d+)\/price$/);
+    if (priceMatch && ["GET", "PUT", "DELETE"].includes(method)) {
+      const id = priceMatch[1];
+      const record = (await getCatalogSnapshot(env)).records.find(record => record.id === id);
+      if (!record) return json({ error: "Vehicle not found." }, 404);
+      const db = getD1Database(env);
+      if (!db) return json({ error: "Price storage is unavailable." }, 503);
+      if (method === "PUT") {
+        let body: any; try { body = await request.json(); } catch { return json({ error: "Invalid price." }, 400); }
+        try { await setManualListingPrice(env, id, body.price); } catch (error) { return json({ error: error instanceof Error ? error.message : "Invalid price." }, 400); }
+      } else if (method === "DELETE") await db.prepare("DELETE FROM monitor_state WHERE key = ?").bind("listing-price:" + id).run();
+      return json({ price: await getEffectiveListingPrice(env, id, record.payload?.price) || null });
     }
 
     // 8d. Per-Listing Metadata Overrides (/admin/metadata)

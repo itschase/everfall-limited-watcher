@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-22 — Manual vehicle price metadata and inline stock pricing
+
+- Added administrator-only pricing controls in Vehicle Metadata for entering/correcting an amount and currency, hiding a price, or reverting to the recorded store price. Manual values persist independently of store refreshes and support archived vehicles with previously missing prices.
+- Overlay manual values in the existing authenticated private/no-store price response using a batched override read. Public listing metadata and anonymous responses never expose manual price fields. Price-only changes do not dispatch Discord messages.
+- Place available and sold-out prices beside the stock label on homepage/archive cards and expanded details. This intentionally extends the earlier in-stock-card-only display rule; sign-in remains required. Existing presentation-guide edits are preserved separately.
+- Extend price tests for manual precedence, clear/reset behavior, validation, member API output and administrator write authorization.
+
 ## 2026-11-22 — Operator presentation guides
 
 - Added Live Widget and Vehicle Cards tabs to server management, with shared-renderer previews, accessible selectable annotations, and a responsive store-to-delivery diagram.
@@ -189,6 +196,18 @@
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.22.4 | 2026-11-22 | Add missing vehicle prices and see them beside stock status
+
+Administrators can now add or correct prices for current and past vehicles from Vehicle Metadata, including releases whose prices were not recorded originally.
+
+### New additions
+
+- Vehicle Metadata includes amount and currency controls, with separate actions to save a manual price, hide pricing, or restore the recorded store value. Store checks do not replace manual corrections.
+
+### Improvements
+
+- Signed-in members see prices beside the stock label, such as Sold Out — $25.00, on homepage cards, archive cards, and expanded vehicle details. Signed-out visitors still see stock status without a price.
 
 ## 2026.11.22.3 | 2026-11-22 | Preview widgets and understand vehicle cards
 

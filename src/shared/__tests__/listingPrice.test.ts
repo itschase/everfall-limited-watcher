@@ -5,6 +5,7 @@ import { createLocalD1 } from "../../localD1";
 import { upsertListingRecord, getListingRecordById } from "../../kv";
 import { handleApiRequest } from "../../api";
 import { createSessionToken } from "../../admin";
+import { getEffectiveListingPrice, setManualListingPrice } from "../../listingPrices";
 test("prices require explicit valid currency and survive archival without anonymous access", async () => {
   const price = { amount: 25.5, currency: "USD" };
   assert.deepEqual(extractListingPrice('<script type="application/ld+json">{"@type":"Product","offers":{"@type":"Offer","price":"25.50","priceCurrency":"USD"}}</script>'), price);
@@ -26,5 +27,16 @@ test("prices require explicit valid currency and survive archival without anonym
     const anonymousDetail = await handleApiRequest(new Request(detailUrl), env, detailUrl);
     assert.equal(anonymousDetail?.status, 200);
     assert.doesNotMatch(JSON.stringify(await anonymousDetail!.json()), /"price"\s*:/);
+    await setManualListingPrice(env, "7815813", { amount: 40, currency: "USD" });
+    assert.equal((await getEffectiveListingPrice(env, "7815813", price))?.amount, 40);
+    const revised = await handleApiRequest(new Request(url, { headers: { Cookie: `everfall_session=${token}` } }), env, url);
+    assert.equal((await revised!.json() as any).prices["7815813"].amount, 40);
+    await setManualListingPrice(env, "7815813", null);
+    assert.equal(await getEffectiveListingPrice(env, "7815813", price), undefined);
+    await db.prepare("DELETE FROM monitor_state WHERE key = ?").bind("listing-price:7815813").run();
+    assert.deepEqual(await getEffectiveListingPrice(env, "7815813", price), price);
+    await assert.rejects(() => setManualListingPrice(env, "7815813", { amount: -10, currency: "USD" }));
+    const adminUrl = new URL("https://portal.example/api/admin/listings/7815813/price");
+    assert.equal((await handleApiRequest(new Request(adminUrl, { method: "PUT", headers: { Cookie: `everfall_session=${token}` }, body: JSON.stringify({ price }) }), env, adminUrl))?.status, 403);
   } finally { db.close(); }
 });

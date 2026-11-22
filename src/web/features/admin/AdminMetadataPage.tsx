@@ -1,3 +1,4 @@
+import { VehiclePriceEditor } from "./VehiclePriceEditor";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -647,6 +648,7 @@ export function AdminMetadataPage() {
                   </Card>
                 </div>
 
+                <VehiclePriceEditor key={selectedListingId} id={selectedListingId} />
                 {/* Administrator Overrides Editor */}
                 <Card>
                   <CardHeader>

@@ -1,5 +1,20 @@
 [
   {
+    "version": "2026.11.22.4",
+    "title": "Add missing vehicle prices and see them beside stock status",
+    "summary": "Administrators can now add or correct prices for current and past vehicles from Vehicle Metadata, including releases whose prices were not recorded originally.",
+    "date": "2026-11-22",
+    "published": true,
+    "highlights": [],
+    "additions": [
+      "Vehicle Metadata includes amount and currency controls, with separate actions to save a manual price, hide pricing, or restore the recorded store value. Store checks do not replace manual corrections."
+    ],
+    "improvements": [
+      "Signed-in members see prices beside the stock label, such as Sold Out — $25.00, on homepage cards, archive cards, and expanded vehicle details. Signed-out visitors still see stock status without a price."
+    ],
+    "fixes": []
+  },
+  {
     "version": "2026.11.22.3",
     "title": "Preview widgets and understand vehicle cards",
     "summary": "Server managers can explore what members will see before deploying a live widget and follow how vehicle listings become cards and Discord updates.",
