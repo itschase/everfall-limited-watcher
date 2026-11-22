@@ -44,11 +44,9 @@ interface VehicleCardProps {
 export function StockStatusPill({
   isAvailable,
   isRefreshing,
-  listingId,
 }: {
   isAvailable: boolean;
   isRefreshing?: boolean;
-  listingId?: string;
 }) {
   if (isRefreshing) {
     return (
@@ -66,7 +64,7 @@ export function StockStatusPill({
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-80 duration-1000" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)]" />
         </span>
-        <span>In Stock{listingId && <ListingPrice id={listingId} inStock inline />}</span>
+        In Stock
       </span>
     );
   }
@@ -74,7 +72,7 @@ export function StockStatusPill({
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-zinc-700/60 bg-zinc-900/90 px-3 py-1 text-xs font-medium text-zinc-400 backdrop-blur-md">
       <span className="h-2 w-2 rounded-full bg-zinc-500" />
-      <span>Sold Out{listingId && <ListingPrice id={listingId} inStock={false} inline />}</span>
+      Sold Out
     </span>
   );
 }
@@ -285,7 +283,6 @@ export function VehicleCard({
 
         <div data-preview-region="vehicle-stock" className="pointer-events-none absolute right-3 top-3">
           <StockStatusPill
-            listingId={listing.id}
             isAvailable={listing.isAvailable}
             isRefreshing={isRefreshing}
           />
@@ -537,7 +534,8 @@ export function VehicleCard({
           onClick={(e) => e.stopPropagation()}
         >
           {listing.isAvailable ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="w-full text-sm font-semibold text-emerald-400">In Stock<ListingPrice id={listing.id} inStock inline /></span>
               <a
                 href={listingUrl}
                 target="_blank"

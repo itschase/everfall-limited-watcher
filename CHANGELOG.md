@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-22 — Keep vehicle image badges focused on stock
+
+- Removed prices from stock badges over vehicle images and expanded-detail headings to avoid repeating pricing. Prices stay with the lower stock text for signed-in members, including available and archived listings. Manual pricing controls and anonymous price restrictions remain unchanged.
+
 ## 2026-11-22 — Verified price capture in both store monitors
 
 - Fetch package pricing for known listings as well as newly discovered packages while keeping preserved historical metadata intact. Missing or blocked pricing leaves previously recorded amounts unchanged.
@@ -202,6 +206,14 @@
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.22.6 | 2026-11-22 | Cleaner vehicle stock badges
+
+Prices now appear once, alongside the lower stock text, keeping vehicle photos clearer.
+
+### Improvements
+
+- Vehicle image badges show stock status only. Signed-in members can still find the price beside the stock text lower in each card or expanded listing.
 
 ## 2026.11.22.5 | 2026-11-22 | More reliable recorded listing prices
 

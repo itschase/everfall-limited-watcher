@@ -1,5 +1,18 @@
 [
   {
+    "version": "2026.11.22.6",
+    "title": "Cleaner vehicle stock badges",
+    "summary": "Prices now appear once, alongside the lower stock text, keeping vehicle photos clearer.",
+    "date": "2026-11-22",
+    "published": true,
+    "highlights": [],
+    "additions": [],
+    "improvements": [
+      "Vehicle image badges show stock status only. Signed-in members can still find the price beside the stock text lower in each card or expanded listing."
+    ],
+    "fixes": []
+  },
+  {
     "version": "2026.11.22.5",
     "title": "More reliable recorded listing prices",
     "summary": "Recorded prices can now refresh for returning vehicles as well as newly discovered listings when the store supplies a clear amount and currency.",

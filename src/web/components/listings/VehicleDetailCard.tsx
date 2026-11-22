@@ -1,3 +1,4 @@
+import { ListingPrice } from "./ListingPrice";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
@@ -98,7 +99,7 @@ export function VehicleDetailCard({
                 {displayName}
               </h2>
 
-              <StockStatusPill listingId={listing.id} isAvailable={listing.isAvailable} />
+              <StockStatusPill isAvailable={listing.isAvailable} />
               {listing.isAvailable && (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-bold tracking-wider text-amber-200">
                   NEW LIMITED DROP
@@ -272,7 +273,7 @@ export function VehicleDetailCard({
                   listing.isAvailable ? "text-emerald-400" : "text-red-400"
                 )}
               >
-                {listing.isAvailable ? "Available in Store" : "Sold Out"}
+                {listing.isAvailable ? "Available in Store" : "Sold Out"}<ListingPrice id={listing.id} inStock={listing.isAvailable} inline />
               </p>
             </div>
             <div>
