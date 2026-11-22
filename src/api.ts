@@ -715,7 +715,6 @@ export async function handleApiRequest(
 
     const previewListings = [...snapshot.records]
       .sort((a, b) => b.firstSeenAt - a.firstSeenAt)
-      .slice(0, 8)
       .map((rec) => serializeListing(rec, overridesMap[rec.id] || null));
 
     const servers = await Promise.all(

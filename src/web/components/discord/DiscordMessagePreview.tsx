@@ -261,7 +261,7 @@ export function AnnouncementPreviewCard({
   );
 }
 
-export function WidgetPreviewCard({
+export function buildWidgetPreviewPayload({
   template,
   listings,
   monitorStatus,
@@ -274,7 +274,7 @@ export function WidgetPreviewCard({
   portalOrigin?: string;
   lastSyncedAt?: number;
 }) {
-  const payload = buildWidgetPayload({
+  return buildWidgetPayload({
     records: listings.map((l) => ({
       id: l.id,
       firstSeenAt: l.detectedAt,
@@ -294,6 +294,23 @@ export function WidgetPreviewCard({
     portalOrigin,
     widgetUpdatedAt: lastSyncedAt || Date.now(),
   });
+
+}
+
+export function WidgetPreviewCard({
+  template,
+  listings,
+  monitorStatus,
+  portalOrigin,
+  lastSyncedAt,
+}: {
+  template: WidgetTemplateConfig;
+  listings: ListingItem[];
+  monitorStatus: MonitorStatus | null;
+  portalOrigin?: string;
+  lastSyncedAt?: number;
+}) {
+  const payload = buildWidgetPreviewPayload({ template, listings, monitorStatus, portalOrigin, lastSyncedAt });
 
   const validation = validateDiscordPayloadLimits(payload);
   const embed = payload.embeds?.[0];
@@ -341,9 +358,10 @@ export function WidgetPreviewCard({
             className="space-y-3 rounded-lg border border-white/10 bg-[#2B2D31] p-4"
             style={{ boxShadow: `inset 4px 0 0 ${colorHex}` }}
           >
-            <p className="text-sm font-bold text-white">
+            <p data-preview-region="widget-heading" className="text-sm font-bold text-white">
               {renderFormattedDiscordSegment(embed.title || "")}
             </p>
+            <div data-preview-region="widget-content" className="space-y-3">
             {embed.description && <DiscordRichText content={embed.description} />}
 
             {Array.isArray(embed.fields) && embed.fields.length > 0 && (
@@ -368,8 +386,9 @@ export function WidgetPreviewCard({
               </div>
             )}
 
+            </div>
             {embed.image?.url && (
-              <div className="overflow-hidden rounded-lg border border-white/10 bg-[#1E1F22]">
+              <div data-preview-region="widget-image" className="overflow-hidden rounded-lg border border-white/10 bg-[#1E1F22]">
                 <img
                   src={embed.image.url}
                   alt="Widget featured vehicle angle"
@@ -380,7 +399,7 @@ export function WidgetPreviewCard({
             )}
 
             {embed.footer?.text && (
-              <p className="text-[11px] text-[#949BA4]">
+              <p data-preview-region="widget-footer" className="text-[11px] text-[#949BA4]">
                 {embed.footer.text}
                 {embed.timestamp ? ` • ${formatLocalDateTime(embed.timestamp)}` : ""}
               </p>
@@ -390,7 +409,7 @@ export function WidgetPreviewCard({
 
         {Array.isArray(payload.components) &&
           payload.components[0]?.components?.length > 0 && (
-            <div className="mt-2.5 flex flex-wrap gap-2">
+            <div data-preview-region="widget-links" className="mt-2.5 flex flex-wrap gap-2">
               {payload.components[0].components.map((btn: any, idx: number) => (
                 <DiscordButtonChip key={idx} btn={btn} />
               ))}

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-22 — Operator presentation guides
+
+- Added Live Widget and Vehicle Cards tabs to server management, with shared-renderer previews, accessible selectable annotations, and a responsive store-to-delivery diagram.
+- Kept operator formatting read-only, resolved the server’s configured widget preset automatically, and retained explicit deployment, refresh, move, and removal actions. Changing the destination resets deployment confirmation.
+- Removed the eight-record dashboard preview cap so widget summaries and ordering use the complete catalog, matching deployment input. Preserved existing server-side authorization, channel permission checks, mention suppression, and configuration-save isolation.
+- No OAuth scopes, collected data categories, cookies, retention, third-party services, or deletion behavior changed; existing legal disclosures remain applicable.
+
+
 ## 2026-11-22 — Clearer player and server-owner language
 
 - Applied the approved copy review to homepage, Features, About, vehicle cards/history, sign-in, server settings and Changelog descriptions. Replaced infrastructure language with familiar benefits, removed unsupported immediacy/permanence/setup-time guarantees, and described the homepage as recent listings rather than the entire archive.
@@ -181,6 +189,21 @@
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.22.3 | 2026-11-22 | Preview widgets and understand vehicle cards
+
+Server managers can explore what members will see before deploying a live widget and follow how vehicle listings become cards and Discord updates.
+
+### New additions
+
+- A Live Widget tab shows the configured format with explanations, alongside channel deployment and existing widget controls.
+- A Vehicle Cards tab highlights the parts of a card and explains the journey from store information to verified, consistently presented listings.
+
+### Improvements
+
+- Widget previews include the full catalog so summaries and vehicle ordering reflect the available listing data.
+- Changing the destination channel clears deployment confirmation so you can review the new destination before posting.
+
 
 ## 2026.11.22.2 | 2026-11-22 | Clearer descriptions and more familiar language
 

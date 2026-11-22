@@ -2,6 +2,7 @@ import {
   SummaryGrid,
   SummaryMetric,
 } from "@/components/common/DashboardSummary";
+import { WidgetPresentationGuide, VehicleCardsGuide } from "./PresentationGuide";
 import { ServerCustomizationsPanel } from "./ServerCustomizationsPanel";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -35,7 +36,7 @@ import {
   WidgetTemplateConfig,
 } from "@/lib/api";
 import { cn, formatLocalDateTime } from "@/lib/utils";
-import { DEFAULT_WIDGET_TEMPLATE } from "../../../shared/presentation";
+import { DEFAULT_WIDGET_TEMPLATE, normalizeWidgetTemplateConfig } from "../../../shared/presentation";
 import { useAuthActions, useSession } from "@/features/auth/useAuthActions";
 import { AppShell } from "@/components/layout/AppShell";
 import { WidgetPreviewCard } from "@/components/discord/DiscordMessagePreview";
@@ -118,9 +119,7 @@ function ServerWidgetsSection({
   const [deployChannelId, setDeployChannelId] = useState(
     server.config.channelId || server.channels[0]?.id || "",
   );
-  const [deployTemplateId, setDeployTemplateId] = useState(
-    server.config.widgetTemplateId || "default",
-  );
+  const deployTemplateId = server.config.widgetTemplateId || "default";
   const [deployConfirmed, setDeployConfirmed] = useState(false);
   const [moveTarget, setMoveTarget] = useState<WidgetDeployment | null>(null);
   const [moveChannelId, setMoveChannelId] = useState("");
@@ -130,26 +129,11 @@ function ServerWidgetsSection({
   const [busyWidgetId, setBusyWidgetId] = useState<string | null>(null);
 
   const widgets = server.widgets || [];
-  const templateOptions = useMemo(() => {
-    const out = [
-      {
-        id: "default",
-        name: widgetDefault.name || "Default Global Widget",
-        template: widgetDefault,
-      },
-    ];
-    for (const tpl of widgetTemplates) {
-      out.push({ id: tpl.id, name: tpl.name, template: tpl });
-    }
-    return out;
-  }, [widgetDefault, widgetTemplates]);
-
-  const selectedDeployTemplate = useMemo(
-    () =>
-      templateOptions.find((t) => t.id === deployTemplateId)?.template ||
-      widgetDefault,
-    [deployTemplateId, templateOptions, widgetDefault],
-  );
+  const selectedDeployTemplate = useMemo(() => {
+    const defaults = normalizeWidgetTemplateConfig(widgetDefault, DEFAULT_WIDGET_TEMPLATE);
+    const configured = widgetTemplates.find(template => template.id === deployTemplateId);
+    return deployTemplateId === "default" || !configured ? defaults : normalizeWidgetTemplateConfig(configured, defaults);
+  }, [deployTemplateId, widgetDefault, widgetTemplates]);
 
   const selectedDeployChannel = server.channels.find(
     (c) => c.id === deployChannelId,
@@ -212,38 +196,6 @@ function ServerWidgetsSection({
     onError: (err: Error) => {
       setBusyWidgetId(null);
       toast.error(err.message || "Failed to refresh widget.");
-    },
-  });
-
-  const templateMutation = useMutation({
-    mutationFn: ({
-      widgetId,
-      templateId,
-    }: {
-      widgetId: string;
-      templateId: string;
-    }) =>
-      apiFetch<{ ok: boolean; error?: string | null }>(
-        `/api/dashboard/servers/${server.id}/widgets/${encodeURIComponent(widgetId)}/template`,
-        {
-          method: "PUT",
-          body: JSON.stringify({ templateId }),
-        },
-      ),
-    onSuccess: (res) => {
-      setBusyWidgetId(null);
-      onMutated();
-      if (res.ok) {
-        toast.success("Widget preset saved and synced on Discord.");
-      } else {
-        toast.warning(
-          res.error || "Preset saved, but Discord sync returned a warning.",
-        );
-      }
-    },
-    onError: (err: Error) => {
-      setBusyWidgetId(null);
-      toast.error(err.message || "Failed to switch widget template.");
     },
   });
 
@@ -324,6 +276,8 @@ function ServerWidgetsSection({
         </Button>
       </div>
 
+      <WidgetPresentationGuide template={selectedDeployTemplate} listings={previewListings} monitorStatus={monitorStatus} portalOrigin={publicOrigin} />
+      {server.channels.length === 0 && <p role="status" className="text-sm text-muted-foreground">No destination channels are available. Check the bot’s channel access in Discord, then refresh servers.</p>}
       {widgets.length === 0 ? (
         <div className="rounded-lg border border-border bg-zinc-950/70 p-4 text-xs text-muted-foreground">
           No live status widget is deployed in <strong>{server.name}</strong>{" "}
@@ -387,29 +341,6 @@ function ServerWidgetsSection({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <Select
-                    value={w.templateId || "default"}
-                    disabled={busy || templateMutation.isPending}
-                    onValueChange={(tplId) => {
-                      setBusyWidgetId(w.id);
-                      templateMutation.mutate({
-                        widgetId: w.id,
-                        templateId: tplId,
-                      });
-                    }}
-                  >
-                    <SelectTrigger className="h-8 w-44 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {templateOptions.map((tpl) => (
-                        <SelectItem key={tpl.id} value={tpl.id}>
-                          {tpl.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
                   <a
                     href={jumpUrl}
                     target="_blank"
@@ -476,7 +407,7 @@ function ServerWidgetsSection({
               Preview &amp; Deploy Live Status Widget — {server.name}
             </DialogTitle>
             <DialogDescription>
-              Choose the destination channel and template preset. Nothing will
+              Choose the destination channel. Formatting is managed centrally. Nothing will
               be posted publicly until you confirm deployment.
             </DialogDescription>
           </DialogHeader>
@@ -487,7 +418,7 @@ function ServerWidgetsSection({
                 <Label>Destination Channel</Label>
                 <Select
                   value={deployChannelId}
-                  onValueChange={setDeployChannelId}
+                  onValueChange={(value) => { setDeployChannelId(value); setDeployConfirmed(false); }}
                 >
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue placeholder="Choose writable channel" />
@@ -505,24 +436,7 @@ function ServerWidgetsSection({
                 </Select>
               </div>
 
-              <div className="space-y-1.5">
-                <Label>Widget Template Preset</Label>
-                <Select
-                  value={deployTemplateId}
-                  onValueChange={setDeployTemplateId}
-                >
-                  <SelectTrigger className="h-9 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templateOptions.map((tpl) => (
-                      <SelectItem key={tpl.id} value={tpl.id}>
-                        {tpl.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+
             </div>
 
             {deployChannelBlocked && selectedDeployChannel && (
@@ -805,11 +719,13 @@ function ServerConfigPanel({
 
   return (
     <div className="border-t border-border bg-zinc-900/50 p-4 sm:p-5 space-y-6">
+      <p className="text-sm font-medium">Managing {server.name}</p>
       <Tabs value={panelTab} onValueChange={setPanelTab}>
         <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="settings">Channel & roles</TabsTrigger>
           <TabsTrigger value="customizations">Customizations</TabsTrigger>
-          <TabsTrigger value="widgets">Widgets</TabsTrigger>
+          <TabsTrigger value="widgets">Live Widget</TabsTrigger>
+          <TabsTrigger value="vehicles">Vehicle Cards</TabsTrigger>
         </TabsList>
         <TabsContent value="customizations">
           <ServerCustomizationsPanel server={server} onSaved={onSaved} />
@@ -1105,6 +1021,7 @@ function ServerConfigPanel({
             </div>
           </div>
         </TabsContent>
+        <TabsContent value="vehicles"><VehicleCardsGuide listings={previewListings} /></TabsContent>
         <TabsContent value="widgets">
           <ServerWidgetsSection
             server={server}

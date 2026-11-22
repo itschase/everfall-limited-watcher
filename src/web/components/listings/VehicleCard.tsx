@@ -223,6 +223,7 @@ export function VehicleCard({
     >
       {/* Image Viewport */}
       <div
+        data-preview-region="vehicle-images"
         role={onInspect ? "button" : undefined}
         tabIndex={onInspect ? 0 : undefined}
         onClick={(e) => {
@@ -280,7 +281,7 @@ export function VehicleCard({
           </div>
         )}
 
-        <div className="pointer-events-none absolute right-3 top-3">
+        <div data-preview-region="vehicle-stock" className="pointer-events-none absolute right-3 top-3">
           <StockStatusPill
             isAvailable={listing.isAvailable}
             isRefreshing={isRefreshing}
@@ -362,7 +363,7 @@ export function VehicleCard({
       {/* Body */}
       <div className="flex flex-1 flex-col justify-between p-5">
         <div>
-          <div className="flex items-start justify-between gap-3">
+          <div data-preview-region="vehicle-title" className="flex items-start justify-between gap-3">
             {onInspect ? (
               <button
                 type="button"
@@ -405,11 +406,11 @@ export function VehicleCard({
           </div>
 
           {/* Normalized Features (Quantity Limited -> Custom Sound -> Custom Options) */}
-          <ListingPrice id={listing.id} inStock={listing.isAvailable} />
-          <FeatureChipList features={cardFeatures} className="mt-2.5" />
+          <div data-preview-region="vehicle-price"><ListingPrice id={listing.id} inStock={listing.isAvailable} /></div>
+          <div data-preview-region="vehicle-features"><FeatureChipList features={cardFeatures} className="mt-2.5" /></div>
 
           {/* Timestamps */}
-          <div className="mt-3 space-y-1 text-xs text-muted-foreground tabular-nums">
+          <div data-preview-region="vehicle-times" className="mt-3 space-y-1 text-xs text-muted-foreground tabular-nums">
             <div className="flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
               <span>First Recorded: {formatLocalDateTime(listing.detectedAt)}</span>
@@ -528,6 +529,7 @@ export function VehicleCard({
 
         {/* Footer Action Row (No redundant Inspect button — title & card open modal) */}
         <div
+          data-preview-region="vehicle-links"
           className="mt-5 border-t border-border pt-4"
           onClick={(e) => e.stopPropagation()}
         >

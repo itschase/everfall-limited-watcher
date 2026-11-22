@@ -2487,3 +2487,42 @@ test("Sold-out widget links route to /history/{packageId}, legacy widgets update
 
 
 
+
+
+test("Dashboard preview keeps the complete catalog without Discord requests or history loss", async () => {
+  const db = createLocalD1(":memory:");
+  const kv = createMemoryKv();
+  const secret = "dashboard_preview_secret_0123456789";
+  const userId = "555555555555555555";
+  const records = Array.from({ length: 12 }, (_, index) => ({
+    id: String(7815813 + index),
+    firstSeenAt: 1_760_000_000_000 + index * 60_000,
+    lastSeenAt: 1_760_001_000_000,
+    lastVerifiedAt: 1_760_001_000_000,
+    isAvailable: index < 3,
+    payload: { name: "Preview vehicle " + index, description: "Limited car with custom sound", images: [] },
+  }));
+  await kv.put("listings:snapshot", JSON.stringify({ version: 7, records }));
+  await setCachedUserGuilds(db, userId, [], Date.now() + 86400_000);
+  const env = { DB: db, DISCORD_BOT: kv, DISCORD_CLIENT_SECRET: secret };
+  const token = await createSessionToken(userId, "manager", "", secret);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("Preview must not contact Discord or the store"); };
+  try {
+    const request = new Request("https://portal.example.com/api/dashboard/servers", {
+      headers: { Cookie: "everfall_session=" + token },
+    });
+    const response = await handleApiRequest(request, env, new URL(request.url));
+    assert.equal(response?.status, 200);
+    const body = await response!.json() as any;
+    assert.equal(body.previewListings.length, 12);
+    assert.deepEqual(body.previewListings.map((item: any) => item.id), records.map(item => item.id).reverse());
+    assert.equal(body.previewListings.filter((item: any) => item.isAvailable).length, 3);
+    assert.ok(body.previewListings.some((item: any) => item.id === "7815813"));
+    assert.ok(body.previewListings.some((item: any) => item.id === "7815819"));
+    assert.equal((await getCatalogSnapshot(env)).records.length, 12);
+  } finally {
+    globalThis.fetch = originalFetch;
+    db.close();
+  }
+});

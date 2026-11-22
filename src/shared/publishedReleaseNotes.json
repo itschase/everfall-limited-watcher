@@ -1,5 +1,22 @@
 [
   {
+    "version": "2026.11.22.3",
+    "title": "Preview widgets and understand vehicle cards",
+    "summary": "Server managers can explore what members will see before deploying a live widget and follow how vehicle listings become cards and Discord updates.",
+    "date": "2026-11-22",
+    "published": true,
+    "highlights": [],
+    "additions": [
+      "A Live Widget tab shows the configured format with explanations, alongside channel deployment and existing widget controls.",
+      "A Vehicle Cards tab highlights the parts of a card and explains the journey from store information to verified, consistently presented listings."
+    ],
+    "improvements": [
+      "Widget previews include the full catalog so summaries and vehicle ordering reflect the available listing data.",
+      "Changing the destination channel clears deployment confirmation so you can review the new destination before posting."
+    ],
+    "fixes": []
+  },
+  {
     "version": "2026.11.22.2",
     "title": "Clearer descriptions and more familiar language",
     "summary": "The website now explains features and settings in language aimed at Everfall players, collectors, and Discord server owners.",
