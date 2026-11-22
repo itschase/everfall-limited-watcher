@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-22 — Borderless translucent sidebar
+
+- Removed desktop/sidebar drawer outlines and brand/nested-navigation dividers; added translucent Zinc surfaces with backdrop blur and a lighter drawer-only scrim through an optional shared-dialog overlay class.
+- Replaced outlined active navigation items with subtle neutral fills, retained the current-page marker and keyboard focus rings, and removed hover movement so labels stay aligned. Existing routes, group expansion, collapsed tooltips, and drawer dismissal remain intact.
+
+
 ## 2026-11-22 — Keep vehicle image badges focused on stock
 
 - Removed prices from stock badges over vehicle images and expanded-detail headings to avoid repeating pricing. Prices stay with the lower stock text for signed-in members, including available and archived listings. Manual pricing controls and anonymous price restrictions remain unchanged.
@@ -206,6 +212,17 @@
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.22.7 | 2026-11-22 | A calmer, cleaner navigation sidebar
+
+Navigation now feels lighter, with a semi-transparent sidebar and fewer visual interruptions.
+
+### Improvements
+
+- Removed the sidebar frame and section divider lines for a more continuous layout.
+- Softened the menu background and active-page highlight while keeping your current page easy to identify.
+- Menu labels stay aligned as you move between links, with keyboard focus and mobile close controls preserved.
+
 
 ## 2026.11.22.6 | 2026-11-22 | Cleaner vehicle stock badges
 

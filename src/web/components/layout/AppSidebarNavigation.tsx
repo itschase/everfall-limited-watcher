@@ -217,13 +217,11 @@ export function AppSidebarNavigation({
         aria-label={item.label}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "relative flex min-h-10 min-w-0 items-center gap-3 rounded-lg border px-2.5 py-2 text-sm font-medium outline-none transition-[background-color,color,border-color,transform] duration-150 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transform-none motion-reduce:transition-none",
+          "relative flex min-h-10 min-w-0 items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transform-none motion-reduce:transition-none",
           active
-            ? "border-white/10 bg-sidebar-accent text-white"
-            : "border-transparent text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-white",
-          collapsed
-            ? "justify-center px-2"
-            : !active && "hover:translate-x-0.5",
+            ? "bg-white/[0.07] text-white"
+            : "text-sidebar-foreground/75 hover:bg-white/[0.04] hover:text-white",
+          collapsed && "justify-center px-2",
           nested && "text-[13px]",
         )}
       >
@@ -285,7 +283,7 @@ export function AppSidebarNavigation({
           {collapsed && (
             <div
               aria-hidden="true"
-              className="mx-2 mb-3 border-t border-sidebar-border"
+              className="mb-3 h-1"
             />
           )}
           <div className="space-y-1">
@@ -296,7 +294,7 @@ export function AppSidebarNavigation({
               const open = preferences.groups[group.id] ?? active;
               const panelId = `${instanceId}-${group.id}`;
               const triggerClass = cn(
-                "relative flex min-h-11 w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-xs font-semibold outline-none transition-colors duration-150 hover:bg-sidebar-accent/60 hover:text-white focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
+                "relative flex min-h-11 w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-left text-xs font-semibold outline-none transition-colors duration-150 hover:bg-white/[0.04] hover:text-white focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
                 active
                   ? "bg-white/[0.04] text-zinc-100"
                   : "text-muted-foreground",
@@ -349,7 +347,7 @@ export function AppSidebarNavigation({
                             className={cn(
                               "flex items-center gap-2.5",
                               matches(pathname, item) &&
-                                "bg-sidebar-accent text-white",
+                                "bg-white/[0.07] text-white",
                             )}
                           >
                             <item.icon aria-hidden="true" className="h-4 w-4" />
@@ -396,7 +394,7 @@ export function AppSidebarNavigation({
                     }}
                   >
                     <div className="min-h-0 overflow-hidden">
-                      <div className="ml-4 mt-1 space-y-1 border-l border-sidebar-border pl-2 pb-1">
+                      <div className="ml-4 mt-1 space-y-1 pl-2 pb-1">
                         {group.items.map((item) => renderLink(item, true))}
                       </div>
                     </div>

@@ -158,11 +158,11 @@ export function AppShell({
       {/* Desktop Collapsible Sidebar */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-dvh shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex",
+          "sticky top-0 hidden h-dvh shrink-0 flex-col overflow-hidden bg-sidebar/75 backdrop-blur-xl transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex",
           collapsed ? "w-16" : "w-72",
         )}
       >
-        <div className="flex h-18 shrink-0 items-center justify-between gap-2 border-b border-sidebar-border px-3">
+        <div className="flex h-18 shrink-0 items-center justify-between gap-2 px-3">
           <SidebarBrand collapsed={collapsed} />
           {!collapsed && (
             <Tooltip>
@@ -181,7 +181,7 @@ export function AppShell({
           )}
         </div>
         {collapsed && (
-          <div className="flex justify-center border-b border-sidebar-border py-2">
+          <div className="flex justify-center py-2">
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -205,12 +205,12 @@ export function AppShell({
 
       {/* Mobile Navigation Drawer */}
       <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-        <DialogContent className="left-0 top-0 flex h-dvh max-h-none w-80 max-w-[92vw] translate-x-0 translate-y-0 flex-col gap-0 overflow-y-hidden rounded-none border-r border-sidebar-border bg-sidebar p-0 sm:p-0 motion-reduce:animate-none">
+        <DialogContent overlayClassName="bg-black/30 backdrop-blur-none" className="left-0 top-0 flex h-dvh max-h-none w-80 max-w-[92vw] translate-x-0 translate-y-0 flex-col gap-0 overflow-y-hidden rounded-none border-0 bg-sidebar/80 p-0 shadow-none backdrop-blur-xl sm:p-0 motion-reduce:animate-none">
           <DialogTitle className="sr-only">Navigation Menu</DialogTitle>
           <DialogDescription className="sr-only">
             Browse Everfall Limited Watcher dashboard and archive routes.
           </DialogDescription>
-          <div className="flex h-18 shrink-0 items-center border-b border-sidebar-border px-3 pr-11">
+          <div className="flex h-18 shrink-0 items-center px-3 pr-11">
             <SidebarBrand onNavigate={() => setMobileOpen(false)} />
           </div>
           <AppSidebarNavigation

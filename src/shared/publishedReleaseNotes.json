@@ -1,5 +1,20 @@
 [
   {
+    "version": "2026.11.22.7",
+    "title": "A calmer, cleaner navigation sidebar",
+    "summary": "Navigation now feels lighter, with a semi-transparent sidebar and fewer visual interruptions.",
+    "date": "2026-11-22",
+    "published": true,
+    "highlights": [],
+    "additions": [],
+    "improvements": [
+      "Removed the sidebar frame and section divider lines for a more continuous layout.",
+      "Softened the menu background and active-page highlight while keeping your current page easy to identify.",
+      "Menu labels stay aligned as you move between links, with keyboard focus and mobile close controls preserved."
+    ],
+    "fixes": []
+  },
+  {
     "version": "2026.11.22.6",
     "title": "Cleaner vehicle stock badges",
     "summary": "Prices now appear once, alongside the lower stock text, keeping vehicle photos clearer.",
