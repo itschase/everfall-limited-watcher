@@ -331,6 +331,7 @@ export interface DashboardServersResponse {
   publicOrigin?: string;
   widgetDefault?: WidgetTemplateConfig;
   widgetTemplates?: WidgetTemplateConfig[];
+  announcements?: PublicPresentationResponse["announcements"];
   previewListings?: ListingItem[];
   monitorStatus?: MonitorStatus | null;
   refreshedAt: number;

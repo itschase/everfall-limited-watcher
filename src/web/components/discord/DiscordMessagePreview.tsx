@@ -147,7 +147,7 @@ function DiscordButtonChip({ btn }: { btn: any }) {
   );
 }
 
-export function AnnouncementPreviewCard({
+export function buildAnnouncementPreviewPayload({
   mode,
   template,
   listing,
@@ -160,7 +160,7 @@ export function AnnouncementPreviewCard({
   portalOrigin?: string;
   monitorStatus?: MonitorStatus | null;
 }) {
-  const payload = buildCarDropPayload({
+  return buildCarDropPayload({
     car: {
       id: listing.id,
       name: listing.name,
@@ -178,6 +178,23 @@ export function AnnouncementPreviewCard({
     monitorStatus,
     isUpdate: mode === "sold_out",
   });
+
+}
+
+export function AnnouncementPreviewCard({
+  mode,
+  template,
+  listing,
+  portalOrigin,
+  monitorStatus,
+}: {
+  mode: "in_stock" | "sold_out";
+  template: AnnouncementTemplate;
+  listing: ListingItem;
+  portalOrigin?: string;
+  monitorStatus?: MonitorStatus | null;
+}) {
+  const payload = buildAnnouncementPreviewPayload({ mode, template, listing, portalOrigin, monitorStatus });
 
   const validation = validateDiscordPayloadLimits(payload);
   const container = payload.components?.find((c: any) => c.type === 17);
@@ -202,7 +219,7 @@ export function AnnouncementPreviewCard({
       )}
 
       <div className="rounded-xl border border-white/10 bg-[#313338] p-4 shadow-inner">
-        <div className="mb-3 flex items-center gap-2">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <img src="/icon.webp" alt="" className="h-7 w-7 rounded-full bg-zinc-900 object-contain" />
           <span className="text-sm font-semibold text-white">Everfall Limited Watcher</span>
           <span className="rounded bg-[#5865F2] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
@@ -218,20 +235,21 @@ export function AnnouncementPreviewCard({
           >
             {(container.components || []).map((comp: any, idx: number) => {
               if (comp.type === 10) {
-                return <DiscordRichText key={idx} content={comp.content || ""} />;
+                return <div key={idx} data-preview-region={`announcement-${idx}`}><DiscordRichText content={comp.content || ""} /></div>;
               }
               if (comp.type === 12 && Array.isArray(comp.items)) {
                 const single = comp.items.length === 1;
                 return (
                   <div
                     key={idx}
+                    data-preview-region={`announcement-${idx}`}
                     className={
                       single
                         ? "overflow-hidden rounded-lg"
                         : "grid grid-cols-2 gap-1.5 overflow-hidden rounded-lg"
                     }
                   >
-                    {comp.items.slice(0, 4).map((item: any, i: number) => (
+                    {comp.items.map((item: any, i: number) => (
                       <img
                         key={i}
                         src={item?.media?.url}
@@ -245,7 +263,7 @@ export function AnnouncementPreviewCard({
               }
               if (comp.type === 1 && Array.isArray(comp.components)) {
                 return (
-                  <div key={idx} className="flex flex-wrap gap-2 pt-1">
+                  <div key={idx} data-preview-region={`announcement-${idx}`} className="flex flex-wrap gap-2 pt-1">
                     {comp.components.map((btn: any, bIdx: number) => (
                       <DiscordButtonChip key={bIdx} btn={btn} />
                     ))}

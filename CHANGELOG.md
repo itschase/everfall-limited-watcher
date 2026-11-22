@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-22 — Discord vehicle announcement previews for operators
+
+- Corrected the Server Manager Vehicle Cards tab to show the shared Discord announcement preview instead of the public website VehicleCard. Dashboard responses now include the saved in-stock and sold-out announcement formats so operator previews use the same configuration as delivery.
+- Added read-only in-stock/sold-out examples, stock-state disclosure, message/gallery/action-link annotations, and a server-focused delivery diagram. No configuration changes or Discord sends occur when changing examples.
+- Kept the announcement author row wrapping on narrow screens and displayed every gallery image included in the generated payload rather than stopping at four.
+- Added rendered-markup regression coverage for both stock states, published template selection, annotated Discord regions, full galleries, and the empty catalog. Extended the dashboard regression to verify the saved announcement formats are returned.
+
+
 ## 2026-11-22 — Borderless translucent sidebar
 
 - Removed desktop/sidebar drawer outlines and brand/nested-navigation dividers; added translucent Zinc surfaces with backdrop blur and a lighter drawer-only scrim through an optional shared-dialog overlay class.
@@ -212,6 +220,21 @@
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.22.8 | 2026-11-22 | Preview the Discord vehicle messages your members receive
+
+The Vehicle Cards tab in Server Manager now previews Discord announcements using the published message format.
+
+### Fixes
+
+- Replaced the website vehicle card with the Discord announcement preview, including its message, image gallery, and action links.
+
+### Improvements
+
+- Compare in-stock announcements and sold-out updates without changing stock or sending a message.
+- Select explanations to highlight each part of the Discord message and follow how store information reaches your server.
+- Preview galleries now show every image included in the announcement.
+
 
 ## 2026.11.22.7 | 2026-11-22 | A calmer, cleaner navigation sidebar
 

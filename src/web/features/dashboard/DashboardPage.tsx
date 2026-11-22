@@ -612,6 +612,7 @@ function ServerWidgetsSection({
 
 function ServerConfigPanel({
   server,
+  announcements,
   widgetDefault,
   widgetTemplates,
   previewListings,
@@ -620,6 +621,7 @@ function ServerConfigPanel({
   onSaved,
 }: {
   server: ManagedServer;
+  announcements?: DashboardServersResponse["announcements"];
   widgetDefault: WidgetTemplateConfig;
   widgetTemplates: WidgetTemplateConfig[];
   previewListings: ListingItem[];
@@ -1021,7 +1023,7 @@ function ServerConfigPanel({
             </div>
           </div>
         </TabsContent>
-        <TabsContent value="vehicles"><VehicleCardsGuide listings={previewListings} /></TabsContent>
+        <TabsContent value="vehicles"><VehicleCardsGuide listings={previewListings} announcements={announcements} monitorStatus={monitorStatus} portalOrigin={publicOrigin} /></TabsContent>
         <TabsContent value="widgets">
           <ServerWidgetsSection
             server={server}
@@ -1303,6 +1305,7 @@ export function DashboardPage() {
                 {server.isInstalled && isExpanded && (
                   <ServerConfigPanel
                     server={server}
+                    announcements={data?.announcements}
                     widgetDefault={
                       data?.widgetDefault || DEFAULT_WIDGET_TEMPLATE
                     }

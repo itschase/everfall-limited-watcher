@@ -2505,6 +2505,10 @@ test("Dashboard preview keeps the complete catalog without Discord requests or h
   await kv.put("listings:snapshot", JSON.stringify({ version: 7, records }));
   await setCachedUserGuilds(db, userId, [], Date.now() + 86400_000);
   const env = { DB: db, DISCORD_BOT: kv, DISCORD_CLIENT_SECRET: secret };
+  const presentation = createDefaultPresentationConfig();
+  presentation.announcements.inStock.titlePrefix = "Published server announcement";
+  presentation.announcements.soldOut.statusLabel = "Published sold-out state";
+  await setPresentationConfig(env, presentation);
   const token = await createSessionToken(userId, "manager", "", secret);
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error("Preview must not contact Discord or the store"); };
@@ -2516,6 +2520,8 @@ test("Dashboard preview keeps the complete catalog without Discord requests or h
     assert.equal(response?.status, 200);
     const body = await response!.json() as any;
     assert.equal(body.previewListings.length, 12);
+    assert.equal(body.announcements.inStock.titlePrefix, "Published server announcement");
+    assert.equal(body.announcements.soldOut.statusLabel, "Published sold-out state");
     assert.deepEqual(body.previewListings.map((item: any) => item.id), records.map(item => item.id).reverse());
     assert.equal(body.previewListings.filter((item: any) => item.isAvailable).length, 3);
     assert.ok(body.previewListings.some((item: any) => item.id === "7815813"));

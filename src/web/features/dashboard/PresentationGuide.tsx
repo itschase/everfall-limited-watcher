@@ -8,18 +8,21 @@ import {
   ShieldCheck,
   SlidersHorizontal,
 } from "lucide-react";
-import { VehicleCard } from "@/components/listings/VehicleCard";
 import {
+  AnnouncementPreviewCard,
+  buildAnnouncementPreviewPayload,
   WidgetPreviewCard,
   buildWidgetPreviewPayload,
 } from "@/components/discord/DiscordMessagePreview";
 import type {
+  PublicPresentationResponse,
   ListingItem,
   MonitorStatus,
   WidgetTemplateConfig,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -163,44 +166,6 @@ export function WidgetPresentationGuide(props: {
   );
 }
 
-const cardAnnotations: Annotation[] = [
-  {
-    key: "vehicle-title",
-    title: "Vehicle name and listing ID",
-    text: "The store name is normalized for display. Approved central corrections take precedence. The package ID keeps the listing tied to its source.",
-  },
-  {
-    key: "vehicle-images",
-    title: "Vehicle gallery",
-    text: "Available listing images appear in the gallery. Missing or unavailable images use the standard fallback.",
-  },
-  {
-    key: "vehicle-stock",
-    title: "Stock status",
-    text: "Availability comes from verified store results. Failed, blocked, or unrecognized checks preserve the last verified state rather than marking vehicles sold out.",
-  },
-  {
-    key: "vehicle-price",
-    title: "Recorded price, when available",
-    text: "Signed-in members can see a recorded store price for available vehicles when one has been captured. A missing price is omitted; it is never treated as zero.",
-  },
-  {
-    key: "vehicle-features",
-    title: "Normalized features",
-    text: "Listing text becomes consistent feature labels and ordering. Approved central corrections and visibility rules determine which features appear.",
-  },
-  {
-    key: "vehicle-times",
-    title: "Recorded and checked times",
-    text: "First Recorded tracks discovery. Last Checked tracks verification. Neither promises continuous or instant monitoring.",
-  },
-  {
-    key: "vehicle-links",
-    title: "Store destination",
-    text: "Available vehicles link to their source listing. Sold-out cards show their availability state instead of a purchase action.",
-  },
-];
-
 const steps = [
   {
     icon: FileSearch,
@@ -224,29 +189,90 @@ const steps = [
   },
   {
     icon: PanelsTopLeft,
-    title: "Deliver to members",
-    text: "Website cards show individual vehicles. Discord announcements report listing updates; live widgets summarize stock in managed channels.",
+    title: "Deliver to your server",
+    text: "Discord vehicle announcements use the configured in-stock or sold-out format in your notification channel. Live widgets provide a separate stock overview.",
   },
 ];
 
-export function VehicleCardsGuide({ listings }: { listings: ListingItem[] }) {
+export function VehicleCardsGuide({
+  listings,
+  announcements,
+  monitorStatus,
+  portalOrigin,
+}: {
+  listings: ListingItem[];
+  announcements?: PublicPresentationResponse["announcements"];
+  monitorStatus: MonitorStatus | null;
+  portalOrigin?: string;
+}) {
   const [listingId, setListingId] = useState(listings[0]?.id || "");
   const listing = listings.find((item) => item.id === listingId) || listings[0];
   const selectId = useId();
+  const [exampleMode, setExampleMode] = useState<
+    "in_stock" | "sold_out" | null
+  >(null);
+  const mode = exampleMode || (listing?.isAvailable ? "in_stock" : "sold_out");
+  const template = announcements?.[mode === "in_stock" ? "inStock" : "soldOut"];
+  const previewProps =
+    listing && template
+      ? { mode, template, listing, monitorStatus, portalOrigin }
+      : null;
+  const payload = previewProps
+    ? buildAnnouncementPreviewPayload(previewProps)
+    : null;
+  const components =
+    payload?.components?.find((component: any) => component.type === 17)
+      ?.components || [];
+  const annotations: Annotation[] = components.flatMap(
+    (component: any, index: number) => {
+      const key = "announcement-" + index;
+      if (component.type === 10)
+        return [
+          {
+            key,
+            title: "Vehicle announcement and availability",
+            text: "The configured message combines the vehicle name, verified stock state, normalized features, description, and enabled timing information. Approved central corrections and the selected announcement format determine what appears. Failed checks preserve the last verified stock state.",
+          },
+        ];
+      if (component.type === 12 && component.items?.length)
+        return [
+          {
+            key,
+            title: "Discord image gallery",
+            text: "Listing images are arranged using the announcement’s configured image slots. Only available images are included.",
+          },
+        ];
+      if (component.type === 1 && component.components?.length)
+        return [
+          {
+            key,
+            title: "Member action links",
+            text: "The configured buttons take members to the listing, store, or website. Availability and the chosen announcement format determine the labels and destinations.",
+          },
+        ];
+      return [];
+    },
+  );
   return (
     <div className="space-y-5 pt-4">
       <div>
         <h4 className="font-semibold">Vehicle Cards</h4>
         <p className="mt-1 text-sm text-muted-foreground">
-          Explore the published format and follow a vehicle from its store
-          listing to your community.
+          Preview the Discord vehicle announcement your members receive and
+          follow its data from the store to your server.
         </p>
       </div>
       {listing ? (
         <Card className="space-y-4 p-4 sm:p-5">
           <div className="max-w-sm space-y-2">
             <Label htmlFor={selectId}>Preview vehicle</Label>
-            <Select value={listing.id} onValueChange={setListingId}>
+            <Select
+              value={listing.id}
+              onValueChange={(value) => {
+                setListingId(value);
+                setExampleMode(null);
+              }}
+            >
               <SelectTrigger id={selectId}>
                 <SelectValue />
               </SelectTrigger>
@@ -259,9 +285,40 @@ export function VehicleCardsGuide({ listings }: { listings: ListingItem[] }) {
               </SelectContent>
             </Select>
           </div>
-          <AnnotatedPreview annotations={cardAnnotations}>
-            <VehicleCard key={listing.id} listing={listing} />
-          </AnnotatedPreview>
+          <Tabs
+            value={mode}
+            onValueChange={(value) =>
+              setExampleMode(value as "in_stock" | "sold_out")
+            }
+          >
+            <TabsList className="h-auto flex-wrap">
+              <TabsTrigger value="in_stock">In stock announcement</TabsTrigger>
+              <TabsTrigger value="sold_out">Sold out update</TabsTrigger>
+            </TabsList>
+            <TabsContent value={mode} className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Read-only Discord embed preview using the published announcement
+                format. Switching examples does not change stock or send a
+                message.{" "}
+                {mode !== (listing.isAvailable ? "in_stock" : "sold_out")
+                  ? "This example differs from the vehicle’s current recorded stock state."
+                  : "Showing the vehicle’s current recorded stock state."}
+              </p>
+              {previewProps ? (
+                <AnnotatedPreview
+                  key={listing.id + mode}
+                  annotations={annotations}
+                >
+                  <AnnouncementPreviewCard {...previewProps} />
+                </AnnotatedPreview>
+              ) : (
+                <p role="status" className="text-sm text-muted-foreground">
+                  The announcement format is unavailable. Refresh servers to
+                  load the current format.
+                </p>
+              )}
+            </TabsContent>
+          </Tabs>
         </Card>
       ) : (
         <Card className="p-5 text-sm text-muted-foreground" role="status">

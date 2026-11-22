@@ -823,6 +823,7 @@ export async function handleApiRequest(
       publicOrigin: resolvePublicOrigin(env, origin),
       widgetDefault: bundle.widgetDefault,
       widgetTemplates: bundle.widgetTemplates,
+      announcements: bundle.announcements,
       previewListings,
       monitorStatus,
       refreshedAt: Date.now(),

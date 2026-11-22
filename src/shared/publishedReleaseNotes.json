@@ -1,5 +1,22 @@
 [
   {
+    "version": "2026.11.22.8",
+    "title": "Preview the Discord vehicle messages your members receive",
+    "summary": "The Vehicle Cards tab in Server Manager now previews Discord announcements using the published message format.",
+    "date": "2026-11-22",
+    "published": true,
+    "highlights": [],
+    "additions": [],
+    "improvements": [
+      "Compare in-stock announcements and sold-out updates without changing stock or sending a message.",
+      "Select explanations to highlight each part of the Discord message and follow how store information reaches your server.",
+      "Preview galleries now show every image included in the announcement."
+    ],
+    "fixes": [
+      "Replaced the website vehicle card with the Discord announcement preview, including its message, image gallery, and action links."
+    ]
+  },
+  {
     "version": "2026.11.22.7",
     "title": "A calmer, cleaner navigation sidebar",
     "summary": "Navigation now feels lighter, with a semi-transparent sidebar and fewer visual interruptions.",
