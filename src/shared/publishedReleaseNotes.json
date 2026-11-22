@@ -1,5 +1,23 @@
 [
   {
+    "version": "2026.11.21.4",
+    "title": "Smoother sign-in and clearer Discord profiles",
+    "summary": "Signing in and finding contact information is easier, with clearer Discord profile cards and more control over the bot's visible activity.",
+    "date": "2026-11-21",
+    "published": true,
+    "highlights": [],
+    "additions": [
+      "Administrators can configure the bot's Discord presence and activity from Bot Control. Saved settings are synchronized with its Discord status.",
+      "The About page includes a creator contact card with profile details and a GitHub link for finding the project."
+    ],
+    "improvements": [
+      "Discord profile cards and the account menu have clearer names, profile details, and layouts that adapt to smaller screens."
+    ],
+    "fixes": [
+      "The Discord sign-in window opens directly when you select login, reducing popup-blocking problems. Full-page sign-in remains available when the browser blocks the window."
+    ]
+  },
+  {
     "version": "2026.11.21.3",
     "title": "A clearer sidebar with everything closer to hand",
     "summary": "Finding the right page is easier with a more organized sidebar. The Everfall Limited Watcher logo and title now take you straight to the homepage on mobile and desktop, so the extra shortcut at the bottom is no longer needed.",
@@ -80,6 +98,97 @@
     "fixes": [
       "Improved the handling of high-resolution images when building multi-vehicle event covers, reducing unnecessary image work and keeping repeated test samples efficient.",
       "Updated labels and status explanations so it is easier to understand when widgets change and which settings affect only the information shown on the website."
+    ]
+  },
+  {
+    "version": "2026.11.20",
+    "title": "More flexible pages and announcement recovery",
+    "summary": "This update expands the information available on the public website and gives administrators more ways to manage pages, widgets, and existing announcements.",
+    "date": "2026-11-20",
+    "published": true,
+    "highlights": [],
+    "additions": [
+      "Dedicated Features and About pages explain what Everfall Limited Watcher does and how it helps communities follow limited vehicles.",
+      "Administrators can manage public page content in one Pages editor and recover announcement tracking from existing Discord messages."
+    ],
+    "improvements": [
+      "Expanded announcement and widget controls make it easier to review presentation and manage existing deployments.",
+      "Widget synchronization checks for changes in the verified catalog, reducing unnecessary updates when listing information has stayed the same."
+    ],
+    "fixes": []
+  },
+  {
+    "version": "2026.11.19",
+    "title": "Live stock widgets for your Discord server",
+    "summary": "Keep current vehicle availability within reach in Discord with an interactive stock widget and clearer server management tools.",
+    "date": "2026-11-19",
+    "published": true,
+    "highlights": [
+      "Live stock widgets bring vehicle availability into a Discord channel and provide interactive controls for browsing listings."
+    ],
+    "additions": [
+      "Preview a widget and confirm its deployment before a message is posted to your server.",
+      "Server management tools provide more control over widget deployments and clearer information about server configuration."
+    ],
+    "improvements": [
+      "Administrators can review bot readiness and command registration to help diagnose setup problems.",
+      "Public pages include clearer page descriptions and link-preview information when shared."
+    ],
+    "fixes": []
+  },
+  {
+    "version": "2026.11.18",
+    "title": "Easier vehicle browsing and clearer monitoring information",
+    "summary": "Finding and inspecting vehicles is more convenient, while administrators gain a clearer view of recent monitoring activity.",
+    "date": "2026-11-18",
+    "published": true,
+    "highlights": [],
+    "additions": [
+      "Vehicle previews open a closer inspection view, with expandable listing details and time-limited listing labels.",
+      "A creator profile card makes profile information available from the public interface."
+    ],
+    "improvements": [
+      "Homepage filters and listing summaries make it easier to focus on vehicles that interest you.",
+      "Monitoring and delivery logs use pages so administrators can review activity without scrolling through one long list."
+    ],
+    "fixes": [
+      "Improved logout handling so leaving a signed-in session behaves more consistently."
+    ]
+  },
+  {
+    "version": "2026.11.17",
+    "title": "A dedicated dashboard and vehicle archive",
+    "summary": "Everfall Limited Watcher gains a more complete web interface for browsing vehicle history and managing Discord server settings.",
+    "date": "2026-11-17",
+    "published": true,
+    "highlights": [
+      "Signed-in members can browse the vehicle history archive, search listings, and inspect vehicle galleries beyond the homepage showcase.",
+      "Server managers have a dedicated dashboard for reviewing their servers and configuring notification channels and roles."
+    ],
+    "additions": [],
+    "improvements": [
+      "A shared dark interface brings consistent navigation, cards, forms, and dialogs across public pages and the dashboard.",
+      "Dedicated administrator pages bring server oversight, announcement presentation, monitoring activity, and test tools into one interface."
+    ],
+    "fixes": []
+  },
+  {
+    "version": "2026.11.16",
+    "title": "Introducing Everfall Limited Watcher",
+    "summary": "Follow limited vehicle listings from the website and Discord, with vehicle galleries and a preserved record of previously verified listings.",
+    "date": "2026-11-16",
+    "published": true,
+    "highlights": [
+      "The homepage showcases limited vehicles with image galleries, while Discord announcements bring listing details into configured server channels.",
+      "Verified listing history is preserved when a store check fails or returns an unrecognized page, avoiding false sell-out changes from an inconclusive response."
+    ],
+    "additions": [
+      "Discord sign-in connects server managers to settings for the servers they can manage, with creator administration kept separate.",
+      "Server-specific announcement settings let communities choose how listing information is presented."
+    ],
+    "improvements": [],
+    "fixes": [
+      "Corrected a Discord sign-in redirect loop so authorized users can reach their dashboard."
     ]
   }
 ]

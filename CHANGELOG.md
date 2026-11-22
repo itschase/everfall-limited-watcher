@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-21 — Backfilled member release history
+
+- Added member-facing releases for November 16–20, dated from the original repository commits. Grouped related changes by day and described their visible benefits rather than publishing internal implementation or deployment details.
+- Added the previously undocumented November 21 Discord presence controls, profile/contact presentation, and login-popup fix. Preserved all existing release versions, dates, and content so website editor overrides remain effective.
+- Regenerated the bundled release catalog from the marked source section. Historical dates describe when changes entered the repository; they do not assert a separately verified production deployment date.
+
 ## 2026-11-21 — Organized sidebar and dependable homepage navigation
 
 - Unified mobile and desktop branding into one accessible homepage link, including the icon-only state. The mobile title previously contained no link. Removed the redundant bottom Public Homepage shortcut and kept branding outside the scrollable navigation area.
@@ -105,11 +111,60 @@
 - Store versions independently, require login for member reads, enforce administrator-only editing, and exclude draft content from member API responses. Updates preserve other versions and introduce no KV operations.
 - Added regression coverage for safe content/version/date validation, publication and draft isolation, independent updates, authentication, write authorization, duplicate-version handling and zero KV usage.
 
+## 2026-11-21 — Discord presence, profiles, and login improvements
+
+- Added configurable bot presence and synchronization after saving its settings (44ca3f4, 3f135f8, 7aca09c).
+- Refined Discord profile cards and the account menu, and added the About contact card with a GitHub link (15d68f4 through 751d81c).
+- Opened the Discord login popup synchronously from the login action to avoid browser popup blocking while retaining full-page fallback (eb2756e).
+
+## 2026-11-20 — Public page editing and delivery recovery
+
+- Added public Features/About pages and unified page editing, expanded widget and announcement controls, and added recovery from existing Discord messages (b2a1ce1).
+- Consolidated monitoring configuration and changed widget synchronization to use catalog changes and shared snapshots (6f1f2f6). Subsequent storage work retained compatibility with historical records and media (f6d6a33).
+
+## 2026-11-19 — Live widgets and server management
+
+- Added interactive stock widgets and a preview/confirmation flow for explicit deployment (c7c808e, 98d7617).
+- Expanded server management, widget controls, command registration diagnostics, and bot readiness checks (ea52021, ea3a783). Added public presentation data and page metadata (be1a97f).
+
+## 2026-11-18 — Listing inspection and monitoring visibility
+
+- Added catalog/status snapshots and monitoring attempt logs, with improved logout handling (f854ee2, ed80550).
+- Refined homepage filters and listing metadata, added preview-to-inspect behavior and time-limited badges, and paginated administrative logs (46a58cd, e78973d). Added the interactive creator profile card (ab564a4).
+
+## 2026-11-17 — Web dashboard and searchable history
+
+- Introduced the shared React interface, operator dashboard, member history page, and dedicated administrative pages (24bd6a8).
+- Improved stock verification and store-check feedback during the day's monitoring revisions. Avoid publishing historical timing values because the cadence changed again in later updates.
+
+## 2026-11-16 — Initial listings, Discord setup, and preserved history
+
+- Introduced Discord commands, listing announcements, galleries, and the public listing showcase (f58c8fd, 9f5440d, 21f9c17).
+- Fixed Discord sign-in, separated operator and creator dashboards, and added server-specific announcement settings (560c419, 3308979, 502e8b4, 07f9a08).
+- Preserved verified listing history on failed or unrecognized store responses rather than treating them as confirmed sell-outs (4f3c818).
+
 ## Website release notes
 
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.21.4 | 2026-11-21 | Smoother sign-in and clearer Discord profiles
+
+Signing in and finding contact information is easier, with clearer Discord profile cards and more control over the bot's visible activity.
+
+### New additions
+
+- Administrators can configure the bot's Discord presence and activity from Bot Control. Saved settings are synchronized with its Discord status.
+- The About page includes a creator contact card with profile details and a GitHub link for finding the project.
+
+### Improvements
+
+- Discord profile cards and the account menu have clearer names, profile details, and layouts that adapt to smaller screens.
+
+### Fixes
+
+- The Discord sign-in window opens directly when you select login, reducing popup-blocking problems. Full-page sign-in remains available when the browser blocks the window.
 
 ## 2026.11.21.3 | 2026-11-21 | A clearer sidebar with everything closer to hand
 
@@ -191,5 +246,87 @@ This update makes Everfall Limited Watcher more comfortable to use on smaller sc
 
 - Improved the handling of high-resolution images when building multi-vehicle event covers, reducing unnecessary image work and keeping repeated test samples efficient.
 - Updated labels and status explanations so it is easier to understand when widgets change and which settings affect only the information shown on the website.
+
+## 2026.11.20 | 2026-11-20 | More flexible pages and announcement recovery
+
+This update expands the information available on the public website and gives administrators more ways to manage pages, widgets, and existing announcements.
+
+### New additions
+
+- Dedicated Features and About pages explain what Everfall Limited Watcher does and how it helps communities follow limited vehicles.
+- Administrators can manage public page content in one Pages editor and recover announcement tracking from existing Discord messages.
+
+### Improvements
+
+- Expanded announcement and widget controls make it easier to review presentation and manage existing deployments.
+- Widget synchronization checks for changes in the verified catalog, reducing unnecessary updates when listing information has stayed the same.
+
+## 2026.11.19 | 2026-11-19 | Live stock widgets for your Discord server
+
+Keep current vehicle availability within reach in Discord with an interactive stock widget and clearer server management tools.
+
+### Highlights
+
+- Live stock widgets bring vehicle availability into a Discord channel and provide interactive controls for browsing listings.
+
+### New additions
+
+- Preview a widget and confirm its deployment before a message is posted to your server.
+- Server management tools provide more control over widget deployments and clearer information about server configuration.
+
+### Improvements
+
+- Administrators can review bot readiness and command registration to help diagnose setup problems.
+- Public pages include clearer page descriptions and link-preview information when shared.
+
+## 2026.11.18 | 2026-11-18 | Easier vehicle browsing and clearer monitoring information
+
+Finding and inspecting vehicles is more convenient, while administrators gain a clearer view of recent monitoring activity.
+
+### New additions
+
+- Vehicle previews open a closer inspection view, with expandable listing details and time-limited listing labels.
+- A creator profile card makes profile information available from the public interface.
+
+### Improvements
+
+- Homepage filters and listing summaries make it easier to focus on vehicles that interest you.
+- Monitoring and delivery logs use pages so administrators can review activity without scrolling through one long list.
+
+### Fixes
+
+- Improved logout handling so leaving a signed-in session behaves more consistently.
+
+## 2026.11.17 | 2026-11-17 | A dedicated dashboard and vehicle archive
+
+Everfall Limited Watcher gains a more complete web interface for browsing vehicle history and managing Discord server settings.
+
+### Highlights
+
+- Signed-in members can browse the vehicle history archive, search listings, and inspect vehicle galleries beyond the homepage showcase.
+- Server managers have a dedicated dashboard for reviewing their servers and configuring notification channels and roles.
+
+### Improvements
+
+- A shared dark interface brings consistent navigation, cards, forms, and dialogs across public pages and the dashboard.
+- Dedicated administrator pages bring server oversight, announcement presentation, monitoring activity, and test tools into one interface.
+
+## 2026.11.16 | 2026-11-16 | Introducing Everfall Limited Watcher
+
+Follow limited vehicle listings from the website and Discord, with vehicle galleries and a preserved record of previously verified listings.
+
+### Highlights
+
+- The homepage showcases limited vehicles with image galleries, while Discord announcements bring listing details into configured server channels.
+- Verified listing history is preserved when a store check fails or returns an unrecognized page, avoiding false sell-out changes from an inconclusive response.
+
+### New additions
+
+- Discord sign-in connects server managers to settings for the servers they can manage, with creator administration kept separate.
+- Server-specific announcement settings let communities choose how listing information is presented.
+
+### Fixes
+
+- Corrected a Discord sign-in redirect loop so authorized users can reach their dashboard.
 
 <!-- website-releases:end -->
