@@ -1,6 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
+import {
+  Link,
+  Outlet,
+  useNavigate,
+  useParams,
+  useSearch,
+} from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft, Search } from "lucide-react";
 import {
   apiFetch,
@@ -26,9 +32,24 @@ export function HistoryPage() {
   const activePackageId = params.packageId ? params.packageId.trim() : "";
 
   const { data: session, isLoading: isSessionLoading } = useSession();
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<"all" | "in_stock" | "sold_out">("all");
-  const [page, setPage] = useState(1);
+  const filters = useSearch({ from: "/history" });
+  const { q: search, status, page } = filters;
+  const [searchInput, setSearchInput] = useState(search);
+  useEffect(() => setSearchInput(search), [search]);
+  useEffect(() => {
+    if (searchInput === search) return;
+    const timer = window.setTimeout(
+      () =>
+        void navigate({
+          to: activePackageId ? "/history/$packageId" : "/history",
+          params: { packageId: activePackageId },
+          search: { ...filters, q: searchInput, page: 1 },
+          replace: true,
+        }),
+      350,
+    );
+    return () => window.clearTimeout(timer);
+  }, [searchInput, search, status, page, activePackageId, navigate]);
 
   const isAuthenticated = Boolean(session?.user);
 
@@ -41,7 +62,8 @@ export function HistoryPage() {
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["history", search, status, page],
-    queryFn: () => apiFetch<HistoryResponse>(`/api/history?${queryParams.toString()}`),
+    queryFn: () =>
+      apiFetch<HistoryResponse>(`/api/history?${queryParams.toString()}`),
     enabled: isAuthenticated,
   });
 
@@ -56,7 +78,7 @@ export function HistoryPage() {
     queryKey: ["public-history-detail", activePackageId],
     queryFn: () =>
       apiFetch<PublicHistoryDetailResponse>(
-        `/api/public/history/${encodeURIComponent(activePackageId)}`
+        `/api/public/history/${encodeURIComponent(activePackageId)}`,
       ),
     enabled: Boolean(activePackageId),
     retry: false,
@@ -66,11 +88,12 @@ export function HistoryPage() {
     void navigate({
       to: "/history/$packageId",
       params: { packageId: listing.id },
+      search: filters,
     });
   };
 
   const closeInspect = () => {
-    void navigate({ to: "/history" });
+    void navigate({ to: "/history", search: filters });
   };
 
   // Expanded individual historical listing view (/history/{packageId})
@@ -97,7 +120,12 @@ export function HistoryPage() {
         />
       ) : (
         <div className="space-y-4">
-          <Button type="button" variant="outline" size="sm" onClick={closeInspect}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={closeInspect}
+          >
             <ArrowLeft className="h-4 w-4" />
             Back to Limited Drop History
           </Button>
@@ -114,7 +142,9 @@ export function HistoryPage() {
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <Button asChild>
-                <Link to="/history">Return to Drop History</Link>
+                <Link to="/history" search={filters}>
+                  Return to Drop History
+                </Link>
               </Button>
               {!isInvalidOrMissing && (
                 <Button
@@ -163,7 +193,8 @@ export function HistoryPage() {
               Limited Drop History
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Preserved archive record for an Everfall Limited Edition vehicle drop.
+              Preserved archive record for an Everfall Limited Edition vehicle
+              drop.
             </p>
           </div>
           {detailContent}
@@ -183,24 +214,34 @@ export function HistoryPage() {
         <Tabs
           value={status}
           onValueChange={(val) => {
-            setStatus(val as any);
-            setPage(1);
+            void navigate({
+              to: "/history",
+              search: {
+                ...filters,
+                q: searchInput,
+                status: val as typeof status,
+                page: 1,
+              },
+            });
           }}
         >
           <TabsList className="h-auto flex-wrap">
             <TabsTrigger value="all">All ({counts.all})</TabsTrigger>
-            <TabsTrigger value="in_stock">In Stock ({counts.inStock})</TabsTrigger>
-            <TabsTrigger value="sold_out">Sold Out ({counts.soldOut})</TabsTrigger>
+            <TabsTrigger value="in_stock">
+              In Stock ({counts.inStock})
+            </TabsTrigger>
+            <TabsTrigger value="sold_out">
+              Sold Out ({counts.soldOut})
+            </TabsTrigger>
           </TabsList>
         </Tabs>
 
         <div className="relative w-full sm:w-72">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            value={search}
+            value={searchInput}
             onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
+              setSearchInput(e.target.value);
             }}
             placeholder="Search by vehicle name or ID..."
             className="pl-9"
@@ -220,7 +261,12 @@ export function HistoryPage() {
           <p className="text-sm text-red-400">
             {(error as Error)?.message || "Failed to load historical archive."}
           </p>
-          <Button variant="secondary" size="sm" className="mt-4" onClick={() => void refetch()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-4"
+            onClick={() => void refetch()}
+          >
             Retry
           </Button>
         </Card>
@@ -262,7 +308,12 @@ export function HistoryPage() {
                   variant="outline"
                   size="sm"
                   disabled={data.page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  onClick={() =>
+                    void navigate({
+                      to: "/history",
+                      search: { ...filters, page: Math.max(1, page - 1) },
+                    })
+                  }
                 >
                   Previous
                 </Button>
@@ -270,7 +321,12 @@ export function HistoryPage() {
                   variant="outline"
                   size="sm"
                   disabled={data.page >= data.totalPages}
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() =>
+                    void navigate({
+                      to: "/history",
+                      search: { ...filters, page: page + 1 },
+                    })
+                  }
                 >
                   Next
                 </Button>

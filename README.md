@@ -150,4 +150,14 @@ Add a unique release using `## version | YYYY-MM-DD | Title`, followed by a summ
 
 Run `npm run changelog:generate` and commit `CHANGELOG.md` together with `src/shared/publishedReleaseNotes.json`. Builds and local startup regenerate the catalog; `npm run lint` rejects stale generated copy. Invalid dates, duplicate versions, unsupported formatting, and oversized content fail validation. A successful production deployment makes new versions available through the existing authenticated Changelog API; no publish request or additional secret is required.
 
-The website release editor remains available for drafts and wording corrections. A saved website version overrides the repository copy of that same version, including when unpublished. Use a new version for a new update; editing the repository cannot republish a version deliberately withdrawn in the website editor. Members with the page already open receive updates on the next normal query refresh or reload.
+The website release editor remains available for drafts and wording corrections. A saved website version overrides the repository copy of that same version, including when unpublished. Use a new version for a new update; editing the repository cannot republish a version deliberately withdrawn in the website editor. The member Changelog refreshes every minute while open, on focus/reconnect, and through **Refresh Changelog**. The editor warns before leaving unsaved work; simultaneous creation of an existing version returns a conflict rather than replacing it.
+
+## Automation checks, recovery, and saved previews
+
+Server managers can use **Check Permissions** in Customizations to inspect relevant Discord channel/event access without sending messages. Newly enabled settings are checked when saved. Deploy a widget before checking its channel. Permissions may change afterward; checks are readiness information rather than a delivery guarantee.
+
+Automation status shows the last attempt, last fully successful attempt, and earliest sticky cooldown eligibility. A widget moves only when successful monitoring finds newer messages. Each failed event/widget has its own retry action using the verified catalog; retries do not send listing alerts, scrape the store, or rerun unrelated operations. Concurrent monitoring/recovery may require waiting briefly. A deleted widget may still require redeployment.
+
+Test deployment uses the exact preview, bound to its server and settings for ten minutes. Expired previews or changed settings require regeneration. Preview data is temporary; expired records are cleaned during later generation. Reload Status checks Discord for externally ended/deleted events. Covers use a bounded fifteen-minute memory cache invalidated by archived image changes.
+
+Archive search waits 350 ms after typing. Its query, stock filter, and page are saved in the URL for sharing, reload, and return from vehicle details. Interface routes load on demand so administrative screens stay out of the initial public-page download.

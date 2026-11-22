@@ -43,6 +43,17 @@ export function TestEventSimulator({
   const [repeatSamples, setRepeatSamples] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [confirm, setConfirm] = useState(false);
+  useEffect(() => {
+    if (!preview) return;
+    const timer = window.setTimeout(
+      () => {
+        setPreview(null);
+        setConfirm(false);
+      },
+      Math.max(0, preview.previewExpiresAt - Date.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [preview]);
   const requestId = useRef(crypto.randomUUID());
   const queryClient = useQueryClient();
   useEffect(() => {
@@ -93,7 +104,11 @@ export function TestEventSimulator({
         "/api/admin/testing/events/deploy",
         {
           method: "POST",
-          body: JSON.stringify({ ...options, requestId: requestId.current }),
+          body: JSON.stringify({
+            ...options,
+            requestId: requestId.current,
+            previewId: preview?.previewId,
+          }),
         },
       ),
     onSuccess: (result) => {
@@ -244,7 +259,11 @@ export function TestEventSimulator({
               </Button>
               <Button
                 disabled={
-                  !preview || pending || status.data?.active || !guildId
+                  !preview ||
+                  pending ||
+                  status.data?.active ||
+                  !guildId ||
+                  preview.previewExpiresAt <= Date.now()
                 }
                 onClick={() => setConfirm(true)}
               >
@@ -319,6 +338,11 @@ export function TestEventSimulator({
                   <h3 className="font-semibold">{preview.name}</h3>
                   <p className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
                     {preview.description}
+                  </p>
+                  <p className="text-xs">
+                    Preview valid until{" "}
+                    {new Date(preview.previewExpiresAt).toLocaleTimeString()}.
+                    Deployment uses these exact vehicles and this cover.
                   </p>
                   <p className="text-xs">
                     {preview.actualCount} vehicle slot

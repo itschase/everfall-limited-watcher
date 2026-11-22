@@ -1,25 +1,95 @@
-import { createRootRoute, createRoute, createRouter, Outlet } from "@tanstack/react-router";
-import { HomePage } from "@/features/homepage/HomePage";
-import { FeaturesPage } from "@/features/features/FeaturesPage";
-import { AboutPage } from "@/features/about/AboutPage";
-import { HistoryPage } from "@/features/history/HistoryPage";
-import { DashboardPage } from "@/features/dashboard/DashboardPage";
-import { TermsPage } from "@/features/legal/TermsPage";
-import { PrivacyPage } from "@/features/legal/PrivacyPage";
-import { AdminOverviewPage } from "@/features/admin/AdminOverviewPage";
-import { AdminServersPage } from "@/features/admin/AdminServersPage";
-import { AdminEmbedsPage } from "@/features/admin/AdminEmbedsPage";
-import { AdminMonitorPage } from "@/features/admin/AdminMonitorPage";
-import { AdminDispatchPage } from "@/features/admin/AdminDispatchPage";
-import { AdminTestingPage } from "@/features/admin/AdminTestingPage";
-import { AdminImagesPage } from "@/features/admin/AdminImagesPage";
-import { AdminBotPage } from "@/features/admin/AdminBotPage";
-import { AdminWidgetsPage } from "@/features/admin/AdminWidgetsPage";
-import { AdminMetadataPage } from "@/features/admin/AdminMetadataPage";
-import { AdminPagesPage } from "@/features/admin/AdminPagesPage";
-import { AdminHeroPage } from "@/features/admin/AdminHeroPage";
-import { ChangelogPage } from "@/features/changelog/ChangelogPage";
-import { AdminChangelogPage } from "@/features/admin/AdminChangelogPage";
+import { normalizeHistorySearch } from "../shared/historySearch";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  lazyRouteComponent,
+} from "@tanstack/react-router";
+const HomePage = lazyRouteComponent(
+  () => import("@/features/homepage/HomePage"),
+  "HomePage",
+);
+const FeaturesPage = lazyRouteComponent(
+  () => import("@/features/features/FeaturesPage"),
+  "FeaturesPage",
+);
+const AboutPage = lazyRouteComponent(
+  () => import("@/features/about/AboutPage"),
+  "AboutPage",
+);
+const HistoryPage = lazyRouteComponent(
+  () => import("@/features/history/HistoryPage"),
+  "HistoryPage",
+);
+const DashboardPage = lazyRouteComponent(
+  () => import("@/features/dashboard/DashboardPage"),
+  "DashboardPage",
+);
+const TermsPage = lazyRouteComponent(
+  () => import("@/features/legal/TermsPage"),
+  "TermsPage",
+);
+const PrivacyPage = lazyRouteComponent(
+  () => import("@/features/legal/PrivacyPage"),
+  "PrivacyPage",
+);
+const AdminOverviewPage = lazyRouteComponent(
+  () => import("@/features/admin/AdminOverviewPage"),
+  "AdminOverviewPage",
+);
+const AdminServersPage = lazyRouteComponent(
+  () => import("@/features/admin/AdminServersPage"),
+  "AdminServersPage",
+);
+const AdminEmbedsPage = lazyRouteComponent(
+  () => import("@/features/admin/AdminEmbedsPage"),
+  "AdminEmbedsPage",
+);
+const AdminMonitorPage = lazyRouteComponent(
+  () => import("@/features/admin/AdminMonitorPage"),
+  "AdminMonitorPage",
+);
+const AdminDispatchPage = lazyRouteComponent(
+  () => import("@/features/admin/AdminDispatchPage"),
+  "AdminDispatchPage",
+);
+const AdminTestingPage = lazyRouteComponent(
+  () => import("@/features/admin/AdminTestingPage"),
+  "AdminTestingPage",
+);
+const AdminImagesPage = lazyRouteComponent(
+  () => import("@/features/admin/AdminImagesPage"),
+  "AdminImagesPage",
+);
+const AdminBotPage = lazyRouteComponent(
+  () => import("@/features/admin/AdminBotPage"),
+  "AdminBotPage",
+);
+const AdminWidgetsPage = lazyRouteComponent(
+  () => import("@/features/admin/AdminWidgetsPage"),
+  "AdminWidgetsPage",
+);
+const AdminMetadataPage = lazyRouteComponent(
+  () => import("@/features/admin/AdminMetadataPage"),
+  "AdminMetadataPage",
+);
+const AdminPagesPage = lazyRouteComponent(
+  () => import("@/features/admin/AdminPagesPage"),
+  "AdminPagesPage",
+);
+const AdminHeroPage = lazyRouteComponent(
+  () => import("@/features/admin/AdminHeroPage"),
+  "AdminHeroPage",
+);
+const ChangelogPage = lazyRouteComponent(
+  () => import("@/features/changelog/ChangelogPage"),
+  "ChangelogPage",
+);
+const AdminChangelogPage = lazyRouteComponent(
+  () => import("@/features/admin/AdminChangelogPage"),
+  "AdminChangelogPage",
+);
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
@@ -46,6 +116,7 @@ const aboutRoute = createRoute({
 const historyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/history",
+  validateSearch: normalizeHistorySearch,
   component: HistoryPage,
 });
 
@@ -152,8 +223,16 @@ const adminHeroRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  createRoute({ getParentRoute: () => rootRoute, path: "/changelog", component: ChangelogPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/admin/changelog", component: AdminChangelogPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/changelog",
+    component: ChangelogPage,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/admin/changelog",
+    component: AdminChangelogPage,
+  }),
   indexRoute,
   featuresRoute,
   aboutRoute,

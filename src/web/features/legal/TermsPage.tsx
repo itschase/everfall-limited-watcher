@@ -62,6 +62,7 @@ export function TermsPage() {
           </p>
         </div>
       </section>
+      <section className="mx-auto max-w-4xl px-4 pb-6 sm:px-6"><h2 className="text-base font-semibold">Permission checks, recovery, and previews</h2><p className="mt-2 text-sm text-muted-foreground">Enabling new automation may require a successful permission check. Discord permissions can change afterward; these checks do not guarantee future delivery. Server managers can explicitly retry an individual failed event or widget operation using the last verified listing state. Recovery may update or replace that selected Discord event or widget, without sending listing alerts or rerunning other operations. Test-event deployment uses the saved vehicles and cover from a preview generated within the last ten minutes; changing settings or allowing a preview to expire requires a new preview.</p></section>
       <AutomationNotice kind="terms" includeTestEvents />
     </PublicLayout>
   );

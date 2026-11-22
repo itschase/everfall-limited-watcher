@@ -1,4 +1,13 @@
 import { useEffect, useState } from "react";
+import { useBlocker } from "@tanstack/react-router";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
@@ -70,12 +79,41 @@ export function AdminChangelogPage() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+  const blocker = useBlocker({
+    shouldBlockFn: () => dirty || save.isPending,
+    enableBeforeUnload: dirty || save.isPending,
+    withResolver: true,
+  });
   return (
     <AppShell
       requireAdmin
       title="Manage Release Notes"
       description="Publish versioned updates for signed-in members. Explain useful features and improvements in everyday language; leave out internal tools and infrastructure details."
     >
+      <Dialog
+        open={blocker.status === "blocked"}
+        onOpenChange={(open) => {
+          if (!open) blocker.reset?.();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Leave this release note?</DialogTitle>
+            <DialogDescription>
+              You have unsaved changes or a save in progress. Stay to finish
+              your work, or leave and discard unsaved edits.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => blocker.reset?.()}>
+              Stay and edit
+            </Button>
+            <Button variant="destructive" onClick={() => blocker.proceed?.()}>
+              Leave page
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="grid gap-5 @4xl/main:grid-cols-[minmax(180px,240px)_minmax(0,1fr)]">
         <Card className="h-fit">
           <CardHeader>

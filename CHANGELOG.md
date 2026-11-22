@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-11-21 — Isolated recovery, permissions, and exact test previews
+
+- Fixed widget failure isolation: a deleted or inaccessible widget no longer skips subsequent widgets in its server. Pin PUT 404 responses remain failures rather than setting a successful pin flag.
+- Added per-operation failures, check/success timestamps, sticky eligibility, and manager-authorized event/widget recovery. Targeted retries share the monitoring lease, use the verified catalog, and never dispatch listing alerts or rerun unrelated operations. Removed-widget errors and pending moves are cleaned from tracking.
+- Added read-only channel/event permission checks and save-time validation for newly enabled options, with channel-specific remediation. Configuration saves still never post Discord messages.
+- Reconcile test-event status with Discord. Persist exact previews in bounded database chunks for ten minutes and require matching settings/server at the deploy API; expired previews are rejected and cleaned during later generation. Real-event tracking remains isolated.
+- Added a bounded fifteen-minute in-memory cover cache keyed by composition, images, and archive ETags. Failed covers are not retained, image replacements invalidate prior covers, and metadata failures fall back to normal rendering.
+- Updated both legal pages for permission checks, explicit recovery, operation status, and temporary preview retention.
+
+## 2026-11-21 — Faster navigation, persistent archive views, and safer release editing
+
+- Load route components on demand. The main JavaScript entry decreased from approximately 1.17 MB to 252 KB before compression; shared dependencies and page code remain separate loads.
+- Debounce archive searches by 350 ms and preserve validated query, stock filter, and page in the URL through reload, detail navigation, and browser history.
+- Protect release-note drafts/pending saves with a leave/stay dialog and browser unload protection. Conditional database inserts prevent concurrent release creation from overwriting a winning version.
+- Refresh the member Changelog every minute while open, on focus/reconnect, and through a refresh action with a visible timestamp.
+- Added regression coverage for failure isolation, scoped recovery, missing pins, external event completion, exact preview reuse/binding/expiry, cover invalidation, permission remediation/authorization, and concurrent creation. Local browser checks cover archive navigation, unsaved edit protection, and Changelog refresh without external Discord mutations.
+
 ## 2026-11-21 — Automatic website release publication
 
 - Made the explicitly marked website section below the repository source for bundled member release notes. Production builds and local startup generate a validated JSON catalog, so a deployed release appears automatically without a separate administrative publish action or database migration.
@@ -85,6 +102,31 @@
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.21.2 | 2026-11-21 | Easier recovery, dependable previews, and smoother browsing
+
+This update makes server management easier to diagnose and recover, keeps test-event previews consistent with what gets deployed, and helps you return to the exact archive view you were browsing. Release-note editing also gains stronger protection for work in progress.
+
+### Highlights
+
+- A failed widget no longer holds up other widgets in the same server. Managers can retry an individual failed event or widget operation, with clearer explanations of what went wrong.
+- Test events now deploy the exact vehicles and cover shown in their saved preview. Previews remain valid for ten minutes, and events ended directly in Discord are recognized when their status is reloaded.
+
+### New additions
+
+- Check Permissions explains missing access before enabling new automation. Server customization panels show the last check, last successful check, and when sticky widgets next become eligible to move.
+- Archive searches, stock filters, and page numbers are included in the address, making filtered views shareable and preserving them through reloads and vehicle-detail navigation.
+
+### Improvements
+
+- Pages load their own interface code as needed, and archive search waits briefly for you to finish typing before requesting results. Repeated event-cover previews reuse unchanged images to avoid unnecessary work.
+- The Changelog checks for new updates every minute while open and includes a manual refresh control with the last refresh time.
+- Leaving the release editor with unsaved changes now offers a choice to stay and finish editing. Creating the same release version simultaneously cannot silently replace the first saved version.
+
+### Fixes
+
+- Missing messages can no longer be recorded as successfully pinned. Failed operations remain visible for diagnosis and recovery.
+- Test previews reject changed settings and expired selections instead of silently generating a different cover during deployment. Updating an archived image also refreshes the cached cover.
 
 ## 2026.11.21.1 | 2026-11-21 | Release notes that arrive with each update
 

@@ -69,6 +69,7 @@ export function PrivacyPage() {
           </p>
         </div>
       </section>
+      <section className="mx-auto max-w-4xl px-4 pb-6 sm:px-6"><h2 className="text-base font-semibold">Automation recovery and test previews</h2><p className="mt-2 text-sm text-muted-foreground">We store per-operation automation errors and check, success, and cooldown timestamps so server managers can diagnose and retry a specific failed operation. Administrator test previews temporarily store the chosen settings, vehicle names, and generated cover in the existing application database for ten minutes. Expired previews cannot be deployed and are removed during subsequent preview generation. Permission checks read bot role and channel permissions without posting messages. Generated listing covers may be cached in server memory for up to fifteen minutes; archived image changes invalidate those cached covers.</p></section>
       <AutomationNotice kind="privacy" includeTestEvents />
     </PublicLayout>
   );

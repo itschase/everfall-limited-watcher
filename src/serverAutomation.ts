@@ -24,6 +24,9 @@ type AutomationState = {
   eventEndsAt?: number;
   error?: string;
   checkedAt?: number;
+  lastSuccessAt?: number;
+  failures?: Record<string, string>;
+  nextStickyAt?: number;
   pendingMoves?: Record<
     string,
     { messageId: string; payload: any; startedAt: number }
@@ -47,7 +50,8 @@ async function discord(
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     },
   );
-  if (response.status === 404) return null;
+  if (response.status === 404 && (method === "GET" || method === "DELETE"))
+    return null;
   if (!response.ok)
     throw new Error(
       response.status === 403
@@ -73,6 +77,7 @@ export async function pinListingMessage(
 export async function runServerAutomations(
   env: any,
   snapshot: CatalogSnapshot,
+  target?: { guildId: string; task: "event" | "widget"; widgetId?: string },
 ): Promise<void> {
   const db = getD1Database(env);
   if (!db || !env.DISCORD_BOT_TOKEN) return;
@@ -88,7 +93,11 @@ export async function runServerAutomations(
     )
     .bind(leaseKey, now, JSON.stringify(owner), now - 300_000)
     .run();
-  if (!lease.meta.changes) return;
+  if (!lease.meta.changes) {
+    if (target)
+      throw new Error("Automation is already running. Wait briefly and retry.");
+    return;
+  }
   try {
     const guildIds = await getAllGuildIds(env);
     const widgets = await getAllWidgetDeployments(env);
@@ -97,6 +106,7 @@ export async function runServerAutomations(
       .sort((a, b) => a.id.localeCompare(b.id));
     let preview: Promise<string | undefined> | undefined;
     for (const guildId of guildIds) {
+      if (target && target.guildId !== guildId) continue;
       const renewed = await db
         .prepare(
           "UPDATE monitor_state SET updated_at = ? WHERE key = ? AND value_json = ?",
@@ -106,17 +116,16 @@ export async function runServerAutomations(
       if (!renewed.meta.changes) return;
       const cfg = await getGuildConfig(env, guildId);
       const options = normalizeCustomizations(cfg?.customizations);
-      if (!Object.values(options).some(Boolean) || !cfg?.customizations)
-        continue;
+      if (!cfg?.customizations) continue;
       const key = `server-automation:${guildId}`;
       const state =
         (await getMonitorStateValue<AutomationState>(db, key)) || {};
       const before = JSON.stringify(state);
-      const errors: string[] = [];
+      state.failures ||= {};
       try {
         if (
-          options.autoCreateEvent ||
-          (state.eventId && options.autoEndEvent)
+          target?.task !== "widget" &&
+          (options.autoCreateEvent || (state.eventId && options.autoEndEvent))
         ) {
           const base = `/guilds/${guildId}/scheduled-events`;
           let event = state.eventId
@@ -162,12 +171,10 @@ export async function runServerAutomations(
               if (!event || state.eventHash !== hash) {
                 preview ||= generateEventPreview(
                   env,
-                  active
-                    .slice(0, 3)
-                    .map((record) => ({
-                      id: record.id,
-                      images: record.payload?.images || [],
-                    })),
+                  active.slice(0, 3).map((record) => ({
+                    id: record.id,
+                    images: record.payload?.images || [],
+                  })),
                 );
                 const image = await preview;
                 if (image) payload.image = image;
@@ -213,17 +220,21 @@ export async function runServerAutomations(
               await discord(env, `${base}/${event.id}`, "PATCH", { status: 2 });
           }
         }
+        if (target?.task !== "widget") delete state.failures.event;
       } catch (error) {
-        errors.push(
+        state.failures.event =
           error instanceof Error
             ? error.message
-            : "Event synchronization failed.",
-        );
+            : "Event synchronization failed.";
       }
-      try {
-        for (const widget of widgets.filter(
-          (item) => item.guildId === guildId,
-        )) {
+      for (const widget of widgets.filter(
+        (item) =>
+          item.guildId === guildId &&
+          target?.task !== "event" &&
+          (!target?.widgetId || target.widgetId === item.id),
+      )) {
+        delete state.failures[`widget:${widget.id}`];
+        try {
           const pending = state.pendingMoves?.[widget.id];
           if (options.pinWidget && !widget.automationPinned && !pending) {
             await pinListingMessage(env, widget.channelId, widget.messageId);
@@ -285,7 +296,9 @@ export async function runServerAutomations(
               messageId: oldId,
               startedAt: now,
               payload: {
-                ...(message.flags & 32768 ? {} : { content: message.content || "", embeds: message.embeds }),
+                ...(message.flags & 32768
+                  ? {}
+                  : { content: message.content || "", embeds: message.embeds }),
                 components: message.components,
                 flags: (message.flags & 32768) | 4096,
               },
@@ -311,7 +324,9 @@ export async function runServerAutomations(
               `/channels/${widget.channelId}/messages`,
               "POST",
               {
-                ...(message.flags & 32768 ? {} : { content: message.content || "", embeds: message.embeds }),
+                ...(message.flags & 32768
+                  ? {}
+                  : { content: message.content || "", embeds: message.embeds }),
                 components: message.components,
                 flags: (message.flags & 32768) | 4096,
                 allowed_mentions: { parse: [] },
@@ -327,6 +342,9 @@ export async function runServerAutomations(
             automationPinned: false,
             lastStickyAt: now,
           });
+          widget.messageId = replacement.id;
+          widget.lastStickyAt = now;
+          widget.automationPinned = false;
           delete state.pendingMoves![widget.id];
           if (!Object.keys(state.pendingMoves!).length)
             delete state.pendingMoves;
@@ -340,18 +358,48 @@ export async function runServerAutomations(
               lastStickyAt: now,
             });
           }
+        } catch (error) {
+          state.failures[`widget:${widget.id}`] =
+            error instanceof Error
+              ? error.message
+              : "Widget customization failed.";
         }
-      } catch (error) {
-        errors.push(
-          error instanceof Error
-            ? error.message
-            : "Widget customization failed.",
-        );
       }
+      // Removed widgets must not leave permanent errors or pending operations.
+      for (const failure of Object.keys(state.failures)) {
+        if (
+          failure.startsWith("widget:") &&
+          !widgets.some((w) => w.id === failure.slice(7))
+        )
+          delete state.failures[failure];
+      }
+      for (const id of Object.keys(state.pendingMoves || {})) {
+        if (!widgets.some((w) => w.guildId === guildId && w.id === id))
+          delete state.pendingMoves![id];
+      }
+      if (state.pendingMoves && !Object.keys(state.pendingMoves).length)
+        delete state.pendingMoves;
+      const errors = Object.values(state.failures);
+      state.checkedAt = now;
+      state.nextStickyAt = options.stickyWidget
+        ? Math.min(
+            ...widgets
+              .filter((w) => w.guildId === guildId)
+              .map((w) =>
+                Math.max(
+                  now,
+                  (w.lastStickyAt || w.deployedAt) + STICKY_COOLDOWN_MS,
+                ),
+              ),
+          )
+        : undefined;
+      if (!Number.isFinite(state.nextStickyAt)) delete state.nextStickyAt;
       if (errors.length) {
         state.error = errors.join(" ");
-        state.checkedAt = now;
-      } else if (state.error) delete state.error;
+      } else {
+        delete state.error;
+        state.lastSuccessAt = now;
+      }
       if (JSON.stringify(state) !== before)
         await setMonitorStateValue(db, key, state);
     }

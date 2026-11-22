@@ -7,6 +7,7 @@ import {
 import { fetchDiscordWithRetry } from "./discord";
 import { generateEventPreview } from "./eventImage";
 import { getCatalogSnapshot, getGuildConfig } from "./kv";
+import { loadTestPreview, storeTestPreview } from "./testPreviewStore";
 
 const TEST_EVENT_NAME = "[TEST] Everfall Limited Watcher";
 const TEST_MARKER = "Test simulation only — does not represent live stock.";
@@ -24,6 +25,7 @@ export interface TestEventOptions {
   durationMinutes: number;
   repeatSamples?: boolean;
   requestId?: string;
+  previewId?: string;
 }
 export interface TestEventState {
   eventId?: string;
@@ -65,8 +67,13 @@ function validateOptions(options: TestEventOptions) {
     throw new TestEventError("Test duration must be between 1 and 60 minutes.");
 }
 
+const previewSettings = (options: TestEventOptions) => ({
+  maxListings: options.maxListings,
+  durationMinutes: options.durationMinutes,
+  repeatSamples: options.repeatSamples === true,
+});
 export async function previewTestEvent(env: any, options: TestEventOptions) {
-  await requireTestGuild(env, options.guildId);
+  const db = await requireTestGuild(env, options.guildId);
   validateOptions(options);
   const snapshot = await getCatalogSnapshot(env);
   const records = [...snapshot.records].sort(
@@ -97,7 +104,7 @@ export async function previewTestEvent(env: any, options: TestEventOptions) {
       422,
     );
   const description = `${TEST_MARKER}\n\nVehicles listed:\n${listings.map((listing) => `• ${listing.name}`).join("\n")}\n\nEnds automatically after ${options.durationMinutes} minute${options.durationMinutes === 1 ? "" : "s"}.`;
-  return {
+  const preview = {
     name: TEST_EVENT_NAME,
     description,
     image,
@@ -106,6 +113,15 @@ export async function previewTestEvent(env: any, options: TestEventOptions) {
     repeatedSamples:
       new Set(listings.map((listing) => listing.id)).size < listings.length,
     durationMinutes: options.durationMinutes,
+  };
+  return {
+    ...preview,
+    ...(await storeTestPreview(
+      db,
+      options.guildId,
+      previewSettings(options),
+      preview,
+    )),
   };
 }
 
@@ -184,17 +200,30 @@ async function withTestLease<T>(
 }
 
 export async function getTestEventStatus(env: any, guildId: string) {
-  const db = await requireTestGuild(env, guildId);
-  const state = await getMonitorStateValue<TestEventState>(
-    db,
-    `test-event:${guildId}`,
-  );
-  return {
-    event: state,
-    active: Boolean(
-      state?.eventId && !state.endedAt && state.expiresAt > Date.now(),
-    ),
-  };
+  return withTestLease(env, guildId, async (db) => {
+    const state = await getMonitorStateValue<TestEventState>(
+      db,
+      `test-event:${guildId}`,
+    );
+    if (state?.eventId && !state.endedAt) {
+      const current = await discordEvent(env, guildId, `/${state.eventId}`);
+      if (!current || ![1, 2].includes(current.status)) {
+        state.endedAt = Date.now();
+        state.status = current?.status || 4;
+      } else {
+        state.status = current.status;
+        const expiry = Date.parse(current.scheduled_end_time);
+        if (Number.isFinite(expiry)) state.expiresAt = expiry;
+      }
+      await setMonitorStateValue(db, `test-event:${guildId}`, state);
+    }
+    return {
+      event: state,
+      active: Boolean(
+        state?.eventId && !state.endedAt && state.expiresAt > Date.now(),
+      ),
+    };
+  });
 }
 
 export async function deployTestEvent(env: any, options: TestEventOptions) {
@@ -281,7 +310,22 @@ export async function deployTestEvent(env: any, options: TestEventOptions) {
         409,
       );
     }
-    const preview = await previewTestEvent(env, options);
+    let preview: Awaited<ReturnType<typeof previewTestEvent>>;
+    try {
+      preview = options.previewId
+        ? await loadTestPreview(
+            db,
+            options.guildId,
+            options.previewId,
+            previewSettings(options),
+          )
+        : await previewTestEvent(env, options);
+    } catch (error) {
+      throw new TestEventError(
+        error instanceof Error ? error.message : "Generate a new preview.",
+        409,
+      );
+    }
     const now = Date.now();
     const state: TestEventState = {
       requestId: options.requestId!,

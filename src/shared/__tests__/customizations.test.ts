@@ -308,6 +308,15 @@ test("high-resolution multi-vehicle previews reuse painted samples and produce v
 
 test("customizations API enforces manager authorization, preserves channel/roles, and saves without Discord sends", async () => {
   const { db, env } = fixture();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input, init) => {
+    assert.equal(init?.method || "GET", "GET", "settings checks never mutate Discord");
+    const url = String(input);
+    if (url.endsWith("/roles")) return Response.json([{ id: guildId, permissions: "8" }]);
+    if (url.includes("/members/")) return Response.json({ roles: [] });
+    if (url.includes("/channels/")) return Response.json({ id: channelId, guild_id: guildId, type: 0, permission_overwrites: [] });
+    return Response.json({ id: guildId });
+  }) as typeof fetch;
   const secret = "test-customizations-secret";
   Object.assign(env, { DISCORD_CLIENT_SECRET: secret });
   try {
@@ -368,6 +377,7 @@ test("customizations API enforces manager authorization, preserves channel/roles
     );
     assert.equal(denied?.status, 403);
   } finally {
+    globalThis.fetch = originalFetch;
     db.close();
   }
 });

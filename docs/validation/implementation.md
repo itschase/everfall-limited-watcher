@@ -1,5 +1,15 @@
 # Implementation and validation — 2026-11-21
 
+## Recovery and usability follow-up
+
+- Addressed the three reviewed defects: per-widget failure isolation, failed pin tracking, and reconciliation of externally ended/deleted test events.
+- Added permission preflight, scoped recovery, exact saved-preview deployment, bounded cover reuse, debounced archive search, URL-based filters, demand-loaded routes, release-editor navigation protection, atomic release creation, and clearer automation timing.
+- Added a per-operation failure registry and last-check/success/sticky timestamps without routine KV writes. Recovery shares the monitor lease and never dispatches listing alerts. Updated both published policy pages for preview data and recovery behavior.
+- Local browser fixture: verified search/filter reload persistence, detail/back persistence, leave/stay protection preserving a draft, and successful member Changelog refresh with no browser console errors. Fixture used an in-memory database and synthetic local identity; it did not modify Discord or production data.
+- Production build now emits route/shared chunks. Main entry measured approximately 252 KB before compression, down from approximately 1.17 MB; this does not represent all shared assets downloaded by a page.
+- Final follow-up validation: all 64 tests, TypeScript lint, production build, and Worker deployment dry run passed.
+- Real Discord permissions, event/pin/sticky mutations, and production deployment still require deployed acceptance testing.
+
 The changes preserve existing D1 records, archived listings, OAuth behavior, announcement templates, and Discord configuration. No production data migration or historical deletion is required. New server customizations default to disabled; sold-out cleanup defaults on but has no effect until an event has been created through the opt-in feature.
 
 ## Public content and editor
@@ -38,8 +48,8 @@ Discord integration follows the official [message endpoints](https://docs.discor
 ## Validation performed
 
 - npm run lint — passed.
-- npm test — 39 passed, 0 failed. Includes all 32 existing tests plus new normalization/security, atomic concurrent page saves, authorization, 1/2/3 composite/crop/slot fallback, real WebP decoding, mocked event lifecycle and sticky-send recovery coverage.
-- npm run build — passed. Vite reports the existing large single-chunk warning; code splitting remains a separate optimization.
+- npm test — initial implementation: 39 passed, 0 failed. Follow-up suite: 64 passed, including normalization/security, atomic saves, authorization, image generation, mocked event lifecycle, targeted recovery, permission preflight, and release creation races.
+- npm run build — passed. Route splitting in the follow-up removes the earlier large single-chunk warning.
 - Wrangler deployment dry run — passed with the bundled WebP Wasm module.
 - Local Cloudflare Worker runtime — started successfully and returned HTTP 200 from /api/public/presentation.
 - Local browser Pages editor — checked at 320, 375, 430, 768, 1024, 1280 and 1440 CSS widths, without page overflow or offscreen inputs/buttons in the measured state. Expanded and collapsed sidebar states were checked at 1440px.

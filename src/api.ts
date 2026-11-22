@@ -1,3 +1,5 @@
+import { checkAutomationReadiness } from "./automationReadiness";
+import { runServerAutomations } from "./serverAutomation";
 import {
   appendDeliveryLog,
   BotCommandSyncMeta,
@@ -66,7 +68,7 @@ import {
 } from "./scraper";
 import { fetchDiscordWithRetry, validateBotChannelPermissions } from "./discord";
 import { normalizeCustomizations } from "./shared/customizations";
-import { getReleaseNotes, saveReleaseNote } from "./releaseNotes";
+import { getReleaseNotes, saveReleaseNote, ReleaseConflictError } from "./releaseNotes";
 import { normalizeReleaseNote } from "./shared/releaseNotes";
 import { deployTestEvent, endTestEvent, getTestEventStatus, previewTestEvent, TestEventError } from "./testEvents";
 import {
@@ -757,7 +759,7 @@ export async function handleApiRequest(
           }
         }
 
-        const automationState = getD1Database(env) && config?.customizations ? await getMonitorStateValue<{ eventId?: string; error?: string; checkedAt?: number }>(getD1Database(env)!, `server-automation:${g.id}`) : null;
+        const automationState = getD1Database(env) && config?.customizations ? await getMonitorStateValue<{ eventId?: string; error?: string; checkedAt?: number; lastSuccessAt?: number; nextStickyAt?: number; failures?: Record<string, string> }>(getD1Database(env)!, `server-automation:${g.id}`) : null;
         const iconUrl = g.icon
           ? `https://cdn.discordapp.com/icons/${encodeURIComponent(g.id)}/${encodeURIComponent(g.icon)}.png?size=64`
           : null;
@@ -781,7 +783,7 @@ export async function handleApiRequest(
             environment: config?.environment === "test" ? "test" : "production",
             widgetTemplateId: config?.widgetTemplateId || "default",
             customizations: normalizeCustomizations(config?.customizations),
-            automationStatus: automationState ? { eventId: automationState.eventId, error: automationState.error, checkedAt: automationState.checkedAt } : null,
+            automationStatus: automationState ? { eventId: automationState.eventId, error: automationState.error, checkedAt: automationState.checkedAt, lastSuccessAt: automationState.lastSuccessAt, nextStickyAt: automationState.nextStickyAt, failures: automationState.failures } : null,
           },
           widgets: widgetsByGuild.get(g.id) || [],
           channels: controls.channels,
@@ -816,6 +818,32 @@ export async function handleApiRequest(
   }
 
   // 5. Save Server Configuration (never triggers auto-publish)
+  const automationAction = url.pathname.match(/^\/api\/dashboard\/servers\/(\d{17,20})\/automations\/(check|retry)$/);
+  if (automationAction && method === "POST") {
+    if (!user) return json({ error: "Authentication required." }, 401);
+    const guildId = automationAction[1];
+    const guilds = await getManagedGuildsForUser(env, user.id);
+    if (!guilds.some(g => g.id === guildId)) return json({ error: "Manage Server permission required." }, 403);
+    if (!getD1Database(env)) return json({ error: "Automation storage is unavailable." }, 503);
+    let body: any;
+    try { body = await request.json(); } catch { return json({ error: "Invalid JSON payload." }, 400); }
+    if (automationAction[2] === "check") {
+      try { return json(await checkAutomationReadiness(env, guildId, normalizeCustomizations(body))); }
+      catch { return json({ error: "Could not verify permissions. Try again shortly." }, 502); }
+    }
+    const task = body?.task;
+    if (task !== "event" && task !== "widget") return json({ error: "Select an event or widget recovery action." }, 400);
+    const state = await getMonitorStateValue<any>(getD1Database(env)!, "server-automation:" + guildId);
+    if (task === "widget" && (typeof body.widgetId !== "string" || !(await getAllWidgetDeployments(env)).some(w => w.guildId === guildId && w.id === body.widgetId))) return json({ error: "Widget not found in this server." }, 404);
+    const failureKey = task === "event" ? "event" : "widget:" + body.widgetId;
+    if (!state?.failures?.[failureKey]) return json({ error: "This operation has no tracked failure to retry. Reload the server status." }, 409);
+    try {
+      await runServerAutomations(env, await getCatalogSnapshot(env), { guildId, task, widgetId: body.widgetId });
+      const updated = await getMonitorStateValue<any>(getD1Database(env)!, "server-automation:" + guildId);
+      if (updated?.failures?.[failureKey]) return json({ error: updated.failures[failureKey] }, 502);
+      return json({ ok: true });
+    } catch (error) { return json({ error: error instanceof Error ? error.message : "Recovery failed." }, 409); }
+  }
   const customizationMatch = url.pathname.match(/^\/api\/dashboard\/servers\/(\d{17,20})\/customizations$/);
   if (customizationMatch && method === "PUT") {
     if (!user) return json({ error: "Authentication required." }, 401);
@@ -827,7 +855,15 @@ export async function handleApiRequest(
     try { body = await request.json(); } catch { return json({ error: "Invalid JSON payload." }, 400); }
     const existing = await getGuildConfig(env, guildId) || { channelId: "", roleIds: [] };
     const customizations = normalizeCustomizations(body);
-    if (JSON.stringify(normalizeCustomizations(existing.customizations)) !== JSON.stringify(customizations)) {
+    const previous = normalizeCustomizations(existing.customizations);
+    const newlyEnabled = Object.fromEntries(Object.keys(customizations).map(key => [key, customizations[key as keyof typeof customizations] && !previous[key as keyof typeof previous]])) as typeof customizations;
+    if (Object.values(newlyEnabled).some(Boolean)) {
+      let readiness;
+      try { readiness = await checkAutomationReadiness(env, guildId, newlyEnabled); }
+      catch { return json({ error: "Could not verify permissions. Try again shortly." }, 502); }
+      if (!readiness.ready) return json({ error: readiness.issues.join(" "), readiness }, 400);
+    }
+    if (JSON.stringify(previous) !== JSON.stringify(customizations)) {
       await setGuildConfig(env, guildId, { ...existing, customizations });
     }
     return json({ ok: true, customizations });
@@ -1312,8 +1348,8 @@ export async function handleApiRequest(
         const exists = (await getReleaseNotes(env, true)).some(note => note.version === body?.version);
         if (method === "POST" && exists) return json({ error: "That version already exists. Select it to edit its release notes." }, 409);
         if (method === "PUT" && !exists) return json({ error: "Release version not found." }, 404);
-        try { return json({ entry: await saveReleaseNote(env, body) }); }
-        catch (error) { return json({ error: error instanceof Error ? error.message : "Could not save release notes." }, 400); }
+        try { return json({ entry: await saveReleaseNote(env, body, method === "POST") }); }
+        catch (error) { return json({ error: error instanceof Error ? error.message : "Could not save release notes." }, error instanceof ReleaseConflictError ? 409 : 400); }
       }
     }
 
@@ -2250,7 +2286,8 @@ export async function handleApiRequest(
       try { body = await request.json(); } catch { return json({ error: "Invalid JSON payload." }, 400); }
       try {
         const guildId = String(body?.guildId || "");
-        const options = { guildId, maxListings: body?.maxListings, durationMinutes: body?.durationMinutes, repeatSamples: body?.repeatSamples === true, requestId: body?.requestId };
+        const options = { guildId, maxListings: body?.maxListings, durationMinutes: body?.durationMinutes, repeatSamples: body?.repeatSamples === true, requestId: body?.requestId, previewId: body?.previewId };
+        if (url.pathname.endsWith("/deploy") && typeof options.previewId !== "string") return json({ error: "Generate an event preview before deploying." }, 400);
         if (url.pathname.endsWith("/preview")) return json({ ok: true, ...await previewTestEvent(env, options) });
         if (url.pathname.endsWith("/end")) return json(await endTestEvent(env, guildId));
         return json({ ok: true, ...await deployTestEvent(env, options) });

@@ -307,7 +307,7 @@ export interface ManagedServer {
   statusReason: string;
   config: {
     customizations?: import("../../shared/customizations").ServerCustomizations;
-    automationStatus?: { eventId?: string; error?: string; checkedAt?: number } | null;
+    automationStatus?: { eventId?: string; error?: string; checkedAt?: number; lastSuccessAt?: number; nextStickyAt?: number; failures?: Record<string, string> } | null;
     channelId: string;
     channelName: string | null;
     channelMissing: boolean;

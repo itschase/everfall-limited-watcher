@@ -152,7 +152,7 @@ export async function decodeListingImage(buffer: ArrayBuffer): Promise<Raster> {
   throw new Error("Unsupported listing image format.");
 }
 
-export async function generateEventPreview(
+async function renderEventPreview(
   env: any,
   listings: Array<{ id: string; images: string[] }>,
 ): Promise<string | undefined> {
@@ -232,4 +232,48 @@ export async function generateEventPreview(
   for (let i = 0; i < png.length; i += 8192)
     binary += String.fromCharCode(...png.subarray(i, i + 8192));
   return `data:image/png;base64,${btoa(binary)}`;
+}
+
+// Bounded isolate-local cache: archived ETags invalidate covers after image replacement.
+const coverCaches = new WeakMap<
+  object,
+  Map<string, { expires: number; image: Promise<string | undefined> }>
+>();
+export async function generateEventPreview(
+  env: any,
+  listings: Array<{ id: string; images: string[] }>,
+): Promise<string | undefined> {
+  const selected = listings.slice(0, 3);
+  const bucket = env.MEDIA_BUCKET;
+  if (!bucket?.head) return renderEventPreview(env, selected);
+  const versions = await Promise.all(
+    selected.flatMap((listing) =>
+      listing.images.map(async (_, index) => {
+        const object = await bucket.head(`media:${listing.id}:${index}`);
+        return object?.etag || object?.uploaded?.toISOString() || null;
+      }),
+    ),
+  ).catch(() => null);
+  if (!versions) return renderEventPreview(env, selected);
+  const key = JSON.stringify(["cover-v2-960x540-center50", selected, versions]);
+  let cache = coverCaches.get(bucket);
+  if (!cache) {
+    cache = new Map();
+    coverCaches.set(bucket, cache);
+  }
+  const now = Date.now();
+  for (const [id, entry] of cache) if (entry.expires <= now) cache.delete(id);
+  const prior = cache.get(key);
+  if (prior) return prior.image;
+  while (cache.size >= 4) cache.delete(cache.keys().next().value!);
+  const image = renderEventPreview(env, selected);
+  cache.set(key, { expires: now + 15 * 60_000, image });
+  try {
+    const result = await image;
+    if (!result) cache.delete(key);
+    return result;
+  } catch (error) {
+    cache.delete(key);
+    throw error;
+  }
 }

@@ -1,5 +1,29 @@
 [
   {
+    "version": "2026.11.21.2",
+    "title": "Easier recovery, dependable previews, and smoother browsing",
+    "summary": "This update makes server management easier to diagnose and recover, keeps test-event previews consistent with what gets deployed, and helps you return to the exact archive view you were browsing. Release-note editing also gains stronger protection for work in progress.",
+    "date": "2026-11-21",
+    "published": true,
+    "highlights": [
+      "A failed widget no longer holds up other widgets in the same server. Managers can retry an individual failed event or widget operation, with clearer explanations of what went wrong.",
+      "Test events now deploy the exact vehicles and cover shown in their saved preview. Previews remain valid for ten minutes, and events ended directly in Discord are recognized when their status is reloaded."
+    ],
+    "additions": [
+      "Check Permissions explains missing access before enabling new automation. Server customization panels show the last check, last successful check, and when sticky widgets next become eligible to move.",
+      "Archive searches, stock filters, and page numbers are included in the address, making filtered views shareable and preserving them through reloads and vehicle-detail navigation."
+    ],
+    "improvements": [
+      "Pages load their own interface code as needed, and archive search waits briefly for you to finish typing before requesting results. Repeated event-cover previews reuse unchanged images to avoid unnecessary work.",
+      "The Changelog checks for new updates every minute while open and includes a manual refresh control with the last refresh time.",
+      "Leaving the release editor with unsaved changes now offers a choice to stay and finish editing. Creating the same release version simultaneously cannot silently replace the first saved version."
+    ],
+    "fixes": [
+      "Missing messages can no longer be recorded as successfully pinned. Failed operations remain visible for diagnosis and recovery.",
+      "Test previews reject changed settings and expired selections instead of silently generating a different cover during deployment. Updating an archived image also refreshes the cached cover."
+    ]
+  },
+  {
     "version": "2026.11.21.1",
     "title": "Release notes that arrive with each update",
     "summary": "Keeping up with Everfall Limited Watcher is easier. Member release notes now travel with the update itself, bringing clear explanations of new features and everyday improvements to the Changelog when that update is deployed.",
