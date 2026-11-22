@@ -18,3 +18,8 @@
 
 ## 4. Mandatory Legal & Privacy Impact Review (Issue #18)
 Whenever modifying Discord OAuth scopes, collected user/server data, cookies, logging retention, third-party services, or deletion behavior, **review and update `/privacy-policy` (`src/web/features/legal/PrivacyPage.tsx`) and `/terms-of-service` (`src/web/features/legal/TermsPage.tsx`)** in the same change so published policies always match actual code behavior.
+
+## 5. Repository and Website Changelogs
+- Record engineering details in `CHANGELOG.md` outside the website release markers. For each user-visible update, also add a unique, plain-language release inside `website-releases:start` / `website-releases:end`; those entries are automatically published to signed-in members with deployment.
+- Follow the documented version/date/title and section format, describe user benefits, and omit internal tools, providers, credentials, and infrastructure details from website copy.
+- Run `npm run changelog:generate` and commit `src/shared/publishedReleaseNotes.json` with the source changelog. Never edit the generated catalog directly. Preserve existing releases and remember that website editor overrides, including withdrawn versions, take precedence for the same version.

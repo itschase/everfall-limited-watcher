@@ -1,3 +1,4 @@
+import publishedReleaseNotes from "./publishedReleaseNotes.json";
 export const RELEASE_GROUPS = {
   highlights: "Highlights",
   additions: "New additions",
@@ -16,34 +17,8 @@ export interface PublicReleaseNote {
   improvements: string[];
   fixes: string[];
 }
-export const DEFAULT_RELEASE_NOTES: PublicReleaseNote[] = [
-  {
-    version: "2026.11.21",
-    title: "More control, clearer previews, and easier server setup",
-    summary:
-      "This update makes Everfall Limited Watcher more comfortable to use on smaller screens and gives server owners more ways to keep their communities informed. It also brings a more flexible public site and a safer way to try listing events before using them with your community.",
-    date: "2026-11-21",
-    published: true,
-    highlights: [
-      "The dashboard now adapts more naturally when space is limited. Navigation, action buttons, forms, and data rows are easier to reach on smaller displays, helping you manage your server without constantly moving sideways across a page.",
-      "Listing events can bring the vehicles in a release together in one place, with a generated cover showing up to three vehicles. Server managers can choose whether to enable automatic events and whether those events should end when the vehicles are no longer available.",
-    ],
-    additions: [
-      "Server customizations now include options for pinning new listing messages, pinning the live widget, and keeping the widget closer to recent channel activity. Each server controls its own preferences.",
-      "A dedicated event simulator lets administrators choose a test server, preview one-, two-, or three-vehicle covers, and create a clearly labeled test event for a chosen amount of time. Test events can also be ended early.",
-      "This Changelog keeps members informed with versioned release notes explaining what has changed and how those changes affect everyday use.",
-    ],
-    improvements: [
-      "Public pages have more flexible sections, clearer visibility controls, editable icons, and previews for different screen sizes. Hiding a section keeps its saved content ready for later.",
-      "The page editor saves changes automatically and shows whether work is waiting, saving, saved, or needs another attempt. Pages can be edited independently without replacing changes on another page.",
-      "Sold-out widget items take you to the preserved vehicle record. Opening a direct history link shows the full listing immediately, and closing it returns to the archive.",
-    ],
-    fixes: [
-      "Improved the handling of high-resolution images when building multi-vehicle event covers, reducing unnecessary image work and keeping repeated test samples efficient.",
-      "Updated labels and status explanations so it is easier to understand when widgets change and which settings affect only the information shown on the website.",
-    ],
-  },
-];
+// Generated from the explicitly member-facing section of CHANGELOG.md.
+export const DEFAULT_RELEASE_NOTES: PublicReleaseNote[] = publishedReleaseNotes;
 const clean = (value: unknown, max: number) =>
   typeof value === "string"
     ? value

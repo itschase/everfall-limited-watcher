@@ -5,6 +5,25 @@ import { DEFAULT_RELEASE_NOTES, normalizeReleaseNote } from "../releaseNotes";
 import { getReleaseNotes, saveReleaseNote } from "../../releaseNotes";
 import { createSessionToken } from "../../admin";
 import { handleApiRequest } from "../../api";
+import fs from "node:fs";
+import { parseWebsiteReleases } from "../../../scripts/parse-release-notes";
+
+test("repository public releases stay synchronized and never include technical changelog entries", async () => {
+  const markdown = fs.readFileSync(new URL("../../../CHANGELOG.md", import.meta.url), "utf8");
+  const parsed = parseWebsiteReleases(markdown);
+  assert.deepEqual(parsed, DEFAULT_RELEASE_NOTES);
+  assert.deepEqual(await getReleaseNotes({}), [...parsed].sort((a, b) => b.date.localeCompare(a.date) || b.version.localeCompare(a.version, undefined, { numeric: true })));
+  assert.deepEqual(parseWebsiteReleases("Private engineering notes and secrets\n" + markdown + "\nMore private notes"), parsed);
+});
+
+test("public release parsing rejects ambiguous publication, invalid versions and content loss", () => {
+  const release = "## v2 | 2026-11-21 | Clearer updates\n\nA useful summary.\n\n### Fixes\n\n- A useful fix.";
+  const wrap = (body: string) => `<!-- website-releases:start -->\n${body}\n<!-- website-releases:end -->`;
+  assert.equal(parseWebsiteReleases(wrap(release))[0].published, true);
+  for (const input of ["", wrap(""), wrap(release) + wrap(release), wrap(release + "\n" + release), wrap(release.replace("2026-11-21", "2026-02-30")), wrap(release.replace("### Fixes", "### Internal")), wrap(release + "\nAn unrecognized line"), wrap(release.replace("A useful fix.", "x".repeat(2401)))]) {
+    assert.throws(() => parseWebsiteReleases(input));
+  }
+});
 
 test("release notes validate human-facing content, safe versions and calendar dates", () => {
   const source = DEFAULT_RELEASE_NOTES[0];

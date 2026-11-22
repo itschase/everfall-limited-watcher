@@ -141,3 +141,13 @@ Server managers can configure listing pins, widget pins/sticky placement, and ac
 Run `npm test` for the storage/presentation/Discord regression suite and `npm run check:worker` after the production build to verify the Worker/Wasm deployment bundle. See [implementation and validation notes](docs/validation/implementation.md) for the KV audit, observed browser checks, and remaining deployed acceptance tests.
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed changes. Automated Discord tests use mocked REST responses; real guild permissions, event/pin/sticky behavior, and the full browser zoom matrix still require deployed acceptance testing.
+
+## Automatically published member release notes
+
+The website `/changelog` is available to signed-in members. Releases inside the `website-releases:start` / `website-releases:end` markers in `CHANGELOG.md` are bundled automatically with each application deployment. Engineering entries outside those markers are never included. Write plain-language benefits without internal tools or infrastructure details.
+
+Add a unique release using `## version | YYYY-MM-DD | Title`, followed by a summary and any of `### Highlights`, `### New additions`, `### Improvements`, or `### Fixes`. Each section uses single-line `- ` entries. At least one entry is required. Keep existing versions when adding a release.
+
+Run `npm run changelog:generate` and commit `CHANGELOG.md` together with `src/shared/publishedReleaseNotes.json`. Builds and local startup regenerate the catalog; `npm run lint` rejects stale generated copy. Invalid dates, duplicate versions, unsupported formatting, and oversized content fail validation. A successful production deployment makes new versions available through the existing authenticated Changelog API; no publish request or additional secret is required.
+
+The website release editor remains available for drafts and wording corrections. A saved website version overrides the repository copy of that same version, including when unpublished. Use a new version for a new update; editing the repository cannot republish a version deliberately withdrawn in the website editor. Members with the page already open receive updates on the next normal query refresh or reload.

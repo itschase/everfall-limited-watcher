@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-21 — Automatic website release publication
+
+- Made the explicitly marked website section below the repository source for bundled member release notes. Production builds and local startup generate a validated JSON catalog, so a deployed release appears automatically without a separate administrative publish action or database migration.
+- Kept internal engineering entries outside the published block. Enforced unique versions, valid dates, supported sections, and existing content limits; malformed public entries fail the build rather than being silently omitted or truncated.
+- Added a freshness check to validation so repository copy and its generated catalog must be committed together. Existing website editor overrides and withdrawn drafts continue to take precedence for their version.
+- Added regression checks for source isolation, duplicate versions, malformed entries, generated catalog freshness, and automatic availability through the member release loader.
+
 ## 2026-11-21 — Structured public pages and reliable editing
 
 - Added independent homepage eyebrow visibility, intentional blank text, Lucide/no-icon selection, and restrained appearance presets. Hiding the hero or badge retains all saved content.
@@ -72,3 +79,50 @@
 - Seeded an editable user-facing release focused on visible benefits and features, omitting implementation tools, providers and infrastructure details.
 - Store versions independently, require login for member reads, enforce administrator-only editing, and exclude draft content from member API responses. Updates preserve other versions and introduce no KV operations.
 - Added regression coverage for safe content/version/date validation, publication and draft isolation, independent updates, authentication, write authorization, duplicate-version handling and zero KV usage.
+
+## Website release notes
+
+Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
+
+<!-- website-releases:start -->
+
+## 2026.11.21.1 | 2026-11-21 | Release notes that arrive with each update
+
+Keeping up with Everfall Limited Watcher is easier. Member release notes now travel with the update itself, bringing clear explanations of new features and everyday improvements to the Changelog when that update is deployed.
+
+### Highlights
+
+- Published updates can now include their member release notes automatically, helping keep the website Changelog in step with the application.
+
+### Improvements
+
+- Release notes continue to focus on changes you can see and use, with features, additions, improvements, and fixes grouped for easier reading.
+- Administrators can still refine published wording or withdraw a version from member view using the existing release editor.
+
+## 2026.11.21 | 2026-11-21 | More control, clearer previews, and easier server setup
+
+This update makes Everfall Limited Watcher more comfortable to use on smaller screens and gives server owners more ways to keep their communities informed. It also brings a more flexible public site and a safer way to try listing events before using them with your community.
+
+### Highlights
+
+- The dashboard now adapts more naturally when space is limited. Navigation, action buttons, forms, and data rows are easier to reach on smaller displays, helping you manage your server without constantly moving sideways across a page.
+- Listing events can bring the vehicles in a release together in one place, with a generated cover showing up to three vehicles. Server managers can choose whether to enable automatic events and whether those events should end when the vehicles are no longer available.
+
+### New additions
+
+- Server customizations now include options for pinning new listing messages, pinning the live widget, and keeping the widget closer to recent channel activity. Each server controls its own preferences.
+- A dedicated event simulator lets administrators choose a test server, preview one-, two-, or three-vehicle covers, and create a clearly labeled test event for a chosen amount of time. Test events can also be ended early.
+- This Changelog keeps members informed with versioned release notes explaining what has changed and how those changes affect everyday use.
+
+### Improvements
+
+- Public pages have more flexible sections, clearer visibility controls, editable icons, and previews for different screen sizes. Hiding a section keeps its saved content ready for later.
+- The page editor saves changes automatically and shows whether work is waiting, saving, saved, or needs another attempt. Pages can be edited independently without replacing changes on another page.
+- Sold-out widget items take you to the preserved vehicle record. Opening a direct history link shows the full listing immediately, and closing it returns to the archive.
+
+### Fixes
+
+- Improved the handling of high-resolution images when building multi-vehicle event covers, reducing unnecessary image work and keeping repeated test samples efficient.
+- Updated labels and status explanations so it is easier to understand when widgets change and which settings affect only the information shown on the website.
+
+<!-- website-releases:end -->
