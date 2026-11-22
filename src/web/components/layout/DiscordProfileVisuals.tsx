@@ -20,18 +20,23 @@ export function DiscordProfileAvatar({
   decorationUrl,
   alt,
   className,
+  borderless = false,
 }: {
   avatarUrl: string;
   decorationUrl?: string | null;
   alt: string;
   className?: string;
+  borderless?: boolean;
 }) {
   return (
     <span className={cn("relative inline-flex shrink-0", className)}>
       <img
         src={avatarUrl || undefined}
         alt={alt}
-        className="absolute inset-[8%] h-[84%] w-[84%] rounded-full border border-white/10 bg-zinc-900 object-cover"
+        className={cn(
+          "absolute inset-[8%] h-[84%] w-[84%] rounded-full bg-zinc-900 object-cover",
+          !borderless && "border border-white/10"
+        )}
       />
       {decorationUrl && (
         <img

@@ -56,12 +56,14 @@ const ADMIN_NAV: NavItem[] = [
 
 export function AppShell({
   title,
+  titleAvatar,
   description,
   actions,
   requireAdmin = false,
   children,
 }: {
   title: string;
+  titleAvatar?: ReactNode;
   description?: string;
   actions?: ReactNode;
   requireAdmin?: boolean;
@@ -370,11 +372,14 @@ export function AppShell({
 
         <main className="@container/main mx-auto w-full max-w-6xl flex-1 px-3 py-4 sm:px-5 sm:py-5 lg:px-6">
           <div className="mb-5 flex flex-col gap-3 border-b border-border pb-4 @3xl/main:flex-row @3xl/main:items-center @3xl/main:justify-between">
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl">{title}</h1>
-              {description && (
-                <p className="mt-1 text-xs sm:text-sm text-muted-foreground">{description}</p>
-              )}
+            <div className="flex min-w-0 items-center gap-3">
+              {titleAvatar}
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl">{title}</h1>
+                {description && (
+                  <p className="mt-1 text-xs text-muted-foreground sm:text-sm">{description}</p>
+                )}
+              </div>
             </div>
             {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
           </div>
