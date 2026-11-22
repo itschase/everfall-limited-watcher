@@ -164,6 +164,7 @@ def parse_package_details(pkg_id: str) -> dict[str, Any]:
             "description": description or fallback["description"],
             "url": url,
             "images": images,
+            **({"price": price} if price else {}),
         }
     except Exception as exc:
         print(f"Warning: failed to fetch package {pkg_id} details: {exc}", file=sys.stderr)

@@ -1,3 +1,4 @@
+import { ListingPrice } from "./ListingPrice";
 import { useState } from "react";
 import {
   ArrowRight,
@@ -404,6 +405,7 @@ export function VehicleCard({
           </div>
 
           {/* Normalized Features (Quantity Limited -> Custom Sound -> Custom Options) */}
+          <ListingPrice id={listing.id} inStock={listing.isAvailable} />
           <FeatureChipList features={cardFeatures} className="mt-2.5" />
 
           {/* Timestamps */}

@@ -1,3 +1,4 @@
+import { extractListingPrice, normalizeListingPrice, type ListingPrice } from "./shared/listingPrice";
 import {
   findGuildMessageByMessageId,
   getAllGuildIds,
@@ -51,6 +52,7 @@ import { VehicleMetadataOverride } from "./shared/features";
 import { pinListingMessage, runServerAutomations } from "./serverAutomation";
 
 export interface CarListing {
+  price?: ListingPrice;
   id: string; // Package ID, e.g. "7815813"
   name: string; // e.g. "73C"
   description: string;
@@ -2519,6 +2521,7 @@ async function fetchPackageDetails(id: string): Promise<CarListing> {
       description,
       url,
       images: [...images],
+      ...(extractListingPrice(html) ? { price: extractListingPrice(html) } : {}),
     };
   } catch (err) {
     console.error(`Failed to fetch package details for ${id}:`, err);
@@ -2765,6 +2768,7 @@ export interface ExternalStoreSyncPayload {
   attempts?: MonitorLogAttempt[];
   confirmedSoldOutIds?: string[];
   listings?: Array<{
+    price?: unknown;
     id: string;
     name?: string;
     description?: string;
@@ -2790,7 +2794,8 @@ export async function ingestVerifiedStoreScan(
         .map((item) => {
           const id = String(item.id).trim();
           const known = KNOWN_LIMITED_CARS.find((c) => c.id === id);
-          if (known) return known;
+          const price = normalizeListingPrice(item.price);
+          if (known) return { ...known, ...(price ? { price } : {}) };
           const safeImages = Array.isArray(item.images)
             ? item.images.filter((u) => typeof u === "string" && /^https:\/\//i.test(u)).slice(0, 10)
             : [];
@@ -2808,6 +2813,7 @@ export async function ingestVerifiedStoreScan(
             ).slice(0, 2500),
             url: safeUrl,
             images: safeImages,
+            ...(price ? { price } : {}),
           };
         })
     : [];

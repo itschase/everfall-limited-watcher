@@ -1,3 +1,4 @@
+import { normalizeListingPrice } from "./shared/listingPrice";
 import { checkAutomationReadiness } from "./automationReadiness";
 import { runServerAutomations } from "./serverAutomation";
 import {
@@ -615,6 +616,16 @@ export async function handleApiRequest(
   if (method === "GET" && url.pathname === "/api/changelog") {
     if (!user) return json({ error: "Authentication required." }, 401);
     return json({ entries: await getReleaseNotes(env) });
+  }
+
+  if (method === "GET" && url.pathname === "/api/listing-prices") {
+    if (!user) return json({ error: "Authentication required." }, 401);
+    const snapshot = await getCatalogSnapshot(env);
+    const prices = Object.fromEntries(snapshot.records.flatMap(record => {
+      const price = normalizeListingPrice(record.payload?.price);
+      return price ? [[record.id, price]] : [];
+    }));
+    return new Response(JSON.stringify({ prices }), { headers: { "Content-Type": "application/json", "Cache-Control": "private, no-store", "Vary": "Cookie" } });
   }
 
   // 3. Complete Historical Archive (all authenticated users)

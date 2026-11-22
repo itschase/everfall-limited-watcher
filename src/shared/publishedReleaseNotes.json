@@ -1,5 +1,20 @@
 [
   {
+    "version": "2026.11.22",
+    "title": "Listing prices for signed-in members",
+    "summary": "Signed-in members can see recorded store prices alongside available vehicles and retain that information when reviewing archived releases.",
+    "date": "2026-11-22",
+    "published": true,
+    "highlights": [],
+    "additions": [
+      "Available vehicle cards show the recorded price and currency when you are signed in, including on the homepage. Visitors who are signed out do not receive pricing information."
+    ],
+    "improvements": [
+      "Sold-out cards keep their compact appearance. Open the archived vehicle details while signed in to see its last listed price, when recorded. Prices are shown only when the store supplies an explicit amount and currency."
+    ],
+    "fixes": []
+  },
+  {
     "version": "2026.11.21.5",
     "title": "A more compact workspace with more ways to make it yours",
     "summary": "Everfall Limited Watcher now brings related information closer together, puts useful controls within easier reach, and offers more ways to shape page content. The refinements extend from server management and administrative tools to public pages, previews, and recovery screens.",

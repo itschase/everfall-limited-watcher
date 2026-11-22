@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-22 — Authenticated listing prices
+
+- Capture explicit structured store amounts/currencies in both monitors and validate them on ingestion. Preserve the last verified price when stock is archived or a response omits pricing; never infer a currency or invent a price.
+- Serve prices through a separate authenticated, private/no-store endpoint. Public listing payloads and shared homepage caches contain no structured pricing. A session-scoped, deduplicated client query displays prices only for signed-in members.
+- Show prices on cards only while in stock; archived detail views retain a clearly labeled last-listed price. Unavailable pricing is omitted. Added validation, archive preservation, authentication, and cache-header coverage.
+
 ## 2026-11-21 — Cohesive dashboard layouts and website appearance
 
 - Introduced shared responsive summary metrics and replaced oversized summaries on Administrator Overview, Bot Control, Status Widgets, and Server Manager. Four metrics use a mobile two-column layout; three-metric groups adapt without narrow unreadable cards. Moved overview shortcuts into a disclosure so delivery activity is closer to the top.
@@ -163,6 +169,18 @@
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.22 | 2026-11-22 | Listing prices for signed-in members
+
+Signed-in members can see recorded store prices alongside available vehicles and retain that information when reviewing archived releases.
+
+### New additions
+
+- Available vehicle cards show the recorded price and currency when you are signed in, including on the homepage. Visitors who are signed out do not receive pricing information.
+
+### Improvements
+
+- Sold-out cards keep their compact appearance. Open the archived vehicle details while signed in to see its last listed price, when recorded. Prices are shown only when the store supplies an explicit amount and currency.
 
 ## 2026.11.21.5 | 2026-11-21 | A more compact workspace with more ways to make it yours
 

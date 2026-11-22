@@ -252,6 +252,7 @@ function summarizeRecords(records: ListingRecord[]): {
 
 function sameSemanticListingContent(a: any, b: any): boolean {
   return (
+    JSON.stringify(a?.price ?? null) === JSON.stringify(b?.price ?? null) &&
     String(a?.name || "") === String(b?.name || "") &&
     String(a?.description || "") === String(b?.description || "") &&
     String(a?.url || "") === String(b?.url || "") &&
