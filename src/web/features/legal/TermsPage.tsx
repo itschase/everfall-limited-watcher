@@ -63,6 +63,7 @@ export function TermsPage() {
         </div>
       </section>
       <section className="mx-auto max-w-4xl px-4 pb-6 sm:px-6"><h2 className="text-base font-semibold">Permission checks, recovery, and previews</h2><p className="mt-2 text-sm text-muted-foreground">Enabling new automation may require a successful permission check. Discord permissions can change afterward; these checks do not guarantee future delivery. Server managers can explicitly retry an individual failed event or widget operation using the last verified listing state. Recovery may update or replace that selected Discord event or widget, without sending listing alerts or rerunning other operations. Test-event deployment uses the saved vehicles and cover from a preview generated within the last ten minutes; changing settings or allowing a preview to expire requires a new preview.</p></section>
+      <section className="mx-auto max-w-4xl px-4 pb-6 sm:px-6"><h2 className="text-base font-semibold">Personal and published appearance</h2><p className="mt-2 text-sm leading-relaxed text-muted-foreground">Personal workspace spacing and width controls affect your current browser view only. Administrator page settings affect the published website and follow its existing save and authorization rules. Hiding a preview does not discard saved content or stop editing. Page-search results provide navigation shortcuts and do not grant access to restricted features.</p></section>
       <AutomationNotice kind="terms" includeTestEvents />
     </PublicLayout>
   );

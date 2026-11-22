@@ -1,5 +1,14 @@
 # Implementation and validation — 2026-11-21
 
+## Website appearance and workspace follow-up
+
+- Added shared compact summaries, consistent action menus, personal spacing/content width, local page search, 204 vector icons plus No icon, validated section appearance options, mobile preview folding, and save/load/navigation recovery.
+- Refined the five referenced screens and shared public layout/section presets while preserving Zinc tokens, typography, product title, legal footer placement, existing saved icon keys, authorization, and Discord operations.
+- Automated coverage now includes all 205 icon catalog choices rendering safely, legacy-key compatibility, purpose/category search, and normalization of valid/malicious section settings. Existing storage, authorization, announcement, automation, and deployment regressions remain part of the suite.
+- Local browser fixtures use an in-memory database, synthetic identities, and representative server/widget records. No production configuration or live Discord messages/events are changed by the checks.
+- Verified compact summaries, server detail/log access, grouped menus, keyboard command search, personal preferences across navigation, mobile preview folding, icon search/arrow browsing, and saving new appearance options through the real local API into their public renderer.
+- Simulated request failures verify explicit retry recovery and retention of unsaved edits. Pages navigation protection offers Stay and Edit without losing failed-save drafts.
+
 ## Sidebar navigation follow-up
 
 - Unified desktop/mobile homepage branding and removed the redundant bottom shortcut. The mobile drawer header stays outside its scrolling navigation pane.
@@ -83,3 +92,5 @@ The Discord event contains a TEST title, a simple vehicle-name list, the generat
 Test tracking uses separate D1 records (`test-event:` / `test-event-lock:`), request IDs, and a per-server operation lease. Creating/ending tests does not modify the automatic event record, availability, sent-alert history, role configuration, or manager customization preferences. Production servers and non-master-administrator callers are rejected. New regression tests cover generated slot counts, optional repeats, bounds, authorization, expiry fields, failed-start retry, duplicate prevention, early ending, real-event isolation and zero routine KV operations. The combined suite now has 42 passing tests.
 
 The final Discord creation, displayed cover, selected lifetime expiry, and permission behavior still require the user's explicit deployment in a designated Test server; no real event was created by implementation checks.
+
+Final appearance validation: 67 tests, TypeScript lint, production build, and Worker dry run passed. Browser checks found no horizontal page overflow across the referenced dashboards and public pages at 320, 393, 768, 1440, and 1920 CSS pixels. Confirmed 1600px wide mode, comfortable 20px card headers, retained preferences across in-app navigation, keyboard command/icon search, saved section options in the public renderer, bulk-operation review/cancel, request-failure retry, and failed-save draft retention. A synthetic member session saw no administrative search results and could not open the page editor. Browser viewport overrides were restored. Live Discord writes were not exercised.

@@ -1,88 +1,1242 @@
-export type SiteIconKey =
-  | "none"
-  | "bell"
-  | "car-front"
-  | "sparkles"
-  | "images"
-  | "shield-check"
-  | "clock"
-  | "database"
-  | "server"
-  | "lock"
-  | "hard-drive"
-  | "sliders-horizontal"
-  | "layers"
-  | "activity"
-  | "send"
-  | "history"
-  | "file-text"
-  | "scale"
-  | "check-circle-2"
-  | "zap"
-  | "gauge"
-  | "award"
-  | "wrench"
-  | "radio"
-  | "bot"
-  | "terminal"
-  | "refresh-cw"
-  | "eye"
-  | "globe"
-  | "megaphone"
-  | "cpu"
-  | "info"
-  | "layout-dashboard"
-  | "users"
-  | "flame"
-  | "star"
-  | "layout-panel-top";
-
+export const SITE_ICON_DEFINITIONS = [
+  {
+    key: "none",
+    label: "No icon",
+    category: "Interface",
+    keywords: "no icon",
+  },
+  {
+    key: "bell",
+    label: "Bell Alert",
+    category: "Alerts",
+    keywords: "notification alert subscription",
+  },
+  {
+    key: "megaphone",
+    label: "Announcement",
+    category: "Alerts",
+    keywords: "announcement",
+  },
+  {
+    key: "radio",
+    label: "Live Signal",
+    category: "Alerts",
+    keywords: "live signal",
+  },
+  {
+    key: "send",
+    label: "Dispatch",
+    category: "Alerts",
+    keywords: "dispatch",
+  },
+  {
+    key: "zap",
+    label: "Instant Trigger",
+    category: "Alerts",
+    keywords: "instant trigger",
+  },
+  {
+    key: "car-front",
+    label: "Vehicle",
+    category: "Vehicles",
+    keywords: "automobile sedan coupe driving vehicle",
+  },
+  {
+    key: "gauge",
+    label: "Performance",
+    category: "Vehicles",
+    keywords: "speed performance dashboard",
+  },
+  {
+    key: "flame",
+    label: "Limited Drop",
+    category: "Vehicles",
+    keywords: "limited drop",
+  },
+  {
+    key: "star",
+    label: "Featured",
+    category: "Vehicles",
+    keywords: "featured",
+  },
+  {
+    key: "award",
+    label: "Verified Drop",
+    category: "Vehicles",
+    keywords: "verified drop",
+  },
+  {
+    key: "images",
+    label: "Image Gallery",
+    category: "Media",
+    keywords: "photos pictures gallery",
+  },
+  {
+    key: "eye",
+    label: "Preview",
+    category: "Media",
+    keywords: "preview",
+  },
+  {
+    key: "sparkles",
+    label: "Highlights",
+    category: "Media",
+    keywords: "highlights",
+  },
+  {
+    key: "layout-panel-top",
+    label: "Status Widget",
+    category: "Interface",
+    keywords: "status widget",
+  },
+  {
+    key: "layout-dashboard",
+    label: "Dashboard",
+    category: "Interface",
+    keywords: "overview stats statistics",
+  },
+  {
+    key: "sliders-horizontal",
+    label: "Customization",
+    category: "Interface",
+    keywords: "preferences customize settings options",
+  },
+  {
+    key: "layers",
+    label: "Layers",
+    category: "Interface",
+    keywords: "layers",
+  },
+  {
+    key: "bot",
+    label: "Discord Bot",
+    category: "Discord",
+    keywords: "discord bot",
+  },
+  {
+    key: "users",
+    label: "Role Mentions",
+    category: "Discord",
+    keywords: "members roles people community",
+  },
+  {
+    key: "terminal",
+    label: "Slash Commands",
+    category: "Discord",
+    keywords: "slash commands",
+  },
+  {
+    key: "server",
+    label: "Connected Server",
+    category: "Discord",
+    keywords: "connected server",
+  },
+  {
+    key: "activity",
+    label: "Store Monitor",
+    category: "Operations",
+    keywords: "store monitor",
+  },
+  {
+    key: "clock",
+    label: "Schedule",
+    category: "Operations",
+    keywords: "time schedule countdown",
+  },
+  {
+    key: "refresh-cw",
+    label: "Auto Sync",
+    category: "Operations",
+    keywords: "reload synchronize sync",
+  },
+  {
+    key: "history",
+    label: "Release Archive",
+    category: "Operations",
+    keywords: "release archive",
+  },
+  {
+    key: "wrench",
+    label: "Recovery",
+    category: "Operations",
+    keywords: "recovery",
+  },
+  {
+    key: "database",
+    label: "Database",
+    category: "Infrastructure",
+    keywords: "database",
+  },
+  {
+    key: "hard-drive",
+    label: "Storage",
+    category: "Infrastructure",
+    keywords: "storage",
+  },
+  {
+    key: "cpu",
+    label: "Processing",
+    category: "Infrastructure",
+    keywords: "processing",
+  },
+  {
+    key: "globe",
+    label: "Web Portal",
+    category: "Infrastructure",
+    keywords: "web portal",
+  },
+  {
+    key: "shield-check",
+    label: "Verified Protection",
+    category: "Trust & Legal",
+    keywords: "secure verified trust safety",
+  },
+  {
+    key: "check-circle-2",
+    label: "Confirmed Check",
+    category: "Trust & Legal",
+    keywords: "confirmed check",
+  },
+  {
+    key: "lock",
+    label: "Privacy & Security",
+    category: "Trust & Legal",
+    keywords: "privacy & security",
+  },
+  {
+    key: "file-text",
+    label: "Documentation",
+    category: "Trust & Legal",
+    keywords: "document policy legal terms privacy",
+  },
+  {
+    key: "scale",
+    label: "Terms & Rules",
+    category: "Trust & Legal",
+    keywords: "terms & rules",
+  },
+  {
+    key: "info",
+    label: "Notice",
+    category: "Trust & Legal",
+    keywords: "notice",
+  },
+  {
+    key: "arrow-right",
+    label: "Arrow Right",
+    category: "Navigation",
+    keywords: "arrow right",
+  },
+  {
+    key: "arrow-left",
+    label: "Arrow Left",
+    category: "Navigation",
+    keywords: "arrow left",
+  },
+  {
+    key: "arrow-up-right",
+    label: "Arrow Up Right",
+    category: "Navigation",
+    keywords: "arrow up right",
+  },
+  {
+    key: "compass",
+    label: "Compass",
+    category: "Navigation",
+    keywords: "compass",
+  },
+  {
+    key: "navigation",
+    label: "Navigation",
+    category: "Navigation",
+    keywords: "navigation",
+  },
+  {
+    key: "map-pin",
+    label: "Map Pin",
+    category: "Navigation",
+    keywords: "map pin",
+  },
+  {
+    key: "map",
+    label: "Map",
+    category: "Navigation",
+    keywords: "map",
+  },
+  {
+    key: "route",
+    label: "Route",
+    category: "Navigation",
+    keywords: "route",
+  },
+  {
+    key: "signpost",
+    label: "Signpost",
+    category: "Navigation",
+    keywords: "signpost",
+  },
+  {
+    key: "search",
+    label: "Search",
+    category: "Navigation",
+    keywords: "search",
+  },
+  {
+    key: "menu",
+    label: "Menu",
+    category: "Navigation",
+    keywords: "menu",
+  },
+  {
+    key: "panel-left",
+    label: "Panel Left",
+    category: "Navigation",
+    keywords: "panel left",
+  },
+  {
+    key: "panel-right",
+    label: "Panel Right",
+    category: "Navigation",
+    keywords: "panel right",
+  },
+  {
+    key: "chevron-down",
+    label: "Chevron Down",
+    category: "Navigation",
+    keywords: "chevron down",
+  },
+  {
+    key: "chevron-up",
+    label: "Chevron Up",
+    category: "Navigation",
+    keywords: "chevron up",
+  },
+  {
+    key: "chevron-left",
+    label: "Chevron Left",
+    category: "Navigation",
+    keywords: "chevron left",
+  },
+  {
+    key: "chevron-right",
+    label: "Chevron Right",
+    category: "Navigation",
+    keywords: "chevron right",
+  },
+  {
+    key: "external-link",
+    label: "External Link",
+    category: "Navigation",
+    keywords: "external link",
+  },
+  {
+    key: "home",
+    label: "Home",
+    category: "Navigation",
+    keywords: "home",
+  },
+  {
+    key: "columns2",
+    label: "Columns2",
+    category: "Layout",
+    keywords: "columns2",
+  },
+  {
+    key: "rows3",
+    label: "Rows3",
+    category: "Layout",
+    keywords: "rows3",
+  },
+  {
+    key: "grid2-x2",
+    label: "Grid2 X2",
+    category: "Layout",
+    keywords: "grid2 x2",
+  },
+  {
+    key: "layout-list",
+    label: "Layout List",
+    category: "Layout",
+    keywords: "layout list",
+  },
+  {
+    key: "layout-grid",
+    label: "Layout Grid",
+    category: "Layout",
+    keywords: "layout grid",
+  },
+  {
+    key: "table2",
+    label: "Table2",
+    category: "Layout",
+    keywords: "table2",
+  },
+  {
+    key: "filter",
+    label: "Filter",
+    category: "Layout",
+    keywords: "filter",
+  },
+  {
+    key: "settings",
+    label: "Settings",
+    category: "Layout",
+    keywords: "settings",
+  },
+  {
+    key: "settings2",
+    label: "Settings2",
+    category: "Layout",
+    keywords: "settings2",
+  },
+  {
+    key: "more-horizontal",
+    label: "More Horizontal",
+    category: "Layout",
+    keywords: "more horizontal",
+  },
+  {
+    key: "move",
+    label: "Move",
+    category: "Layout",
+    keywords: "move",
+  },
+  {
+    key: "move-up",
+    label: "Move Up",
+    category: "Layout",
+    keywords: "move up",
+  },
+  {
+    key: "move-down",
+    label: "Move Down",
+    category: "Layout",
+    keywords: "move down",
+  },
+  {
+    key: "maximize",
+    label: "Maximize",
+    category: "Layout",
+    keywords: "maximize",
+  },
+  {
+    key: "minimize",
+    label: "Minimize",
+    category: "Layout",
+    keywords: "minimize",
+  },
+  {
+    key: "expand",
+    label: "Expand",
+    category: "Layout",
+    keywords: "expand",
+  },
+  {
+    key: "shrink",
+    label: "Shrink",
+    category: "Layout",
+    keywords: "shrink",
+  },
+  {
+    key: "align-left",
+    label: "Align Left",
+    category: "Layout",
+    keywords: "align left",
+  },
+  {
+    key: "align-center",
+    label: "Align Center",
+    category: "Layout",
+    keywords: "align center",
+  },
+  {
+    key: "align-right",
+    label: "Align Right",
+    category: "Layout",
+    keywords: "align right",
+  },
+  {
+    key: "list",
+    label: "List",
+    category: "Layout",
+    keywords: "list",
+  },
+  {
+    key: "list-checks",
+    label: "List Checks",
+    category: "Layout",
+    keywords: "list checks",
+  },
+  {
+    key: "list-filter",
+    label: "List Filter",
+    category: "Layout",
+    keywords: "list filter",
+  },
+  {
+    key: "grip-vertical",
+    label: "Grip Vertical",
+    category: "Layout",
+    keywords: "grip vertical",
+  },
+  {
+    key: "panel-top",
+    label: "Panel Top",
+    category: "Layout",
+    keywords: "panel top",
+  },
+  {
+    key: "square",
+    label: "Square",
+    category: "Layout",
+    keywords: "square",
+  },
+  {
+    key: "car",
+    label: "Car",
+    category: "Vehicles",
+    keywords: "automobile driving transport",
+  },
+  {
+    key: "truck",
+    label: "Truck",
+    category: "Vehicles",
+    keywords: "truck",
+  },
+  {
+    key: "bike",
+    label: "Bike",
+    category: "Vehicles",
+    keywords: "bike",
+  },
+  {
+    key: "bus",
+    label: "Bus",
+    category: "Vehicles",
+    keywords: "bus",
+  },
+  {
+    key: "ship",
+    label: "Ship",
+    category: "Vehicles",
+    keywords: "ship",
+  },
+  {
+    key: "plane",
+    label: "Plane",
+    category: "Vehicles",
+    keywords: "plane",
+  },
+  {
+    key: "fuel",
+    label: "Fuel",
+    category: "Vehicles",
+    keywords: "fuel",
+  },
+  {
+    key: "circle-gauge",
+    label: "Circle Gauge",
+    category: "Vehicles",
+    keywords: "circle gauge",
+  },
+  {
+    key: "circle-parking",
+    label: "Circle Parking",
+    category: "Vehicles",
+    keywords: "circle parking",
+  },
+  {
+    key: "flag",
+    label: "Flag",
+    category: "Vehicles",
+    keywords: "flag",
+  },
+  {
+    key: "milestone",
+    label: "Milestone",
+    category: "Vehicles",
+    keywords: "milestone",
+  },
+  {
+    key: "mountain",
+    label: "Mountain",
+    category: "Vehicles",
+    keywords: "mountain",
+  },
+  {
+    key: "timer",
+    label: "Timer",
+    category: "Vehicles",
+    keywords: "timer",
+  },
+  {
+    key: "trophy",
+    label: "Trophy",
+    category: "Vehicles",
+    keywords: "trophy",
+  },
+  {
+    key: "user",
+    label: "User",
+    category: "Community",
+    keywords: "user",
+  },
+  {
+    key: "user-check",
+    label: "User Check",
+    category: "Community",
+    keywords: "user check",
+  },
+  {
+    key: "user-plus",
+    label: "User Plus",
+    category: "Community",
+    keywords: "user plus",
+  },
+  {
+    key: "user-round",
+    label: "User Round",
+    category: "Community",
+    keywords: "user round",
+  },
+  {
+    key: "users-round",
+    label: "Users Round",
+    category: "Community",
+    keywords: "users round",
+  },
+  {
+    key: "contact",
+    label: "Contact",
+    category: "Community",
+    keywords: "contact",
+  },
+  {
+    key: "heart",
+    label: "Heart",
+    category: "Community",
+    keywords: "heart",
+  },
+  {
+    key: "handshake",
+    label: "Handshake",
+    category: "Community",
+    keywords: "handshake",
+  },
+  {
+    key: "message-circle",
+    label: "Message Circle",
+    category: "Community",
+    keywords: "message circle",
+  },
+  {
+    key: "message-square",
+    label: "Message Square",
+    category: "Community",
+    keywords: "message square",
+  },
+  {
+    key: "messages-square",
+    label: "Messages Square",
+    category: "Community",
+    keywords: "messages square",
+  },
+  {
+    key: "headphones",
+    label: "Headphones",
+    category: "Community",
+    keywords: "headphones",
+  },
+  {
+    key: "at-sign",
+    label: "At Sign",
+    category: "Community",
+    keywords: "at sign",
+  },
+  {
+    key: "hash",
+    label: "Hash",
+    category: "Community",
+    keywords: "hash",
+  },
+  {
+    key: "link",
+    label: "Link",
+    category: "Community",
+    keywords: "link",
+  },
+  {
+    key: "link2",
+    label: "Link2",
+    category: "Community",
+    keywords: "link2",
+  },
+  {
+    key: "circle-help",
+    label: "Circle Help",
+    category: "Community",
+    keywords: "question support help faq",
+  },
+  {
+    key: "image",
+    label: "Image",
+    category: "Media",
+    keywords: "photo picture gallery",
+  },
+  {
+    key: "image-plus",
+    label: "Image Plus",
+    category: "Media",
+    keywords: "image plus",
+  },
+  {
+    key: "camera",
+    label: "Camera",
+    category: "Media",
+    keywords: "camera",
+  },
+  {
+    key: "video",
+    label: "Video",
+    category: "Media",
+    keywords: "video",
+  },
+  {
+    key: "film",
+    label: "Film",
+    category: "Media",
+    keywords: "film",
+  },
+  {
+    key: "play",
+    label: "Play",
+    category: "Media",
+    keywords: "play",
+  },
+  {
+    key: "pause",
+    label: "Pause",
+    category: "Media",
+    keywords: "pause",
+  },
+  {
+    key: "volume2",
+    label: "Volume2",
+    category: "Media",
+    keywords: "volume2",
+  },
+  {
+    key: "volume-x",
+    label: "Volume X",
+    category: "Media",
+    keywords: "volume x",
+  },
+  {
+    key: "mic",
+    label: "Mic",
+    category: "Media",
+    keywords: "mic",
+  },
+  {
+    key: "music",
+    label: "Music",
+    category: "Media",
+    keywords: "music",
+  },
+  {
+    key: "palette",
+    label: "Palette",
+    category: "Media",
+    keywords: "colour color theme appearance",
+  },
+  {
+    key: "paintbrush",
+    label: "Paintbrush",
+    category: "Media",
+    keywords: "paintbrush",
+  },
+  {
+    key: "wand-sparkles",
+    label: "Wand Sparkles",
+    category: "Media",
+    keywords: "wand sparkles",
+  },
+  {
+    key: "crop",
+    label: "Crop",
+    category: "Media",
+    keywords: "crop",
+  },
+  {
+    key: "scan",
+    label: "Scan",
+    category: "Media",
+    keywords: "scan",
+  },
+  {
+    key: "zoom-in",
+    label: "Zoom In",
+    category: "Media",
+    keywords: "zoom in",
+  },
+  {
+    key: "zoom-out",
+    label: "Zoom Out",
+    category: "Media",
+    keywords: "zoom out",
+  },
+  {
+    key: "plus",
+    label: "Plus",
+    category: "Actions",
+    keywords: "plus",
+  },
+  {
+    key: "minus",
+    label: "Minus",
+    category: "Actions",
+    keywords: "minus",
+  },
+  {
+    key: "x",
+    label: "X",
+    category: "Actions",
+    keywords: "x",
+  },
+  {
+    key: "check",
+    label: "Check",
+    category: "Actions",
+    keywords: "check",
+  },
+  {
+    key: "copy",
+    label: "Copy",
+    category: "Actions",
+    keywords: "copy",
+  },
+  {
+    key: "clipboard",
+    label: "Clipboard",
+    category: "Actions",
+    keywords: "clipboard",
+  },
+  {
+    key: "clipboard-check",
+    label: "Clipboard Check",
+    category: "Actions",
+    keywords: "clipboard check",
+  },
+  {
+    key: "download",
+    label: "Download",
+    category: "Actions",
+    keywords: "download",
+  },
+  {
+    key: "upload",
+    label: "Upload",
+    category: "Actions",
+    keywords: "upload",
+  },
+  {
+    key: "save",
+    label: "Save",
+    category: "Actions",
+    keywords: "publish persist",
+  },
+  {
+    key: "undo2",
+    label: "Undo2",
+    category: "Actions",
+    keywords: "undo2",
+  },
+  {
+    key: "redo2",
+    label: "Redo2",
+    category: "Actions",
+    keywords: "redo2",
+  },
+  {
+    key: "rotate-ccw",
+    label: "Rotate Ccw",
+    category: "Actions",
+    keywords: "reset restore undo",
+  },
+  {
+    key: "refresh-ccw",
+    label: "Refresh Ccw",
+    category: "Actions",
+    keywords: "refresh ccw",
+  },
+  {
+    key: "trash2",
+    label: "Trash2",
+    category: "Actions",
+    keywords: "trash2",
+  },
+  {
+    key: "pencil",
+    label: "Pencil",
+    category: "Actions",
+    keywords: "edit update",
+  },
+  {
+    key: "square-pen",
+    label: "Square Pen",
+    category: "Actions",
+    keywords: "square pen",
+  },
+  {
+    key: "folder",
+    label: "Folder",
+    category: "Actions",
+    keywords: "folder",
+  },
+  {
+    key: "folder-open",
+    label: "Folder Open",
+    category: "Actions",
+    keywords: "folder open",
+  },
+  {
+    key: "folder-plus",
+    label: "Folder Plus",
+    category: "Actions",
+    keywords: "folder plus",
+  },
+  {
+    key: "file",
+    label: "File",
+    category: "Actions",
+    keywords: "file",
+  },
+  {
+    key: "files",
+    label: "Files",
+    category: "Actions",
+    keywords: "files",
+  },
+  {
+    key: "file-plus",
+    label: "File Plus",
+    category: "Actions",
+    keywords: "file plus",
+  },
+  {
+    key: "file-check",
+    label: "File Check",
+    category: "Actions",
+    keywords: "file check",
+  },
+  {
+    key: "archive",
+    label: "Archive",
+    category: "Actions",
+    keywords: "archive",
+  },
+  {
+    key: "package",
+    label: "Package",
+    category: "Actions",
+    keywords: "package",
+  },
+  {
+    key: "package-check",
+    label: "Package Check",
+    category: "Actions",
+    keywords: "package check",
+  },
+  {
+    key: "calendar",
+    label: "Calendar",
+    category: "Operations",
+    keywords: "calendar",
+  },
+  {
+    key: "calendar-days",
+    label: "Calendar Days",
+    category: "Operations",
+    keywords: "calendar days",
+  },
+  {
+    key: "calendar-clock",
+    label: "Calendar Clock",
+    category: "Operations",
+    keywords: "calendar clock",
+  },
+  {
+    key: "alarm-clock",
+    label: "Alarm Clock",
+    category: "Operations",
+    keywords: "alarm clock",
+  },
+  {
+    key: "bell-ring",
+    label: "Bell Ring",
+    category: "Operations",
+    keywords: "bell ring",
+  },
+  {
+    key: "bell-off",
+    label: "Bell Off",
+    category: "Operations",
+    keywords: "bell off",
+  },
+  {
+    key: "circle-check",
+    label: "Circle Check",
+    category: "Operations",
+    keywords: "success ready complete",
+  },
+  {
+    key: "circle-x",
+    label: "Circle X",
+    category: "Operations",
+    keywords: "circle x",
+  },
+  {
+    key: "circle-alert",
+    label: "Circle Alert",
+    category: "Operations",
+    keywords: "circle alert",
+  },
+  {
+    key: "triangle-alert",
+    label: "Triangle Alert",
+    category: "Operations",
+    keywords: "warning attention caution",
+  },
+  {
+    key: "circle-dashed",
+    label: "Circle Dashed",
+    category: "Operations",
+    keywords: "circle dashed",
+  },
+  {
+    key: "loader-circle",
+    label: "Loader Circle",
+    category: "Operations",
+    keywords: "loader circle",
+  },
+  {
+    key: "circle-pause",
+    label: "Circle Pause",
+    category: "Operations",
+    keywords: "circle pause",
+  },
+  {
+    key: "circle-play",
+    label: "Circle Play",
+    category: "Operations",
+    keywords: "circle play",
+  },
+  {
+    key: "power",
+    label: "Power",
+    category: "Operations",
+    keywords: "power",
+  },
+  {
+    key: "power-off",
+    label: "Power Off",
+    category: "Operations",
+    keywords: "power off",
+  },
+  {
+    key: "wifi",
+    label: "Wifi",
+    category: "Operations",
+    keywords: "wifi",
+  },
+  {
+    key: "wifi-off",
+    label: "Wifi Off",
+    category: "Operations",
+    keywords: "wifi off",
+  },
+  {
+    key: "signal",
+    label: "Signal",
+    category: "Operations",
+    keywords: "signal",
+  },
+  {
+    key: "cable",
+    label: "Cable",
+    category: "Operations",
+    keywords: "cable",
+  },
+  {
+    key: "plug",
+    label: "Plug",
+    category: "Operations",
+    keywords: "plug",
+  },
+  {
+    key: "plug-zap",
+    label: "Plug Zap",
+    category: "Operations",
+    keywords: "plug zap",
+  },
+  {
+    key: "battery",
+    label: "Battery",
+    category: "Operations",
+    keywords: "battery",
+  },
+  {
+    key: "workflow",
+    label: "Workflow",
+    category: "Operations",
+    keywords: "workflow",
+  },
+  {
+    key: "git-branch",
+    label: "Git Branch",
+    category: "Operations",
+    keywords: "git branch",
+  },
+  {
+    key: "chart-no-axes-combined",
+    label: "Chart No Axes Combined",
+    category: "Operations",
+    keywords: "chart no axes combined",
+  },
+  {
+    key: "chart-column",
+    label: "Chart Column",
+    category: "Operations",
+    keywords: "chart column",
+  },
+  {
+    key: "chart-pie",
+    label: "Chart Pie",
+    category: "Operations",
+    keywords: "chart pie",
+  },
+  {
+    key: "circle-dollar-sign",
+    label: "Circle Dollar Sign",
+    category: "Operations",
+    keywords: "circle dollar sign",
+  },
+  {
+    key: "tag",
+    label: "Tag",
+    category: "Operations",
+    keywords: "tag",
+  },
+  {
+    key: "tags",
+    label: "Tags",
+    category: "Operations",
+    keywords: "tags",
+  },
+  {
+    key: "ticket",
+    label: "Ticket",
+    category: "Operations",
+    keywords: "ticket",
+  },
+  {
+    key: "gift",
+    label: "Gift",
+    category: "Operations",
+    keywords: "gift",
+  },
+  {
+    key: "gem",
+    label: "Gem",
+    category: "Operations",
+    keywords: "gem",
+  },
+  {
+    key: "crown",
+    label: "Crown",
+    category: "Operations",
+    keywords: "crown",
+  },
+  {
+    key: "rocket",
+    label: "Rocket",
+    category: "Operations",
+    keywords: "rocket",
+  },
+  {
+    key: "shield",
+    label: "Shield",
+    category: "Operations",
+    keywords: "shield",
+  },
+  {
+    key: "shield-alert",
+    label: "Shield Alert",
+    category: "Operations",
+    keywords: "shield alert",
+  },
+  {
+    key: "shield-off",
+    label: "Shield Off",
+    category: "Operations",
+    keywords: "shield off",
+  },
+  {
+    key: "key-round",
+    label: "Key Round",
+    category: "Operations",
+    keywords: "key round",
+  },
+  {
+    key: "lock-open",
+    label: "Lock Open",
+    category: "Operations",
+    keywords: "lock open",
+  },
+  {
+    key: "fingerprint",
+    label: "Fingerprint",
+    category: "Operations",
+    keywords: "fingerprint",
+  },
+  {
+    key: "book-open",
+    label: "Book Open",
+    category: "Operations",
+    keywords: "book open",
+  },
+  {
+    key: "book-marked",
+    label: "Book Marked",
+    category: "Operations",
+    keywords: "book marked",
+  },
+  {
+    key: "notebook-text",
+    label: "Notebook Text",
+    category: "Operations",
+    keywords: "notebook text",
+  },
+  {
+    key: "scroll-text",
+    label: "Scroll Text",
+    category: "Operations",
+    keywords: "scroll text",
+  },
+  {
+    key: "clipboard-list",
+    label: "Clipboard List",
+    category: "Operations",
+    keywords: "clipboard list",
+  },
+] as const;
+export type SiteIconKey = (typeof SITE_ICON_DEFINITIONS)[number]["key"];
 export interface SiteIconDefinition {
   key: SiteIconKey;
   label: string;
   category: string;
+  keywords?: string;
 }
-
-export const SITE_ICON_DEFINITIONS: readonly SiteIconDefinition[] = [
-  { key: "none", label: "No icon", category: "Interface" },
-  { key: "bell", label: "Bell Alert", category: "Alerts" },
-  { key: "megaphone", label: "Announcement", category: "Alerts" },
-  { key: "radio", label: "Live Signal", category: "Alerts" },
-  { key: "send", label: "Dispatch", category: "Alerts" },
-  { key: "zap", label: "Instant Trigger", category: "Alerts" },
-  { key: "car-front", label: "Vehicle", category: "Vehicles" },
-  { key: "gauge", label: "Performance", category: "Vehicles" },
-  { key: "flame", label: "Limited Drop", category: "Vehicles" },
-  { key: "star", label: "Featured", category: "Vehicles" },
-  { key: "award", label: "Verified Drop", category: "Vehicles" },
-  { key: "images", label: "Image Gallery", category: "Media" },
-  { key: "eye", label: "Preview", category: "Media" },
-  { key: "sparkles", label: "Highlights", category: "Media" },
-  { key: "layout-panel-top", label: "Status Widget", category: "Interface" },
-  { key: "layout-dashboard", label: "Dashboard", category: "Interface" },
-  { key: "sliders-horizontal", label: "Customization", category: "Interface" },
-  { key: "layers", label: "Architecture", category: "Interface" },
-  { key: "bot", label: "Discord Bot", category: "Discord" },
-  { key: "users", label: "Role Mentions", category: "Discord" },
-  { key: "terminal", label: "Slash Commands", category: "Discord" },
-  { key: "server", label: "Connected Server", category: "Discord" },
-  { key: "activity", label: "Store Monitor", category: "Operations" },
-  { key: "clock", label: "Schedule", category: "Operations" },
-  { key: "refresh-cw", label: "Auto Sync", category: "Operations" },
-  { key: "history", label: "Release Archive", category: "Operations" },
-  { key: "wrench", label: "Recovery", category: "Operations" },
-  { key: "database", label: "Cloudflare D1", category: "Infrastructure" },
-  { key: "hard-drive", label: "Cloudflare R2", category: "Infrastructure" },
-  { key: "cpu", label: "Edge Worker", category: "Infrastructure" },
-  { key: "globe", label: "Web Portal", category: "Infrastructure" },
-  { key: "shield-check", label: "Verified Protection", category: "Trust & Legal" },
-  { key: "check-circle-2", label: "Confirmed Check", category: "Trust & Legal" },
-  { key: "lock", label: "Privacy & Security", category: "Trust & Legal" },
-  { key: "file-text", label: "Documentation", category: "Trust & Legal" },
-  { key: "scale", label: "Terms & Rules", category: "Trust & Legal" },
-  { key: "info", label: "Notice", category: "Trust & Legal" },
-] as const;
-
 const VALID_ICON_SET = new Set<string>(SITE_ICON_DEFINITIONS.map((d) => d.key));
 
 export function isValidSiteIconKey(value: unknown): value is SiteIconKey {
@@ -91,7 +1245,21 @@ export function isValidSiteIconKey(value: unknown): value is SiteIconKey {
 
 export function sanitizeSiteIconKey(
   value: unknown,
-  fallback: SiteIconKey = "sparkles"
+  fallback: SiteIconKey = "sparkles",
 ): SiteIconKey {
   return isValidSiteIconKey(value) ? value : fallback;
+}
+
+export function searchSiteIcons(query: string, category = "All") {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return SITE_ICON_DEFINITIONS.filter(
+    (item) =>
+      (category === "All" || item.category === category) &&
+      words.every((word) =>
+        [item.key, item.label, item.category, item.keywords]
+          .join(" ")
+          .toLowerCase()
+          .includes(word),
+      ),
+  );
 }

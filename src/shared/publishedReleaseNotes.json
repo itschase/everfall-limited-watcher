@@ -1,5 +1,30 @@
 [
   {
+    "version": "2026.11.21.5",
+    "title": "A more compact workspace with more ways to make it yours",
+    "summary": "Everfall Limited Watcher now brings related information closer together, puts useful controls within easier reach, and offers more ways to shape page content. The refinements extend from server management and administrative tools to public pages, previews, and recovery screens.",
+    "date": "2026-11-21",
+    "published": true,
+    "highlights": [
+      "Dashboard summaries use less space on phones, with related counts arranged together. Administrator Overview brings recent deliveries closer to the top, while Bot Control and Status Widgets give their main action a clearer place.",
+      "Choose from 204 icons with category filters, purpose-based search, keyboard browsing, and clear previews. Existing icon choices remain supported, and sections can still use no icon."
+    ],
+    "additions": [
+      "Customize your workspace with compact or comfortable spacing and focused or wide content. These choices affect your current browser view only and reset on reload.",
+      "Find pages and tools from the header search button or Ctrl/Command K. Search results reflect the pages available to your account.",
+      "Additional page sections now offer content-width, icon-size, and primary or outline button options, with the same appearance in preview and on the published page."
+    ],
+    "improvements": [
+      "Connected server rows emphasize names, channels, and useful status. Technical IDs and copy controls are available through expandable connection details, keeping the main list easier to scan.",
+      "Secondary operations sit in consistent menus. Bot-wide synchronization and bulk widget refresh show what will happen before you continue.",
+      "Public sections and footers have more consistent spacing and typography. Page editors can hide previews while working, and phone previews start collapsed to put editing controls closer to hand."
+    ],
+    "fixes": [
+      "Failed requests offer clearer retry paths, and existing information remains available during refresh failures. Page editing pauses if saved content cannot be loaded, protecting published pages from accidental replacement.",
+      "Leaving Pages with unsaved work now offers a stay-or-leave choice. Canceling a failed edit clears stale failure feedback, and unavailable profile images use a clean fallback instead of a broken image."
+    ]
+  },
+  {
     "version": "2026.11.21.4",
     "title": "Smoother sign-in and clearer Discord profiles",
     "summary": "Signing in and finding contact information is easier, with clearer Discord profile cards and more control over the bot's visible activity.",

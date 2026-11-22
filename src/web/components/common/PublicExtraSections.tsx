@@ -18,7 +18,8 @@ export function PublicExtraSections({
           <section
             key={section.id}
             className={cn(
-              "mx-auto w-full max-w-5xl px-4 sm:px-6",
+              "mx-auto w-full px-4 sm:px-6",
+              section.contentWidth === "wide" ? "max-w-7xl" : "max-w-5xl",
               section.spacing === "compact"
                 ? "py-4"
                 : section.spacing === "spacious"
@@ -40,7 +41,12 @@ export function PublicExtraSections({
               <SiteIcon
                 name={section.icon}
                 className={cn(
-                  "mb-3 h-5 w-5",
+                  "mb-3",
+                  section.iconSize === "small"
+                    ? "h-4 w-4"
+                    : section.iconSize === "large"
+                      ? "h-8 w-8"
+                      : "h-5 w-5",
                   section.alignment === "center" && "mx-auto",
                 )}
               />
@@ -55,7 +61,13 @@ export function PublicExtraSections({
                 ))}
               </div>
               {section.buttonLabel && section.buttonUrl && (
-                <Button asChild className="mt-4" variant="outline">
+                <Button
+                  asChild
+                  className="mt-4"
+                  variant={
+                    section.buttonStyle === "primary" ? "default" : "outline"
+                  }
+                >
                   {previewMode ? (
                     <span>{section.buttonLabel}</span>
                   ) : (

@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ChevronDown, Search, Check } from "lucide-react";
 import {
   SITE_ICON_DEFINITIONS,
   sanitizeSiteIconKey,
+  searchSiteIcons,
   type SiteIconKey,
 } from "../../../shared/icons";
 import { cn } from "@/lib/utils";
@@ -31,127 +32,201 @@ export function IconPicker({
   disabled?: boolean;
   className?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<string>("All");
-
+  const [open, setOpen] = useState(false),
+    [query, setQuery] = useState(""),
+    [category, setCategory] = useState("All");
+  const input = useRef<HTMLInputElement>(null);
   const activeKey = sanitizeSiteIconKey(value, fallback);
-  const activeDef = useMemo(
-    () => SITE_ICON_DEFINITIONS.find((d) => d.key === activeKey),
-    [activeKey]
+  const selected = SITE_ICON_DEFINITIONS.find(
+    (item) => item.key === activeKey,
+  )!;
+  const categories = [
+    "All",
+    ...new Set(SITE_ICON_DEFINITIONS.map((item) => item.category)),
+  ];
+  const filtered = useMemo(
+    () => searchSiteIcons(query, category),
+    [query, category],
   );
-
-  const categories = useMemo(() => {
-    const unique = Array.from(new Set(SITE_ICON_DEFINITIONS.map((d) => d.category)));
-    return ["All", ...unique];
-  }, []);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return SITE_ICON_DEFINITIONS.filter((item) => {
-      if (category !== "All" && item.category !== category) return false;
-      if (!q) return true;
-      return (
-        item.label.toLowerCase().includes(q) ||
-        item.key.toLowerCase().includes(q) ||
-        item.category.toLowerCase().includes(q)
-      );
-    });
-  }, [category, query]);
-
+  const choose = (key: SiteIconKey) => {
+    onChange(key);
+    setOpen(false);
+  };
+  const move = (event: KeyboardEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (!target.matches("[data-icon-option]")) return;
+    const buttons = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+        "[data-icon-option]",
+      ),
+    );
+    const index = buttons.indexOf(target as HTMLButtonElement);
+    const columns = getComputedStyle(
+      event.currentTarget,
+    ).gridTemplateColumns.split(" ").length;
+    const offset =
+      event.key === "ArrowRight"
+        ? 1
+        : event.key === "ArrowLeft"
+          ? -1
+          : event.key === "ArrowDown"
+            ? columns
+            : event.key === "ArrowUp"
+              ? -columns
+              : 0;
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? buttons.length - 1
+          : index + offset;
+    if (offset || event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      buttons[Math.max(0, Math.min(buttons.length - 1, next))]?.focus();
+    }
+  };
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) {
+          setQuery("");
+          setCategory("All");
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button
           type="button"
           variant="outline"
           size="sm"
           disabled={disabled}
-          className={cn("h-8 justify-between gap-2 px-2.5 text-xs font-normal", className)}
+          aria-label={`Choose icon: ${selected.label}`}
+          className={cn("min-w-0 justify-between gap-2 font-normal", className)}
         >
-          <span className="inline-flex items-center gap-2 truncate">
-            <SiteIcon name={activeKey} fallback={fallback} className="h-3.5 w-3.5 shrink-0 text-zinc-200" />
-            <span className="truncate text-zinc-200">{activeDef?.label || activeKey}</span>
+          <span className="inline-flex min-w-0 items-center gap-2">
+            <SiteIcon name={activeKey} className="h-4 w-4 shrink-0" />
+            <span className="truncate">{selected.label}</span>
           </span>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <ChevronDown className="h-3.5 w-3.5 shrink-0" />
         </Button>
       </DialogTrigger>
-
-      <DialogContent className="max-w-md p-4 sm:p-5">
-        <DialogHeader className="space-y-1">
-          <DialogTitle className="text-base">Choose Section Icon</DialogTitle>
-          <DialogDescription className="text-xs">
-            Select a Lucide vector icon from the curated Everfall Limited Watcher icon set.
+      <DialogContent
+        className="max-w-2xl"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          input.current?.focus();
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>Choose an icon</DialogTitle>
+          <DialogDescription>
+            Browse {SITE_ICON_DEFINITIONS.length - 1} Lucide icons. Search by
+            name or purpose, such as vehicle, notification, privacy, or
+            settings.
           </DialogDescription>
         </DialogHeader>
-
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => { onChange("none"); setOpen(false); }}>No icon</Button>
-            <Button size="sm" variant="ghost" onClick={() => { onChange(fallback); setOpen(false); }}>Restore default</Button>
-          </div>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative min-w-0 flex-1">
+            <Search
+              aria-hidden="true"
+              className="absolute left-3 top-3 h-4 w-4 text-muted-foreground"
+            />
             <Input
+              ref={input}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search icons..."
-              className="h-8 pl-8 text-xs"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search icons or keywords…"
+              aria-label="Search icons"
+              className="pl-9"
             />
           </div>
-
-          <div className="thin-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setCategory(cat)}
-                className={cn(
-                  "shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium transition cursor-pointer",
-                  category === cat
-                    ? "border-zinc-500 bg-zinc-800 text-white"
-                    : "border-transparent bg-zinc-900/70 text-muted-foreground hover:text-white"
-                )}
-              >
-                {cat}
-              </button>
+          <select
+            aria-label="Icon category"
+            className="h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+          >
+            {categories.map((name) => (
+              <option key={name}>{name}</option>
             ))}
-          </div>
-
-          <div className="thin-scrollbar grid max-h-64 grid-cols-3 gap-1.5 overflow-y-auto pr-0.5 sm:grid-cols-4">
-            {filtered.length === 0 ? (
-              <p className="col-span-full py-6 text-center text-xs text-muted-foreground">
-                No matching icons.
-              </p>
-            ) : (
-              filtered.map((item) => {
-                const selected = item.key === activeKey;
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => {
-                      onChange(item.key);
-                      setOpen(false);
-                    }}
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-1 rounded-lg border p-2 text-center transition cursor-pointer",
-                      selected
-                        ? "border-zinc-400 bg-zinc-800 text-white"
-                        : "border-border bg-zinc-950/70 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 hover:text-white"
-                    )}
-                    title={`${item.label} (${item.category})`}
-                  >
-                    <SiteIcon name={item.key} className="h-4 w-4 shrink-0" />
-                    <span className="w-full truncate text-[10px] font-medium leading-tight">
-                      {item.label}
-                    </span>
-                  </button>
-                );
-              })
-            )}
+          </select>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <p role="status" aria-live="polite" className="text-muted-foreground">
+            {filtered.length} choices · Selected: {selected.label}
+          </p>
+          <div className="flex gap-1">
+            <Button size="sm" variant="ghost" onClick={() => choose("none")}>
+              No icon
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => choose(fallback)}
+            >
+              Restore default
+            </Button>
           </div>
         </div>
+        <div
+          onKeyDown={move}
+          aria-label="Icon choices"
+          className="thin-scrollbar grid max-h-[min(45dvh,360px)] grid-cols-3 gap-2 overflow-y-auto p-1 sm:grid-cols-5 md:grid-cols-6"
+        >
+          {filtered.length ? (
+            filtered.map((item) => (
+              <button
+                key={item.key}
+                data-icon-option
+                type="button"
+                aria-label={item.label}
+                aria-pressed={item.key === activeKey}
+                onClick={() => choose(item.key)}
+                title={`${item.label} · ${item.category}`}
+                className={cn(
+                  "relative flex min-h-16 min-w-0 flex-col items-center justify-center gap-2 rounded-lg border px-2 py-3 text-center outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                  item.key === activeKey
+                    ? "border-zinc-500 bg-accent text-white"
+                    : "border-border text-muted-foreground hover:bg-accent hover:text-white",
+                )}
+              >
+                <SiteIcon name={item.key} className="h-5 w-5" />
+                {item.key === activeKey && (
+                  <Check
+                    aria-hidden="true"
+                    className="absolute right-1 top-1 h-3 w-3"
+                  />
+                )}
+                <span className="w-full truncate text-[10px] leading-tight">
+                  {item.label}
+                </span>
+              </button>
+            ))
+          ) : (
+            <div className="col-span-full py-10 text-center">
+              <p className="text-sm font-medium">No matching icons</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Try another keyword or category.
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-3"
+                onClick={() => {
+                  setQuery("");
+                  setCategory("All");
+                }}
+              >
+                Clear filters
+              </Button>
+            </div>
+          )}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Use arrow keys to browse, Enter to choose, and Escape to close.
+        </p>
       </DialogContent>
     </Dialog>
   );

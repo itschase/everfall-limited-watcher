@@ -1,10 +1,11 @@
+import { QueryState } from "@/components/common/QueryState";
 import { STORE_MONITOR_INTERVAL_MINUTES } from "../../../shared/appConfig";
 import { PageExtensionsEditor } from "./PageExtensionsEditor";
 import { AutomationNotice } from "@/features/legal/AutomationNotice";
 import { ResponsivePreview } from "@/components/common/ResponsivePreview";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useBlocker } from "@tanstack/react-router";
 import {
   ArrowDown,
   ArrowUp,
@@ -514,6 +515,7 @@ export function AdminPagesPage() {
 
   const {
     data: presentationRes,
+    error: presentationError,
     isLoading,
     isFetching,
     refetch,
@@ -536,6 +538,7 @@ export function AdminPagesPage() {
   const [pagesDraft, setPagesDraft] = useState<SitePagesConfig>(() =>
     normalizeSitePagesConfig(DEFAULT_SITE_PAGES_CONFIG, DEFAULT_SITE_PAGES_CONFIG)
   );
+  const [previewCollapsed, setPreviewCollapsed] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
   const [previewSelection, setPreviewSelection] = useState<string>("auto");
   const [replayNonce, setReplayNonce] = useState<number>(0);
   const [resetTarget, setResetTarget] = useState<PageTabKey | null>(null);
@@ -624,6 +627,8 @@ export function AdminPagesPage() {
       toast.error(err.message || "Failed to save page changes.");
     },
   });
+
+  const navigationBlocker = useBlocker({ shouldBlockFn: () => Object.values(dirtyTabs).some(Boolean) || saveMutation.isPending, enableBeforeUnload: Object.values(dirtyTabs).some(Boolean) || saveMutation.isPending, withResolver: true });
 
   const activeMessages = heroDraft.messages.filter((m) => m.enabled);
   const previewIndex =
@@ -761,6 +766,8 @@ export function AdminPagesPage() {
   }, [dirtyTabs]);
 
   const handleCancelTab = (tab: PageTabKey) => {
+    saveMutation.reset();
+    setFailedSnapshot(null);
     if (tab === "home") {
       setHeroDraft(savedNormalizedHero);
       patchHome(savedNormalizedPages.home);
@@ -957,9 +964,10 @@ export function AdminPagesPage() {
               </Button>
             </div>
           </div>
+        <Button type="button" variant="ghost" size="sm" aria-expanded={!previewCollapsed} aria-controls={"live-preview-" + tab} onClick={() => setPreviewCollapsed(previous => !previous)}>{previewCollapsed ? "Show preview" : "Hide preview"}</Button>
         </CardHeader>
 
-        <CardContent className="max-h-[640px] overflow-x-hidden overflow-y-auto bg-zinc-950/90 p-0 thin-scrollbar">
+        {!previewCollapsed && <CardContent id={"live-preview-" + tab} className="max-h-[640px] overflow-x-hidden overflow-y-auto bg-zinc-950/90 p-0 thin-scrollbar">
           <ResponsivePreview width={previewViewport === "mobile" ? 375 : previewViewport === "tablet" ? 768 : 1280}>
             {tab === "home" && (
               <HomePageSections
@@ -997,7 +1005,7 @@ export function AdminPagesPage() {
               <><LegalPageSections kind="terms" config={pagesDraft.terms} previewMode /><AutomationNotice kind="terms" /></>
             )}
           </ResponsivePreview>
-        </CardContent>
+        </CardContent>}
       </Card>
     );
   };
@@ -1354,11 +1362,13 @@ export function AdminPagesPage() {
       ? pagesDraft.about.sectionOrder
       : DEFAULT_ABOUT_SECTION_ORDER;
 
+  if (presentationError && !presentationRes) return <AppShell requireAdmin title="Pages & Content Editor"><QueryState error={presentationError} onRetry={() => void refetch()}>Saved content could not be loaded. Editing is paused to protect existing pages.</QueryState></AppShell>;
+
   return (
     <AppShell
       requireAdmin
       title="Pages & Content Editor"
-      description="Customize public Home (including Hero toggle, animation & queue), Features, About, Privacy Policy, and Terms of Service layouts, sections, icons, and copy independently."
+      description="Edit page content, sections, icons, and appearance with live previews."
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" asChild>
@@ -1379,6 +1389,8 @@ export function AdminPagesPage() {
         </div>
       }
     >
+      {presentationError && presentationRes && <QueryState error={presentationError} title="Showing your last loaded content" onRetry={() => void refetch()}>Refresh failed. Your current draft remains available.</QueryState>}
+      <Dialog open={navigationBlocker.status === "blocked"} onOpenChange={open => { if (!open) navigationBlocker.reset?.(); }}><DialogContent><DialogHeader><DialogTitle>Leave the page editor?</DialogTitle><DialogDescription>Some changes are unsaved or still saving. Stay to finish saving, or leave and discard unsaved edits.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => navigationBlocker.reset?.()}>Stay and edit</Button><Button variant="destructive" onClick={() => navigationBlocker.proceed?.()}>Leave page</Button></DialogFooter></DialogContent></Dialog>
       {isLoading ? (
         <div className="space-y-6">
           <Skeleton className="h-12 w-full rounded-xl" />
@@ -1389,7 +1401,7 @@ export function AdminPagesPage() {
           <div className="flex items-start gap-2.5 rounded-xl border border-border bg-zinc-950/80 px-4 py-3 text-xs text-muted-foreground">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
             <span>
-              All HTML tags and unsafe scripts are stripped automatically on save. Icons use curated Lucide SVG symbols, and edits save cleanly to Cloudflare D1 without triggering Discord messages.
+              Changes save automatically after a short pause. Preview your page below; resetting a section does not affect other pages.
             </span>
           </div>
 
@@ -1404,10 +1416,7 @@ export function AdminPagesPage() {
                 <TabsTrigger key={key} value={key} className="gap-1.5">
                   <span>{TAB_LABELS[key].label}</span>
                   {dirtyTabs[key] && (
-                    <span
-                      title="Unsaved changes"
-                      className="h-2 w-2 rounded-full bg-amber-400"
-                    />
+                    <span className="text-[10px] text-amber-300">Edited</span>
                   )}
                 </TabsTrigger>
               ))}

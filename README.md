@@ -154,6 +154,16 @@ The website release editor remains available for drafts and wording corrections.
 
 ## Sidebar navigation
 
+## Workspace appearance and page search
+
+Use **Customize view** in the application header to choose Compact/Comfortable spacing and Focused/Wide content. These are browser-memory preferences, retained across in-app navigation and reset on reload. They do not change account data, server configuration, cookies, or published content. The shared summary and form patterns keep mobile controls readable while reducing unnecessary card height.
+
+Use **Find a page** or **Ctrl/Command K** for local page/tool search. Arrow keys select a result, Enter opens it, and Escape closes the search. Administrative destinations are only listed for administrators; normal route and API authorization still apply. Search text is not sent to a search service.
+
+The Pages icon picker offers 204 allowed SVG icons and No icon, with categories, name/purpose search, explicit defaults, and keyboard browsing. Existing saved icon keys remain valid. Additional sections can choose Standard/Wide content, Small/Medium/Large icons, and Outline/Primary buttons. Options are normalized on save and rendered by the same components in preview and publication. Previews start collapsed on phones; Show/Hide Preview does not discard edits.
+
+Bot-wide synchronization and bulk widget refresh require a review step describing their scope. Other existing explicit operations, permission checks, pending guards, and test-server restrictions remain in force. Page editors warn before leaving unsaved work, and failed initial content loads block editing rather than exposing publishable fallback defaults.
+
 The sidebar logo/title opens the homepage on desktop and mobile. Administrator tools are organized into expandable Discord & Servers, Listings & Media, Website & Content, and Monitoring & Testing groups, with Overview directly accessible. Visiting a page reveals its active group. Group and desktop width choices are retained during in-app navigation, reset on a full reload, and are not written to cookies or browser storage. The compact desktop sidebar opens group menus; the mobile drawer keeps its title above a separately scrolling navigation list. Transitions respect reduced-motion preferences.
 
 ## Automation checks, recovery, and saved previews

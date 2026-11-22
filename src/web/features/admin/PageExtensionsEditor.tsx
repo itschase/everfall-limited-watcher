@@ -208,12 +208,34 @@ export function PageExtensionsEditor({
                 </label>
               </div>
               <div className="flex flex-wrap gap-3">
-                {(["alignment", "style", "spacing"] as const).map((key) => (
+                {(
+                  [
+                    "alignment",
+                    "style",
+                    "spacing",
+                    "contentWidth",
+                    "iconSize",
+                    "buttonStyle",
+                  ] as const
+                ).map((key) => (
                   <label key={key} className="space-y-1 text-xs capitalize">
-                    {key}
+                    {key === "contentWidth"
+                      ? "Content width"
+                      : key === "iconSize"
+                        ? "Icon size"
+                        : key === "buttonStyle"
+                          ? "Button style"
+                          : key}
                     <select
                       className="ml-2 rounded-md border border-input bg-background p-2"
-                      value={section[key]}
+                      value={
+                        section[key] ||
+                        (key === "contentWidth"
+                          ? "standard"
+                          : key === "iconSize"
+                            ? "medium"
+                            : "outline")
+                      }
                       onChange={(event) =>
                         patch(index, { [key]: event.target.value })
                       }
@@ -222,7 +244,13 @@ export function PageExtensionsEditor({
                         ? ["left", "center"]
                         : key === "style"
                           ? ["subtle", "bordered", "elevated"]
-                          : ["compact", "standard", "spacious"]
+                          : key === "spacing"
+                            ? ["compact", "standard", "spacious"]
+                            : key === "contentWidth"
+                              ? ["standard", "wide"]
+                              : key === "iconSize"
+                                ? ["small", "medium", "large"]
+                                : ["outline", "primary"]
                       ).map((value) => (
                         <option key={value}>{value}</option>
                       ))}

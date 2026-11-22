@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-21 — Cohesive dashboard layouts and website appearance
+
+- Introduced shared responsive summary metrics and replaced oversized summaries on Administrator Overview, Bot Control, Status Widgets, and Server Manager. Four metrics use a mobile two-column layout; three-metric groups adapt without narrow unreadable cards. Moved overview shortcuts into a disclosure so delivery activity is closer to the top.
+- Shortened operational descriptions and grouped secondary actions in keyboard-accessible menus while retaining their pending guards and handlers. Added explicit review dialogs for bot-wide synchronization and refreshing all widget messages, without changing the underlying operations.
+- Reworked mobile Connected Servers rows around identity, channel names, environment, and widget state. IDs/copy actions remain available in expandable connection details, with a single clear log action. Prevented overlapping manual server refresh requests.
+- Standardized card spacing, focus/invalid-input states, skip links, mobile text entry sizes, header hierarchy, and public section/footer rhythm. Added safe avatar/decorative-image failure fallbacks and readable route-not-found/loading-failure recovery.
+
+## 2026-11-21 — Expanded icons, personal appearance, and editor safety
+
+- Expanded the allowlisted site catalog to 204 Lucide icons plus No icon, preserving every existing saved key. Added category/purpose keyword search, match counts, explicit selection state, reset controls, and arrow/Home/End keyboard browsing. Icons remain explicit vector imports rather than arbitrary markup or the entire icon package.
+- Added personal Compact/Comfortable spacing and Focused/Wide content controls. Choices persist only in browser memory across navigation and reset on reload; they do not alter server settings or published pages. Added local page/tool search with Ctrl/Command K, keyboard navigation, and administrator-only destinations filtered by the current session.
+- Added validated section content widths, icon sizes, and primary/outline button styles to Pages, using the same renderer for preview and publication. Mobile previews start collapsed and can be shown/hidden without losing content.
+- Protected Pages against navigation during unsaved/pending work and against editing fallback defaults after an initial load failure. Failed refreshes retain prior data, retry states have explicit recovery, and canceling edits clears stale mutation failures in Pages and Release Notes.
+- Updated both policy pages to distinguish in-memory personal choices, local navigation search, and administrator-published appearance. Added regression checks for saved-icon compatibility, every catalog entry's SVG rendering, keyword/category search, and safe/idempotent section-option normalization.
+
 ## 2026-11-21 — Backfilled member release history
 
 - Added member-facing releases for November 16–20, dated from the original repository commits. Grouped related changes by day and described their visible benefits rather than publishing internal implementation or deployment details.
@@ -148,6 +163,32 @@
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.21.5 | 2026-11-21 | A more compact workspace with more ways to make it yours
+
+Everfall Limited Watcher now brings related information closer together, puts useful controls within easier reach, and offers more ways to shape page content. The refinements extend from server management and administrative tools to public pages, previews, and recovery screens.
+
+### Highlights
+
+- Dashboard summaries use less space on phones, with related counts arranged together. Administrator Overview brings recent deliveries closer to the top, while Bot Control and Status Widgets give their main action a clearer place.
+- Choose from 204 icons with category filters, purpose-based search, keyboard browsing, and clear previews. Existing icon choices remain supported, and sections can still use no icon.
+
+### New additions
+
+- Customize your workspace with compact or comfortable spacing and focused or wide content. These choices affect your current browser view only and reset on reload.
+- Find pages and tools from the header search button or Ctrl/Command K. Search results reflect the pages available to your account.
+- Additional page sections now offer content-width, icon-size, and primary or outline button options, with the same appearance in preview and on the published page.
+
+### Improvements
+
+- Connected server rows emphasize names, channels, and useful status. Technical IDs and copy controls are available through expandable connection details, keeping the main list easier to scan.
+- Secondary operations sit in consistent menus. Bot-wide synchronization and bulk widget refresh show what will happen before you continue.
+- Public sections and footers have more consistent spacing and typography. Page editors can hide previews while working, and phone previews start collapsed to put editing controls closer to hand.
+
+### Fixes
+
+- Failed requests offer clearer retry paths, and existing information remains available during refresh failures. Page editing pauses if saved content cannot be loaded, protecting published pages from accidental replacement.
+- Leaving Pages with unsaved work now offers a stay-or-leave choice. Canceling a failed edit clears stale failure feedback, and unavailable profile images use a clean fallback instead of a broken image.
 
 ## 2026.11.21.4 | 2026-11-21 | Smoother sign-in and clearer Discord profiles
 

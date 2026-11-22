@@ -1,6 +1,21 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+.skip-link { position: fixed; left: 1rem; top: -5rem; z-index: 100; border-radius: .5rem; padding: .75rem 1rem; background: #fafafa; color: #09090b; font-size: .875rem; }
+.skip-link:focus { top: .75rem; }
+.summary-grid[data-columns="3"] > :last-child { grid-column: span 2; }
+@container main (min-width: 48rem) { .summary-grid[data-columns="3"] > :last-child { grid-column: auto; } }
+.workspace-shell[data-density="compact"] [data-slot="card-header"] { padding: 1rem; }
+.workspace-shell[data-density="compact"] [data-slot="card-content"], .workspace-shell[data-density="compact"] [data-slot="card-footer"] { padding: 0 1rem 1rem; }
+.action-menu [role="menuitem"] { width: 100%; min-height: 2.5rem; height: auto; justify-content: flex-start; white-space: normal; text-align: left; border-color: transparent; background: transparent; }
+.action-menu [role="menuitem"]:focus, .action-menu [role="menuitem"]:hover { background: var(--accent); }
+.public-shell main p { text-wrap: pretty; }
+.public-shell main h1, .public-shell main h2, .public-shell main h3 { text-wrap: balance; }
+:where(input, textarea, select, [tabindex]) { scroll-margin-top: 6rem; }
+:where(a, button, summary):focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+@media (pointer: coarse) { [data-slot="button"] { min-height: 2.5rem; } }
+@media (max-width: 639px) { input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 1rem; } }
+
 @theme inline {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;

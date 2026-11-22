@@ -1,3 +1,7 @@
+import {
+  SummaryGrid,
+  SummaryMetric,
+} from "@/components/common/DashboardSummary";
 import { ServerCustomizationsPanel } from "./ServerCustomizationsPanel";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -112,20 +116,28 @@ function ServerWidgetsSection({
 }) {
   const [deployOpen, setDeployOpen] = useState(false);
   const [deployChannelId, setDeployChannelId] = useState(
-    server.config.channelId || server.channels[0]?.id || ""
+    server.config.channelId || server.channels[0]?.id || "",
   );
   const [deployTemplateId, setDeployTemplateId] = useState(
-    server.config.widgetTemplateId || "default"
+    server.config.widgetTemplateId || "default",
   );
   const [deployConfirmed, setDeployConfirmed] = useState(false);
   const [moveTarget, setMoveTarget] = useState<WidgetDeployment | null>(null);
   const [moveChannelId, setMoveChannelId] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<WidgetDeployment | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<WidgetDeployment | null>(
+    null,
+  );
   const [busyWidgetId, setBusyWidgetId] = useState<string | null>(null);
 
   const widgets = server.widgets || [];
   const templateOptions = useMemo(() => {
-    const out = [{ id: "default", name: widgetDefault.name || "Default Global Widget", template: widgetDefault }];
+    const out = [
+      {
+        id: "default",
+        name: widgetDefault.name || "Default Global Widget",
+        template: widgetDefault,
+      },
+    ];
     for (const tpl of widgetTemplates) {
       out.push({ id: tpl.id, name: tpl.name, template: tpl });
     }
@@ -134,17 +146,24 @@ function ServerWidgetsSection({
 
   const selectedDeployTemplate = useMemo(
     () =>
-      templateOptions.find((t) => t.id === deployTemplateId)?.template || widgetDefault,
-    [deployTemplateId, templateOptions, widgetDefault]
+      templateOptions.find((t) => t.id === deployTemplateId)?.template ||
+      widgetDefault,
+    [deployTemplateId, templateOptions, widgetDefault],
   );
 
-  const selectedDeployChannel = server.channels.find((c) => c.id === deployChannelId);
-  const deployChannelBlocked = Boolean(
-    selectedDeployChannel?.permissionsChecked && selectedDeployChannel.writable === false
+  const selectedDeployChannel = server.channels.find(
+    (c) => c.id === deployChannelId,
   );
-  const selectedMoveChannel = server.channels.find((c) => c.id === moveChannelId);
+  const deployChannelBlocked = Boolean(
+    selectedDeployChannel?.permissionsChecked &&
+      selectedDeployChannel.writable === false,
+  );
+  const selectedMoveChannel = server.channels.find(
+    (c) => c.id === moveChannelId,
+  );
   const moveChannelBlocked = Boolean(
-    selectedMoveChannel?.permissionsChecked && selectedMoveChannel.writable === false
+    selectedMoveChannel?.permissionsChecked &&
+      selectedMoveChannel.writable === false,
   );
 
   const formatApiErr = (err: Error, fallback: string) => {
@@ -164,13 +183,15 @@ function ServerWidgetsSection({
             channelId: deployChannelId,
             templateId: deployTemplateId,
           }),
-        }
+        },
       ),
     onSuccess: () => {
       setDeployOpen(false);
       setDeployConfirmed(false);
       onMutated();
-      toast.success(`Live status widget deployed to #${selectedDeployChannel?.name || "channel"}.`);
+      toast.success(
+        `Live status widget deployed to #${selectedDeployChannel?.name || "channel"}.`,
+      );
     },
     onError: (err: Error) => {
       toast.error(formatApiErr(err, "Failed to deploy status widget."));
@@ -181,7 +202,7 @@ function ServerWidgetsSection({
     mutationFn: (widgetId: string) =>
       apiFetch<{ ok: boolean }>(
         `/api/dashboard/servers/${server.id}/widgets/${encodeURIComponent(widgetId)}/refresh`,
-        { method: "POST" }
+        { method: "POST" },
       ),
     onSuccess: () => {
       setBusyWidgetId(null);
@@ -195,13 +216,19 @@ function ServerWidgetsSection({
   });
 
   const templateMutation = useMutation({
-    mutationFn: ({ widgetId, templateId }: { widgetId: string; templateId: string }) =>
+    mutationFn: ({
+      widgetId,
+      templateId,
+    }: {
+      widgetId: string;
+      templateId: string;
+    }) =>
       apiFetch<{ ok: boolean; error?: string | null }>(
         `/api/dashboard/servers/${server.id}/widgets/${encodeURIComponent(widgetId)}/template`,
         {
           method: "PUT",
           body: JSON.stringify({ templateId }),
-        }
+        },
       ),
     onSuccess: (res) => {
       setBusyWidgetId(null);
@@ -209,7 +236,9 @@ function ServerWidgetsSection({
       if (res.ok) {
         toast.success("Widget preset saved and synced on Discord.");
       } else {
-        toast.warning(res.error || "Preset saved, but Discord sync returned a warning.");
+        toast.warning(
+          res.error || "Preset saved, but Discord sync returned a warning.",
+        );
       }
     },
     onError: (err: Error) => {
@@ -219,13 +248,19 @@ function ServerWidgetsSection({
   });
 
   const moveMutation = useMutation({
-    mutationFn: ({ widgetId, channelId }: { widgetId: string; channelId: string }) =>
+    mutationFn: ({
+      widgetId,
+      channelId,
+    }: {
+      widgetId: string;
+      channelId: string;
+    }) =>
       apiFetch<{ ok: boolean }>(
         `/api/dashboard/servers/${server.id}/widgets/${encodeURIComponent(widgetId)}/move`,
         {
           method: "POST",
           body: JSON.stringify({ channelId }),
-        }
+        },
       ),
     onSuccess: () => {
       setMoveTarget(null);
@@ -242,7 +277,7 @@ function ServerWidgetsSection({
     mutationFn: (widgetId: string) =>
       apiFetch<{ ok: boolean }>(
         `/api/dashboard/servers/${server.id}/widgets/${encodeURIComponent(widgetId)}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
       ),
     onSuccess: () => {
       setDeleteTarget(null);
@@ -265,7 +300,9 @@ function ServerWidgetsSection({
             </h4>
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Deploy or manage live stock &amp; recent drops embeds in this server. Updates in-place automatically whenever stock, vehicle details, or appearance change without mentioning roles.
+            Deploy or manage live stock &amp; recent drops embeds in this
+            server. Updates in-place automatically whenever stock, vehicle
+            details, or appearance change without mentioning roles.
           </p>
         </div>
 
@@ -275,7 +312,8 @@ function ServerWidgetsSection({
           disabled={server.channels.length === 0}
           onClick={() => {
             setDeployChannelId(
-              (curr) => curr || server.config.channelId || server.channels[0]?.id || ""
+              (curr) =>
+                curr || server.config.channelId || server.channels[0]?.id || "",
             );
             setDeployConfirmed(false);
             setDeployOpen(true);
@@ -288,14 +326,18 @@ function ServerWidgetsSection({
 
       {widgets.length === 0 ? (
         <div className="rounded-lg border border-border bg-zinc-950/70 p-4 text-xs text-muted-foreground">
-          No live status widget is deployed in <strong>{server.name}</strong> yet. Click{" "}
-          <strong className="text-zinc-200">Deploy Live Widget</strong> above to preview and post one, or
-          run <code>/widget</code> inside any writable Discord channel.
+          No live status widget is deployed in <strong>{server.name}</strong>{" "}
+          yet. Click{" "}
+          <strong className="text-zinc-200">Deploy Live Widget</strong> above to
+          preview and post one, or run <code>/widget</code> inside any writable
+          Discord channel.
         </div>
       ) : (
         <div className="space-y-3">
           {widgets.map((w) => {
-            const channelObj = server.channels.find((c) => c.id === w.channelId);
+            const channelObj = server.channels.find(
+              (c) => c.id === w.channelId,
+            );
             const busy = busyWidgetId === w.id;
             const jumpUrl = `https://discord.com/channels/${w.guildId}/${w.channelId}/${w.messageId}`;
             return (
@@ -333,10 +375,14 @@ function ServerWidgetsSection({
                     {w.lastSyncedAt
                       ? formatLocalDateTime(w.lastSyncedAt)
                       : formatLocalDateTime(w.deployedAt)}
-                    {w.deployedByUsername ? ` • Deployed by ${w.deployedByUsername}` : ""}
+                    {w.deployedByUsername
+                      ? ` • Deployed by ${w.deployedByUsername}`
+                      : ""}
                   </p>
                   {w.lastSyncError && (
-                    <p className="text-[11px] text-red-300">{w.lastSyncError}</p>
+                    <p className="text-[11px] text-red-300">
+                      {w.lastSyncError}
+                    </p>
                   )}
                 </div>
 
@@ -346,7 +392,10 @@ function ServerWidgetsSection({
                     disabled={busy || templateMutation.isPending}
                     onValueChange={(tplId) => {
                       setBusyWidgetId(w.id);
-                      templateMutation.mutate({ widgetId: w.id, templateId: tplId });
+                      templateMutation.mutate({
+                        widgetId: w.id,
+                        templateId: tplId,
+                      });
                     }}
                   >
                     <SelectTrigger className="h-8 w-44 text-xs">
@@ -423,10 +472,12 @@ function ServerWidgetsSection({
       <Dialog open={deployOpen} onOpenChange={setDeployOpen}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto thin-scrollbar">
           <DialogHeader>
-            <DialogTitle>Preview &amp; Deploy Live Status Widget — {server.name}</DialogTitle>
+            <DialogTitle>
+              Preview &amp; Deploy Live Status Widget — {server.name}
+            </DialogTitle>
             <DialogDescription>
-              Choose the destination channel and template preset. Nothing will be posted publicly until
-              you confirm deployment.
+              Choose the destination channel and template preset. Nothing will
+              be posted publicly until you confirm deployment.
             </DialogDescription>
           </DialogHeader>
 
@@ -434,7 +485,10 @@ function ServerWidgetsSection({
             <div className="grid gap-4 @xl/main:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Destination Channel</Label>
-                <Select value={deployChannelId} onValueChange={setDeployChannelId}>
+                <Select
+                  value={deployChannelId}
+                  onValueChange={setDeployChannelId}
+                >
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue placeholder="Choose writable channel" />
                   </SelectTrigger>
@@ -453,7 +507,10 @@ function ServerWidgetsSection({
 
               <div className="space-y-1.5">
                 <Label>Widget Template Preset</Label>
-                <Select value={deployTemplateId} onValueChange={setDeployTemplateId}>
+                <Select
+                  value={deployTemplateId}
+                  onValueChange={setDeployTemplateId}
+                >
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -473,17 +530,25 @@ function ServerWidgetsSection({
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
                 <div>
                   <p className="font-semibold">
-                    Bot lacks required permissions in #{selectedDeployChannel.name}
+                    Bot lacks required permissions in #
+                    {selectedDeployChannel.name}
                   </p>
                   <p className="mt-0.5 text-[11px]">
-                    Missing: {(selectedDeployChannel.missingPermissions || []).join(", ")}. Grant these permissions in Discord Channel Settings before deploying.
+                    Missing:{" "}
+                    {(selectedDeployChannel.missingPermissions || []).join(
+                      ", ",
+                    )}
+                    . Grant these permissions in Discord Channel Settings before
+                    deploying.
                   </p>
                 </div>
               </div>
             )}
 
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Live Widget Embed Preview</Label>
+              <Label className="text-xs text-muted-foreground">
+                Live Widget Embed Preview
+              </Label>
               <WidgetPreviewCard
                 template={selectedDeployTemplate}
                 listings={previewListings}
@@ -499,8 +564,10 @@ function ServerWidgetsSection({
               />
               <span>
                 Confirm posting this public auto-updating widget into{" "}
-                <strong>#{selectedDeployChannel?.name || "selected channel"}</strong> (no role
-                mentions).
+                <strong>
+                  #{selectedDeployChannel?.name || "selected channel"}
+                </strong>{" "}
+                (no role mentions).
               </span>
             </label>
           </div>
@@ -532,14 +599,18 @@ function ServerWidgetsSection({
       </Dialog>
 
       {/* Move Widget Channel Modal */}
-      <Dialog open={Boolean(moveTarget)} onOpenChange={(open) => !open && setMoveTarget(null)}>
+      <Dialog
+        open={Boolean(moveTarget)}
+        onOpenChange={(open) => !open && setMoveTarget(null)}
+      >
         {moveTarget && (
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Move Status Widget Channel</DialogTitle>
               <DialogDescription>
-                Posts a fresh live widget in the destination channel inside <strong>{server.name}</strong>{" "}
-                and cleanly deletes the previous widget message.
+                Posts a fresh live widget in the destination channel inside{" "}
+                <strong>{server.name}</strong> and cleanly deletes the previous
+                widget message.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-1.5">
@@ -578,7 +649,10 @@ function ServerWidgetsSection({
                   moveMutation.isPending
                 }
                 onClick={() =>
-                  moveMutation.mutate({ widgetId: moveTarget.id, channelId: moveChannelId })
+                  moveMutation.mutate({
+                    widgetId: moveTarget.id,
+                    channelId: moveChannelId,
+                  })
                 }
               >
                 {moveMutation.isPending ? "Moving..." : "Move Widget"}
@@ -598,8 +672,9 @@ function ServerWidgetsSection({
             <DialogHeader>
               <DialogTitle>Remove Live Status Widget</DialogTitle>
               <DialogDescription>
-                Deletes the Discord widget message (if still present) and stops automatic updates for
-                that channel in <strong>{server.name}</strong>.
+                Deletes the Discord widget message (if still present) and stops
+                automatic updates for that channel in{" "}
+                <strong>{server.name}</strong>.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -658,7 +733,9 @@ function ServerConfigPanel({
 
   const filteredChannels = useMemo(() => {
     const q = channelSearch.trim().toLowerCase();
-    return server.channels.filter((c) => !q || c.name.toLowerCase().includes(q));
+    return server.channels.filter(
+      (c) => !q || c.name.toLowerCase().includes(q),
+    );
   }, [channelSearch, server.channels]);
 
   const filteredRoles = useMemo(() => {
@@ -668,15 +745,16 @@ function ServerConfigPanel({
 
   const selectedRoleObjects = useMemo(
     () => server.roles.filter((r) => roleIds.includes(r.id)),
-    [roleIds, server.roles]
+    [roleIds, server.roles],
   );
 
   const selectedChannelObj = useMemo(
     () => server.channels.find((c) => c.id === channelId),
-    [channelId, server.channels]
+    [channelId, server.channels],
   );
   const selectedChannelBlocked = Boolean(
-    selectedChannelObj?.permissionsChecked && selectedChannelObj.writable === false
+    selectedChannelObj?.permissionsChecked &&
+      selectedChannelObj.writable === false,
   );
 
   const saveMutation = useMutation({
@@ -694,7 +772,7 @@ function ServerConfigPanel({
       toast.error(
         apiErr?.remediation
           ? `${apiErr.message} ${apiErr.remediation}`
-          : err.message || "Failed to save server configuration."
+          : err.message || "Failed to save server configuration.",
       );
     },
   });
@@ -705,296 +783,340 @@ function ServerConfigPanel({
         method: "POST",
       }),
     onSuccess: () => {
-      toast.success(`Test notification delivered to ${server.name} without role mentions.`);
+      toast.success(
+        `Test notification delivered to ${server.name} without role mentions.`,
+      );
     },
     onError: (err: Error) => {
       const apiErr = err as ApiError;
       toast.error(
         apiErr?.remediation
           ? `${apiErr.message} ${apiErr.remediation}`
-          : err.message || "Could not send test notification."
+          : err.message || "Could not send test notification.",
       );
     },
   });
 
   const toggleRole = (id: string) => {
-    setRoleIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+    setRoleIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
   };
 
   return (
     <div className="border-t border-border bg-zinc-900/50 p-4 sm:p-5 space-y-6">
-      <Tabs value={panelTab} onValueChange={setPanelTab}><TabsList className="h-auto flex-wrap"><TabsTrigger value="settings">Channel & roles</TabsTrigger><TabsTrigger value="customizations">Customizations</TabsTrigger><TabsTrigger value="widgets">Widgets</TabsTrigger></TabsList>
-      <TabsContent value="customizations"><ServerCustomizationsPanel server={server} onSaved={onSaved} /></TabsContent>
-      <TabsContent value="settings" className="space-y-4">
-      {server.controlsError && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/35 bg-amber-950/40 p-3 text-xs text-amber-200">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-          <div>
-            Could not load channels or roles from Discord ({server.controlsError}). Ensure the bot has
-            permissions in this server.
-          </div>
-        </div>
-      )}
+      <Tabs value={panelTab} onValueChange={setPanelTab}>
+        <TabsList className="h-auto flex-wrap">
+          <TabsTrigger value="settings">Channel & roles</TabsTrigger>
+          <TabsTrigger value="customizations">Customizations</TabsTrigger>
+          <TabsTrigger value="widgets">Widgets</TabsTrigger>
+        </TabsList>
+        <TabsContent value="customizations">
+          <ServerCustomizationsPanel server={server} onSaved={onSaved} />
+        </TabsContent>
+        <TabsContent value="settings" className="space-y-4">
+          {server.controlsError && (
+            <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/35 bg-amber-950/40 p-3 text-xs text-amber-200">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+              <div>
+                Could not load channels or roles from Discord (
+                {server.controlsError}). Ensure the bot has permissions in this
+                server.
+              </div>
+            </div>
+          )}
 
-      {(server.config.channelMissing || server.config.channelPermissionError) && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-red-500/35 bg-red-950/40 p-3 text-xs text-red-200">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-          <div className="space-y-1">
-            {server.config.channelMissing ? (
-              <p>
-                The previously saved notification channel is missing or deleted in Discord. Choose
-                another channel below.
-              </p>
-            ) : (
-              <>
-                <p className="font-semibold text-red-100">
-                  Saved Channel Missing Bot Permissions
-                  {server.config.channelName ? ` (#${server.config.channelName})` : ""}
-                </p>
-                {server.config.channelMissingPermissions &&
-                  server.config.channelMissingPermissions.length > 0 && (
-                    <p>
-                      Missing permissions:{" "}
-                      <strong className="text-white">
-                        {server.config.channelMissingPermissions.join(", ")}
-                      </strong>
+          {(server.config.channelMissing ||
+            server.config.channelPermissionError) && (
+            <div className="flex items-start gap-2.5 rounded-lg border border-red-500/35 bg-red-950/40 p-3 text-xs text-red-200">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+              <div className="space-y-1">
+                {server.config.channelMissing ? (
+                  <p>
+                    The previously saved notification channel is missing or
+                    deleted in Discord. Choose another channel below.
+                  </p>
+                ) : (
+                  <>
+                    <p className="font-semibold text-red-100">
+                      Saved Channel Missing Bot Permissions
+                      {server.config.channelName
+                        ? ` (#${server.config.channelName})`
+                        : ""}
                     </p>
-                  )}
-                {server.config.channelRemediation && (
-                  <p className="text-[11px] text-red-200/90">{server.config.channelRemediation}</p>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="grid gap-6 @3xl/main:grid-cols-2">
-        {/* Notification Channel Selection */}
-        <div className="space-y-3">
-          <div>
-            <Label className="text-sm font-semibold text-white">Notification Channel</Label>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Choose where new limited drop notifications will be posted.
-            </p>
-          </div>
-
-          {server.channels.length > 6 && (
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={channelSearch}
-                onChange={(e) => setChannelSearch(e.target.value)}
-                placeholder="Filter text channels..."
-                className="h-9 pl-8 text-xs"
-              />
-            </div>
-          )}
-
-          <div className="thin-scrollbar max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border bg-zinc-950 p-2">
-            {filteredChannels.length === 0 ? (
-              <p className="p-3 text-xs text-muted-foreground">
-                No accessible text or announcement channels found.
-              </p>
-            ) : (
-              filteredChannels.map((channel) => {
-                const selected = channel.id === channelId;
-                const lacksPerms = channel.permissionsChecked && channel.writable === false;
-                return (
-                  <button
-                    key={channel.id}
-                    type="button"
-                    onClick={() => setChannelId(channel.id)}
-                    className={cn(
-                      "flex w-full flex-wrap items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-xs transition cursor-pointer",
-                      selected
-                        ? lacksPerms
-                          ? "bg-red-950/40 font-semibold text-red-100 border border-red-500/40"
-                          : "bg-zinc-800/90 font-semibold text-white border border-zinc-600"
-                        : lacksPerms
-                          ? "text-zinc-400 hover:bg-red-950/20 border border-transparent"
-                          : "text-zinc-300 hover:bg-secondary border border-transparent"
-                    )}
-                  >
-                    <span className="flex min-w-0 items-center gap-2 truncate">
-                      <Hash className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{channel.name}</span>
-                    </span>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      {lacksPerms && (
-                        <Badge variant="destructive" className="text-[10px]">
-                          Missing:{" "}
-                          {(channel.missingPermissions || []).join(", ") || "Permissions"}
-                        </Badge>
+                    {server.config.channelMissingPermissions &&
+                      server.config.channelMissingPermissions.length > 0 && (
+                        <p>
+                          Missing permissions:{" "}
+                          <strong className="text-white">
+                            {server.config.channelMissingPermissions.join(", ")}
+                          </strong>
+                        </p>
                       )}
-                      {selected && <span className="text-[11px] text-zinc-300">Selected</span>}
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          {selectedChannelBlocked && selectedChannelObj && (
-            <div className="rounded-lg border border-red-500/35 bg-red-950/35 p-3 text-[11px] text-red-200">
-              <strong>Cannot save #{selectedChannelObj.name}:</strong> Bot is missing{" "}
-              {(selectedChannelObj.missingPermissions || []).join(", ")}. Grant those permissions in
-              Discord Channel Settings or pick a writable channel above.
-            </div>
-          )}
-        </div>
-
-        {/* Notification Roles Selection */}
-        <div className="space-y-3">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <Label className="text-sm font-semibold text-white">Notification Roles</Label>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Select roles to mention on new limited drops (optional — zero roles is valid).
-              </p>
-            </div>
-            {roleIds.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setRoleIds([])}
-                className="text-xs font-medium text-muted-foreground hover:text-white cursor-pointer"
-              >
-                Clear All
-              </button>
-            )}
-          </div>
-
-          {selectedRoleObjects.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {selectedRoleObjects.map((role) => (
-                <button
-                  key={role.id}
-                  type="button"
-                  onClick={() => toggleRole(role.id)}
-                  className="inline-flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs font-medium text-zinc-100 hover:bg-zinc-700 cursor-pointer"
-                >
-                  @{role.name}
-                  <X className="h-3 w-3" />
-                </button>
-              ))}
-            </div>
-          )}
-
-          {server.roles.length > 6 && (
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={roleSearch}
-                onChange={(e) => setRoleSearch(e.target.value)}
-                placeholder="Filter assignable roles..."
-                className="h-9 pl-8 text-xs"
-              />
-            </div>
-          )}
-
-          <div className="thin-scrollbar max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border bg-zinc-950 p-2">
-            {filteredRoles.length === 0 ? (
-              <p className="p-3 text-xs text-muted-foreground">
-                No assignable roles were returned by Discord. Notifications will still post without role mentions.
-              </p>
-            ) : (
-              filteredRoles.map((role) => {
-                const checked = roleIds.includes(role.id);
-                return (
-                  <label
-                    key={role.id}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      toggleRole(role.id);
-                    }}
-                    className={cn(
-                      "flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-xs transition",
-                      checked ? "bg-zinc-800/80 text-white" : "text-zinc-300 hover:bg-secondary"
+                    {server.config.channelRemediation && (
+                      <p className="text-[11px] text-red-200/90">
+                        {server.config.channelRemediation}
+                      </p>
                     )}
-                  >
-                    <span className="truncate">@{role.name}</span>
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={() => toggleRole(role.id)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </label>
-                );
-              })
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Footer Save & Test Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-        <div className="flex items-center gap-3">
-          <Button
-            onClick={() => saveMutation.mutate()}
-            disabled={!channelId || !isDirty || selectedChannelBlocked || saveMutation.isPending}
-          >
-            {saveMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              "Save Settings"
-            )}
-          </Button>
-          {isDirty && !selectedChannelBlocked && (
-            <span className="text-xs font-medium text-amber-300">Unsaved changes</span>
+                  </>
+                )}
+              </div>
+            </div>
           )}
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={
-              !server.config.channelId ||
-              Boolean(server.config.channelMissing) ||
-              Boolean(server.config.channelPermissionError) ||
-              isDirty ||
-              testMutation.isPending
-            }
-            onClick={() => testMutation.mutate()}
-          >
-            {testMutation.isPending ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Sending...
-              </>
-            ) : (
-              <>
-                <Send className="h-3.5 w-3.5" />
-                Send Test Notification
-              </>
-            )}
-          </Button>
-          <a
-            href={server.inviteUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-white"
-          >
-            Permissions
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
-      </div>
+          <div className="grid gap-6 @3xl/main:grid-cols-2">
+            {/* Notification Channel Selection */}
+            <div className="space-y-3">
+              <div>
+                <Label className="text-sm font-semibold text-white">
+                  Notification Channel
+                </Label>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Choose where new limited drop notifications will be posted.
+                </p>
+              </div>
 
-      </TabsContent><TabsContent value="widgets">
-      <ServerWidgetsSection
-        server={server}
-        widgetDefault={widgetDefault}
-        widgetTemplates={widgetTemplates}
-        previewListings={previewListings}
-        monitorStatus={monitorStatus}
-        publicOrigin={publicOrigin}
-        onMutated={onSaved}
-      />
-      </TabsContent></Tabs>
+              {server.channels.length > 6 && (
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={channelSearch}
+                    onChange={(e) => setChannelSearch(e.target.value)}
+                    placeholder="Filter text channels..."
+                    className="h-9 pl-8 text-xs"
+                  />
+                </div>
+              )}
+
+              <div className="thin-scrollbar max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border bg-zinc-950 p-2">
+                {filteredChannels.length === 0 ? (
+                  <p className="p-3 text-xs text-muted-foreground">
+                    No accessible text or announcement channels found.
+                  </p>
+                ) : (
+                  filteredChannels.map((channel) => {
+                    const selected = channel.id === channelId;
+                    const lacksPerms =
+                      channel.permissionsChecked && channel.writable === false;
+                    return (
+                      <button
+                        key={channel.id}
+                        type="button"
+                        onClick={() => setChannelId(channel.id)}
+                        className={cn(
+                          "flex w-full flex-wrap items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-xs transition cursor-pointer",
+                          selected
+                            ? lacksPerms
+                              ? "bg-red-950/40 font-semibold text-red-100 border border-red-500/40"
+                              : "bg-zinc-800/90 font-semibold text-white border border-zinc-600"
+                            : lacksPerms
+                              ? "text-zinc-400 hover:bg-red-950/20 border border-transparent"
+                              : "text-zinc-300 hover:bg-secondary border border-transparent",
+                        )}
+                      >
+                        <span className="flex min-w-0 items-center gap-2 truncate">
+                          <Hash className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{channel.name}</span>
+                        </span>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {lacksPerms && (
+                            <Badge
+                              variant="destructive"
+                              className="text-[10px]"
+                            >
+                              Missing:{" "}
+                              {(channel.missingPermissions || []).join(", ") ||
+                                "Permissions"}
+                            </Badge>
+                          )}
+                          {selected && (
+                            <span className="text-[11px] text-zinc-300">
+                              Selected
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+
+              {selectedChannelBlocked && selectedChannelObj && (
+                <div className="rounded-lg border border-red-500/35 bg-red-950/35 p-3 text-[11px] text-red-200">
+                  <strong>Cannot save #{selectedChannelObj.name}:</strong> Bot
+                  is missing{" "}
+                  {(selectedChannelObj.missingPermissions || []).join(", ")}.
+                  Grant those permissions in Discord Channel Settings or pick a
+                  writable channel above.
+                </div>
+              )}
+            </div>
+
+            {/* Notification Roles Selection */}
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <Label className="text-sm font-semibold text-white">
+                    Notification Roles
+                  </Label>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Select roles to mention on new limited drops (optional —
+                    zero roles is valid).
+                  </p>
+                </div>
+                {roleIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setRoleIds([])}
+                    className="text-xs font-medium text-muted-foreground hover:text-white cursor-pointer"
+                  >
+                    Clear All
+                  </button>
+                )}
+              </div>
+
+              {selectedRoleObjects.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedRoleObjects.map((role) => (
+                    <button
+                      key={role.id}
+                      type="button"
+                      onClick={() => toggleRole(role.id)}
+                      className="inline-flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs font-medium text-zinc-100 hover:bg-zinc-700 cursor-pointer"
+                    >
+                      @{role.name}
+                      <X className="h-3 w-3" />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {server.roles.length > 6 && (
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={roleSearch}
+                    onChange={(e) => setRoleSearch(e.target.value)}
+                    placeholder="Filter assignable roles..."
+                    className="h-9 pl-8 text-xs"
+                  />
+                </div>
+              )}
+
+              <div className="thin-scrollbar max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border bg-zinc-950 p-2">
+                {filteredRoles.length === 0 ? (
+                  <p className="p-3 text-xs text-muted-foreground">
+                    No assignable roles were returned by Discord. Notifications
+                    will still post without role mentions.
+                  </p>
+                ) : (
+                  filteredRoles.map((role) => {
+                    const checked = roleIds.includes(role.id);
+                    return (
+                      <label
+                        key={role.id}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          toggleRole(role.id);
+                        }}
+                        className={cn(
+                          "flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-xs transition",
+                          checked
+                            ? "bg-zinc-800/80 text-white"
+                            : "text-zinc-300 hover:bg-secondary",
+                        )}
+                      >
+                        <span className="truncate">@{role.name}</span>
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() => toggleRole(role.id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Save & Test Controls */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={() => saveMutation.mutate()}
+                disabled={
+                  !channelId ||
+                  !isDirty ||
+                  selectedChannelBlocked ||
+                  saveMutation.isPending
+                }
+              >
+                {saveMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Settings"
+                )}
+              </Button>
+              {isDirty && !selectedChannelBlocked && (
+                <span className="text-xs font-medium text-amber-300">
+                  Unsaved changes
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={
+                  !server.config.channelId ||
+                  Boolean(server.config.channelMissing) ||
+                  Boolean(server.config.channelPermissionError) ||
+                  isDirty ||
+                  testMutation.isPending
+                }
+                onClick={() => testMutation.mutate()}
+              >
+                {testMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-3.5 w-3.5" />
+                    Send Test Notification
+                  </>
+                )}
+              </Button>
+              <a
+                href={server.inviteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-white"
+              >
+                Permissions
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="widgets">
+          <ServerWidgetsSection
+            server={server}
+            widgetDefault={widgetDefault}
+            widgetTemplates={widgetTemplates}
+            previewListings={previewListings}
+            monitorStatus={monitorStatus}
+            publicOrigin={publicOrigin}
+            onMutated={onSaved}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -1004,7 +1126,9 @@ export function DashboardPage() {
   const { startLogin, isLoggingIn } = useAuthActions();
   const { data: session } = useSession();
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "active" | "setup_required" | "not_installed">("all");
+  const [filter, setFilter] = useState<
+    "all" | "active" | "setup_required" | "not_installed"
+  >("all");
   const [expandedGuildId, setExpandedGuildId] = useState<string | null>(null);
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
@@ -1017,7 +1141,8 @@ export function DashboardPage() {
     return {
       total: servers.length,
       active: servers.filter((s) => s.status === "active").length,
-      setupRequired: servers.filter((s) => s.status === "setup_required").length,
+      setupRequired: servers.filter((s) => s.status === "setup_required")
+        .length,
       notInstalled: servers.filter((s) => s.status === "not_installed").length,
     };
   }, [servers]);
@@ -1026,8 +1151,10 @@ export function DashboardPage() {
     const q = search.trim().toLowerCase();
     return servers.filter((server) => {
       if (filter === "active" && server.status !== "active") return false;
-      if (filter === "setup_required" && server.status !== "setup_required") return false;
-      if (filter === "not_installed" && server.status !== "not_installed") return false;
+      if (filter === "setup_required" && server.status !== "setup_required")
+        return false;
+      if (filter === "not_installed" && server.status !== "not_installed")
+        return false;
       if (q && !server.name.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -1035,7 +1162,9 @@ export function DashboardPage() {
 
   const refreshLive = async () => {
     try {
-      const refreshed = await apiFetch<DashboardServersResponse>("/api/dashboard/servers?refresh=1");
+      const refreshed = await apiFetch<DashboardServersResponse>(
+        "/api/dashboard/servers?refresh=1",
+      );
       queryClient.setQueryData(["dashboard-servers"], refreshed);
       toast.success("Server status refreshed from Discord");
     } catch {
@@ -1045,7 +1174,7 @@ export function DashboardPage() {
 
   return (
     <AppShell
-      title="Your Managed Discord Servers"
+      title="Server Manager"
       titleAvatar={
         session?.user ? (
           <DiscordProfileAvatar
@@ -1053,46 +1182,41 @@ export function DashboardPage() {
             decorationUrl={session.user.profile?.avatarDecorationUrl}
             alt=""
             borderless
-            className="h-10 w-10"
+            className="h-9 w-9"
           />
         ) : undefined
       }
-      description="Configure alert channels and optional notification roles for Discord servers you manage."
+      description="Manage server notifications, live widgets, and automation."
       actions={
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/35 bg-sky-500/15 px-2.5 py-1.5 text-xs font-semibold text-sky-300">
-            <Shield className="h-3.5 w-3.5" />
-            Server Manager
-          </span>
           <Button
             variant="secondary"
             size="sm"
             onClick={() => void refreshLive()}
             disabled={isFetching || isLoggingIn}
           >
-            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
-            Refresh Server List
+            <RefreshCw
+              className={cn("h-3.5 w-3.5", isFetching && "animate-spin")}
+            />
+            Refresh Servers
           </Button>
         </div>
       }
     >
-      {/* Compact Overview Strip */}
-      <div className="mb-6 grid gap-4 @xl/main:grid-cols-3">
-        <Card className="p-4">
-          <p className="text-xs font-medium text-muted-foreground">Managed Servers</p>
-          <p className="mt-1 text-2xl font-bold text-white tabular-nums">{counts.total}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs font-medium text-muted-foreground">Active &amp; Configured</p>
-          <p className="mt-1 text-2xl font-bold text-emerald-400 tabular-nums">{counts.active}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs font-medium text-muted-foreground">Setup Required</p>
-          <p className="mt-1 text-2xl font-bold text-amber-400 tabular-nums">
-            {counts.setupRequired}
-          </p>
-        </Card>
-      </div>
+      <SummaryGrid columns={3} className="mb-4">
+        <SummaryMetric label="Managed servers" value={counts.total} />
+        <SummaryMetric
+          label="Active & configured"
+          value={counts.active}
+          tone={counts.active ? "success" : "neutral"}
+        />
+        <SummaryMetric
+          label="Setup required"
+          value={counts.setupRequired}
+            hint={counts.notInstalled ? counts.notInstalled + " need bot installation" : "No pending installations"}
+          tone={counts.setupRequired ? "warning" : "neutral"}
+        />
+      </SummaryGrid>
 
       {/* Filter & Search Bar */}
       <div className="mb-5 flex flex-col gap-3 @3xl/main:flex-row @3xl/main:items-center @3xl/main:justify-between">
@@ -1100,8 +1224,12 @@ export function DashboardPage() {
           <TabsList>
             <TabsTrigger value="all">All ({counts.total})</TabsTrigger>
             <TabsTrigger value="active">Active ({counts.active})</TabsTrigger>
-            <TabsTrigger value="setup_required">Setup Required ({counts.setupRequired})</TabsTrigger>
-            <TabsTrigger value="not_installed">Not Installed ({counts.notInstalled})</TabsTrigger>
+            <TabsTrigger value="setup_required">
+              Setup Required ({counts.setupRequired})
+            </TabsTrigger>
+            <TabsTrigger value="not_installed">
+              Not Installed ({counts.notInstalled})
+            </TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -1126,7 +1254,12 @@ export function DashboardPage() {
       ) : isError ? (
         <Card className="p-8 text-center">
           <p className="text-sm text-red-400">{(error as Error)?.message}</p>
-          <Button variant="secondary" size="sm" className="mt-4" onClick={() => void refetch()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-4"
+            onClick={() => void refetch()}
+          >
             Retry
           </Button>
         </Card>
@@ -1138,7 +1271,12 @@ export function DashboardPage() {
               : "No servers match your current filter."}
           </p>
           {servers.length === 0 && (
-            <Button variant="outline" size="sm" className="mt-4" onClick={() => void startLogin({ refresh: true })}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              onClick={() => void startLogin({ refresh: true })}
+            >
               Re-sync Discord Permissions
             </Button>
           )}
@@ -1165,13 +1303,16 @@ export function DashboardPage() {
 
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="truncate text-base font-semibold text-white">{server.name}</h3>
+                        <h3 className="truncate text-base font-semibold text-white">
+                          {server.name}
+                        </h3>
                         <ServerStatusIndicator status={server.status} />
                         {server.config.channelPermissionError && (
                           <Badge variant="destructive" className="text-[10px]">
                             Missing Perms:{" "}
-                            {(server.config.channelMissingPermissions || []).join(", ") ||
-                              "Check Channel"}
+                            {(
+                              server.config.channelMissingPermissions || []
+                            ).join(", ") || "Check Channel"}
                           </Badge>
                         )}
                       </div>
@@ -1216,7 +1357,9 @@ export function DashboardPage() {
                         variant={isExpanded ? "outline" : "secondary"}
                         size="sm"
                         onClick={() =>
-                          setExpandedGuildId((curr) => (curr === server.id ? null : server.id))
+                          setExpandedGuildId((curr) =>
+                            curr === server.id ? null : server.id,
+                          )
                         }
                       >
                         Manage Settings
@@ -1228,7 +1371,11 @@ export function DashboardPage() {
                       </Button>
                     ) : (
                       <Button variant="secondary" size="sm" asChild>
-                        <a href={server.inviteUrl} target="_blank" rel="noopener noreferrer">
+                        <a
+                          href={server.inviteUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
                           Invite Bot
                         </a>
                       </Button>
@@ -1239,12 +1386,18 @@ export function DashboardPage() {
                 {server.isInstalled && isExpanded && (
                   <ServerConfigPanel
                     server={server}
-                    widgetDefault={data?.widgetDefault || DEFAULT_WIDGET_TEMPLATE}
+                    widgetDefault={
+                      data?.widgetDefault || DEFAULT_WIDGET_TEMPLATE
+                    }
                     widgetTemplates={data?.widgetTemplates || []}
                     previewListings={data?.previewListings || []}
                     monitorStatus={data?.monitorStatus || null}
                     publicOrigin={data?.publicOrigin}
-                    onSaved={() => void queryClient.invalidateQueries({ queryKey: ["dashboard-servers"] })}
+                    onSaved={() =>
+                      void queryClient.invalidateQueries({
+                        queryKey: ["dashboard-servers"],
+                      })
+                    }
                   />
                 )}
               </Card>
@@ -1255,8 +1408,8 @@ export function DashboardPage() {
 
       {/* Subtle Quick Setup Guidance */}
       <div className="mt-6 rounded-xl border border-border bg-card/60 p-4 text-xs text-muted-foreground">
-        <span className="font-semibold text-zinc-200">Quick Setup:</span> After adding the bot to a
-        Discord server, you can run{" "}
+        <span className="font-semibold text-zinc-200">Quick Setup:</span> After
+        adding the bot to a Discord server, you can run{" "}
         <code className="select-all cursor-text rounded border border-border bg-zinc-950 px-1.5 py-0.5 font-mono text-zinc-200">
           /setup #your-channel
         </code>{" "}

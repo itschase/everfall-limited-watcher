@@ -1,4 +1,5 @@
 import { normalizeHistorySearch } from "../shared/historySearch";
+import { RouteState } from "@/components/common/RouteState";
 import {
   createRootRoute,
   createRoute,
@@ -257,6 +258,8 @@ const routeTree = rootRoute.addChildren([
 export const router = createRouter({
   routeTree,
   defaultPreload: "intent",
+  defaultErrorComponent: () => <RouteState />,
+  defaultNotFoundComponent: () => <RouteState missing />,
 });
 
 declare module "@tanstack/react-router" {

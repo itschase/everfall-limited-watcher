@@ -1,8 +1,21 @@
-import { useMemo, useState } from "react";
+import { QueryState } from "@/components/common/QueryState";
+import { useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, Copy, RefreshCw, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
-import { AdminConnectedGuild, AdminOverviewResponse, apiFetch } from "@/lib/api";
+import {
+  AdminConnectedGuild,
+  AdminOverviewResponse,
+  apiFetch,
+} from "@/lib/api";
 import { formatLocalDateTime } from "@/lib/utils";
 import { ADMIN_OVERVIEW_KEY, useAdminOverview } from "./useAdminOverview";
 import { AppShell } from "@/components/layout/AppShell";
@@ -26,15 +39,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export function AdminServersPage() {
   const queryClient = useQueryClient();
-  const { data, isLoading, isFetching } = useAdminOverview();
+  const { data, error, isLoading, isFetching } = useAdminOverview();
   const [search, setSearch] = useState("");
   const [serverPage, setServerPage] = useState(1);
   const serverPageSize = 10;
-  const [selectedGuild, setSelectedGuild] = useState<AdminConnectedGuild | null>(null);
+  const [selectedGuild, setSelectedGuild] =
+    useState<AdminConnectedGuild | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const copyId = async (value: string, label: string) => {
@@ -53,22 +71,34 @@ export function AdminServersPage() {
   const guilds = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (data?.connectedGuilds || []).filter(
-      (g) => !q || g.name.toLowerCase().includes(q) || g.id.includes(q)
+      (g) => !q || g.name.toLowerCase().includes(q) || g.id.includes(q),
     );
   }, [data?.connectedGuilds, search]);
 
   const guildLogs = useMemo(() => {
     if (!selectedGuild || !data?.deliveryLogs) return [];
-    return data.deliveryLogs.filter((entry) => entry.guildId === selectedGuild.id);
+    return data.deliveryLogs.filter(
+      (entry) => entry.guildId === selectedGuild.id,
+    );
   }, [data?.deliveryLogs, selectedGuild]);
 
+  const refreshLock = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
   const forceRefresh = async () => {
+    if (refreshLock.current) return;
+    refreshLock.current = true;
+    setRefreshing(true);
     try {
-      const fresh = await apiFetch<AdminOverviewResponse>("/api/admin/overview?refresh=1");
+      const fresh = await apiFetch<AdminOverviewResponse>(
+        "/api/admin/overview?refresh=1",
+      );
       queryClient.setQueryData(ADMIN_OVERVIEW_KEY, fresh);
       toast.success("Refreshed connected Discord servers");
     } catch (err: any) {
       toast.error(err?.message || "Failed to refresh servers.");
+    } finally {
+      refreshLock.current = false;
+      setRefreshing(false);
     }
   };
 
@@ -78,8 +108,15 @@ export function AdminServersPage() {
       title="Connected Discord Servers"
       description="Inspect bot installations, alert channel readiness, role counts, and notification delivery logs."
       actions={
-        <Button variant="secondary" size="sm" onClick={() => void forceRefresh()} disabled={isFetching}>
-          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => void forceRefresh()}
+          disabled={isFetching || refreshing}
+        >
+          <RefreshCw
+            className={`h-3.5 w-3.5 ${isFetching || refreshing ? "animate-spin" : ""}`}
+          />
           Sync Guilds
         </Button>
       }
@@ -102,6 +139,17 @@ export function AdminServersPage() {
         </span>
       </div>
 
+      {error && (
+        <QueryState
+          error={error}
+          title={
+            data
+              ? "Showing the last available server list"
+              : "Unable to load connected servers"
+          }
+          onRetry={() => void forceRefresh()}
+        />
+      )}
       <Card>
         {isLoading ? (
           <div className="space-y-3 p-6">
@@ -115,113 +163,131 @@ export function AdminServersPage() {
           </div>
         ) : (
           <>
-            {/* Mobile Server Cards */}
             <div className="divide-y divide-border @3xl/main:hidden">
               {guilds
-                .slice((serverPage - 1) * serverPageSize, serverPage * serverPageSize)
+                .slice(
+                  (serverPage - 1) * serverPageSize,
+                  serverPage * serverPageSize,
+                )
                 .map((guild) => (
-                  <div
-                    key={guild.id}
-                    onClick={() => setSelectedGuild(guild)}
-                    className="space-y-3 p-4 cursor-pointer active:bg-zinc-900/70"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-3">
+                  <article key={guild.id} className="space-y-2.5 p-3.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
                         {guild.iconUrl ? (
-                          <img src={guild.iconUrl} alt="" className="h-9 w-9 shrink-0 rounded-lg" />
+                          <img
+                            src={guild.iconUrl}
+                            alt=""
+                            className="h-9 w-9 shrink-0 rounded-lg"
+                          />
                         ) : (
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-xs font-bold text-white">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-xs font-semibold">
                             {guild.name.slice(0, 2).toUpperCase()}
                           </div>
                         )}
                         <div className="min-w-0">
-                          <p className="truncate font-semibold text-white">{guild.name}</p>
-                          <div
-                            className="mt-0.5 flex items-center gap-1.5"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <span className="truncate select-text font-mono text-[11px] text-muted-foreground">
-                              {guild.id}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => void copyId(guild.id, "Server ID")}
-                              aria-label={`Copy server ID ${guild.id}`}
-                              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-white cursor-pointer"
-                            >
-                              {copiedId === guild.id ? (
-                                <Check className="h-3 w-3 text-emerald-400" />
-                              ) : (
-                                <Copy className="h-3 w-3" />
-                              )}
-                            </button>
-                          </div>
+                          <h2 className="truncate text-sm font-semibold">
+                            {guild.name}
+                          </h2>
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {guild.configured
+                              ? guild.channelName
+                                ? "#" + guild.channelName
+                                : "Notification channel saved"
+                              : "Channel setup required"}
+                          </p>
                         </div>
                       </div>
-                      <Badge variant={guild.environment === "test" ? "warning" : "secondary"} className="shrink-0">
-                        {guild.environment === "test" ? "Test" : "Prod"}
+                      <Badge
+                        variant={
+                          guild.environment === "test" ? "warning" : "secondary"
+                        }
+                      >
+                        {guild.environment === "test" ? "Test" : "Production"}
                       </Badge>
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-2 text-xs" onClick={(e) => e.stopPropagation()}>
-                      {guild.configured ? (
-                        <div className="inline-flex items-center gap-1">
-                          <Badge
-                            variant={guild.channelPermissionError || guild.channelMissing ? "destructive" : "success"}
-                            className="font-mono"
-                          >
-                            #<span className="select-text">{guild.channelId}</span>
-                          </Badge>
-                          <button
-                            type="button"
-                            onClick={() => void copyId(guild.channelId, "Channel ID")}
-                            aria-label={`Copy channel ID ${guild.channelId}`}
-                            className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-white cursor-pointer"
-                          >
-                            {copiedId === guild.channelId ? (
-                              <Check className="h-3 w-3 text-emerald-400" />
-                            ) : (
-                              <Copy className="h-3 w-3" />
-                            )}
-                          </button>
-                        </div>
-                      ) : (
-                        <Badge variant="secondary">Channel Not Set</Badge>
-                      )}
-                      {guild.channelPermissionError && (
-                        <Badge variant="destructive">Permissions Missing</Badge>
-                      )}
-                      {guild.channelMissing && (
-                        <Badge variant="destructive">Channel Deleted</Badge>
-                      )}
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>
+                        {guild.roleIds.length
+                          ? guild.roleIds.length + " mention role(s)"
+                          : "No mention roles"}
+                      </span>
                       {guild.widget && (
-                        <Badge variant={guild.widget.lastSyncStatus === "error" ? "destructive" : "info"}>
-                          {guild.widget.lastSyncStatus === "error" ? "Widget Error" : "Live Widget"}
+                        <Badge
+                          variant={
+                            guild.widget.lastSyncStatus === "error"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                        >
+                          {guild.widget.lastSyncStatus === "error"
+                            ? "Widget needs attention"
+                            : "Live widget"}
                         </Badge>
                       )}
-                      <span className="text-muted-foreground tabular-nums">
-                        {guild.roleIds.length > 0 ? `${guild.roleIds.length} role(s)` : "No mention roles"}
-                      </span>
+                      {guild.channelMissing && (
+                        <Badge variant="destructive">Channel deleted</Badge>
+                      )}
                     </div>
-
                     {guild.channelPermissionError && (
-                      <div className="rounded-lg border border-red-500/35 bg-red-950/30 p-2.5 text-[11px] text-red-200">
-                        <p className="font-semibold">
-                          Missing Discord permissions:{" "}
-                          {guild.channelMissingPermissions?.join(", ") || "View Channel / Send Messages / Embed Links"}
-                        </p>
-                        {guild.channelRemediation && (
-                          <p className="mt-1 text-red-200/80">{guild.channelRemediation}</p>
-                        )}
-                      </div>
+                      <p
+                        role="alert"
+                        className="text-xs leading-relaxed text-red-300"
+                      >
+                        {guild.channelRemediation ||
+                          "Missing channel permissions: " +
+                            (guild.channelMissingPermissions?.join(", ") ||
+                              "check Discord access")}
+                      </p>
                     )}
-
-                    <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-                      <Button variant="outline" size="sm" onClick={() => setSelectedGuild(guild)}>
-                        Inspect Logs
+                    <div className="flex items-start justify-between gap-3">
+                      <details className="min-w-0 flex-1 text-xs">
+                        <summary className="w-fit cursor-pointer rounded py-2 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                          Connection details
+                        </summary>
+                        <div className="space-y-1 rounded-lg border border-border p-2">
+                          {[
+                            [guild.id, "Server ID"],
+                            [guild.channelId, "Channel ID"],
+                          ]
+                            .filter(([value]) => value)
+                            .map(([value, label]) => (
+                              <div
+                                key={label}
+                                className="flex items-center justify-between gap-1"
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-[10px] text-muted-foreground">
+                                    {label}
+                                  </p>
+                                  <p className="break-all font-mono text-[11px]">
+                                    {value}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  aria-label={"Copy " + label}
+                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded hover:bg-accent"
+                                  onClick={() => void copyId(value, label)}
+                                >
+                                  {copiedId === value ? (
+                                    <Check className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <Copy className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                              </div>
+                            ))}
+                        </div>
+                      </details>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedGuild(guild)}
+                      >
+                        Inspect logs
                       </Button>
                     </div>
-                  </div>
+                  </article>
                 ))}
             </div>
 
@@ -240,12 +306,18 @@ export function AdminServersPage() {
                 </TableHeader>
                 <TableBody>
                   {guilds
-                    .slice((serverPage - 1) * serverPageSize, serverPage * serverPageSize)
+                    .slice(
+                      (serverPage - 1) * serverPageSize,
+                      serverPage * serverPageSize,
+                    )
                     .map((guild) => (
                       <TableRow
                         key={guild.id}
                         onClick={() => {
-                          const sel = typeof window !== "undefined" ? window.getSelection()?.toString() : "";
+                          const sel =
+                            typeof window !== "undefined"
+                              ? window.getSelection()?.toString()
+                              : "";
                           if (!sel?.trim()) setSelectedGuild(guild);
                         }}
                         className="cursor-pointer hover:bg-zinc-900/75"
@@ -253,14 +325,20 @@ export function AdminServersPage() {
                         <TableCell>
                           <div className="flex items-center gap-3">
                             {guild.iconUrl ? (
-                              <img src={guild.iconUrl} alt="" className="h-8 w-8 rounded-lg" />
+                              <img
+                                src={guild.iconUrl}
+                                alt=""
+                                className="h-8 w-8 rounded-lg"
+                              />
                             ) : (
                               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-xs font-bold text-white">
                                 {guild.name.slice(0, 2).toUpperCase()}
                               </div>
                             )}
                             <div>
-                              <p className="font-semibold text-white">{guild.name}</p>
+                              <p className="font-semibold text-white">
+                                {guild.name}
+                              </p>
                               <div
                                 className="mt-0.5 flex items-center gap-1.5"
                                 onClick={(e) => e.stopPropagation()}
@@ -272,7 +350,9 @@ export function AdminServersPage() {
                                   <TooltipTrigger asChild>
                                     <button
                                       type="button"
-                                      onClick={() => void copyId(guild.id, "Server ID")}
+                                      onClick={() =>
+                                        void copyId(guild.id, "Server ID")
+                                      }
                                       aria-label={`Copy server ID ${guild.id}`}
                                       className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
                                     >
@@ -283,15 +363,25 @@ export function AdminServersPage() {
                                       )}
                                     </button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Copy Server ID</TooltipContent>
+                                  <TooltipContent>
+                                    Copy Server ID
+                                  </TooltipContent>
                                 </Tooltip>
                               </div>
                             </div>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={guild.environment === "test" ? "warning" : "secondary"}>
-                            {guild.environment === "test" ? "Test Server" : "Production"}
+                          <Badge
+                            variant={
+                              guild.environment === "test"
+                                ? "warning"
+                                : "secondary"
+                            }
+                          >
+                            {guild.environment === "test"
+                              ? "Test Server"
+                              : "Production"}
                           </Badge>
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
@@ -300,19 +390,28 @@ export function AdminServersPage() {
                               <div className="inline-flex items-center gap-1.5">
                                 <Badge
                                   variant={
-                                    guild.channelPermissionError || guild.channelMissing
+                                    guild.channelPermissionError ||
+                                    guild.channelMissing
                                       ? "destructive"
                                       : "success"
                                   }
                                   className="font-mono"
                                 >
-                                  #<span className="select-text cursor-text">{guild.channelId}</span>
+                                  #
+                                  <span className="select-text cursor-text">
+                                    {guild.channelId}
+                                  </span>
                                 </Badge>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <button
                                       type="button"
-                                      onClick={() => void copyId(guild.channelId, "Channel ID")}
+                                      onClick={() =>
+                                        void copyId(
+                                          guild.channelId,
+                                          "Channel ID",
+                                        )
+                                      }
                                       aria-label={`Copy channel ID ${guild.channelId}`}
                                       className="inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-white cursor-pointer"
                                     >
@@ -323,7 +422,9 @@ export function AdminServersPage() {
                                       )}
                                     </button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Copy Channel ID</TooltipContent>
+                                  <TooltipContent>
+                                    Copy Channel ID
+                                  </TooltipContent>
                                 </Tooltip>
                               </div>
                               {guild.channelPermissionError && (
@@ -332,7 +433,9 @@ export function AdminServersPage() {
                                     <p className="flex items-center gap-1 text-[11px] font-medium text-red-300">
                                       <AlertTriangle className="h-3 w-3 shrink-0" />
                                       Missing:{" "}
-                                      {guild.channelMissingPermissions?.join(", ") || "Permissions"}
+                                      {guild.channelMissingPermissions?.join(
+                                        ", ",
+                                      ) || "Permissions"}
                                     </p>
                                   </TooltipTrigger>
                                   <TooltipContent className="max-w-xs">
@@ -342,7 +445,9 @@ export function AdminServersPage() {
                                 </Tooltip>
                               )}
                               {guild.channelMissing && (
-                                <p className="text-[11px] text-red-300">Channel no longer exists</p>
+                                <p className="text-[11px] text-red-300">
+                                  Channel no longer exists
+                                </p>
                               )}
                             </div>
                           ) : (
@@ -351,18 +456,37 @@ export function AdminServersPage() {
                         </TableCell>
                         <TableCell>
                           {guild.widget ? (
-                            <Badge variant={guild.widget.lastSyncStatus === "error" ? "destructive" : "info"}>
-                              {guild.widget.lastSyncStatus === "error" ? "Widget Error" : "Live Widget"}
+                            <Badge
+                              variant={
+                                guild.widget.lastSyncStatus === "error"
+                                  ? "destructive"
+                                  : "info"
+                              }
+                            >
+                              {guild.widget.lastSyncStatus === "error"
+                                ? "Widget Error"
+                                : "Live Widget"}
                             </Badge>
                           ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
+                            <span className="text-xs text-muted-foreground">
+                              —
+                            </span>
                           )}
                         </TableCell>
                         <TableCell className="text-xs text-zinc-300 tabular-nums">
-                          {guild.roleIds.length > 0 ? `${guild.roleIds.length} role(s)` : "None"}
+                          {guild.roleIds.length > 0
+                            ? `${guild.roleIds.length} role(s)`
+                            : "None"}
                         </TableCell>
-                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <Button variant="outline" size="sm" onClick={() => setSelectedGuild(guild)}>
+                        <TableCell
+                          className="text-right"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedGuild(guild)}
+                          >
                             Inspect Logs
                           </Button>
                         </TableCell>
@@ -379,7 +503,8 @@ export function AdminServersPage() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4 text-xs text-muted-foreground">
             <span className="tabular-nums">
               Showing {(serverPage - 1) * serverPageSize + 1}–
-              {Math.min(serverPage * serverPageSize, guilds.length)} of {guilds.length} servers
+              {Math.min(serverPage * serverPageSize, guilds.length)} of{" "}
+              {guilds.length} servers
             </span>
             <div className="flex items-center gap-2">
               <Button
@@ -398,8 +523,14 @@ export function AdminServersPage() {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={serverPage >= Math.ceil(guilds.length / serverPageSize)}
-                onClick={() => setServerPage((p) => Math.min(Math.ceil(guilds.length / serverPageSize), p + 1))}
+                disabled={
+                  serverPage >= Math.ceil(guilds.length / serverPageSize)
+                }
+                onClick={() =>
+                  setServerPage((p) =>
+                    Math.min(Math.ceil(guilds.length / serverPageSize), p + 1),
+                  )
+                }
                 className="h-8 gap-1 px-2.5"
               >
                 Next
@@ -410,14 +541,20 @@ export function AdminServersPage() {
         )}
       </Card>
 
-      <Dialog open={Boolean(selectedGuild)} onOpenChange={(open) => !open && setSelectedGuild(null)}>
+      <Dialog
+        open={Boolean(selectedGuild)}
+        onOpenChange={(open) => !open && setSelectedGuild(null)}
+      >
         {selectedGuild && (
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>{selectedGuild.name}</DialogTitle>
               <DialogDescription className="flex flex-wrap items-center gap-2 font-mono text-xs">
                 <span>
-                  Guild ID <span className="select-text text-zinc-200">{selectedGuild.id}</span>
+                  Guild ID{" "}
+                  <span className="select-text text-zinc-200">
+                    {selectedGuild.id}
+                  </span>
                 </span>
                 <button
                   type="button"
@@ -441,7 +578,8 @@ export function AdminServersPage() {
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
                   <div className="space-y-1">
                     <p className="font-semibold text-red-100">
-                      Insufficient Bot Permissions in #{selectedGuild.channelName || selectedGuild.channelId}
+                      Insufficient Bot Permissions in #
+                      {selectedGuild.channelName || selectedGuild.channelId}
                     </p>
                     {selectedGuild.channelMissingPermissions &&
                       selectedGuild.channelMissingPermissions.length > 0 && (
@@ -463,7 +601,9 @@ export function AdminServersPage() {
 
               <div className="grid gap-3 rounded-lg border border-border bg-zinc-950 p-4 text-xs @xl/main:grid-cols-2">
                 <div>
-                  <span className="text-muted-foreground">Alert Channel ID</span>
+                  <span className="text-muted-foreground">
+                    Alert Channel ID
+                  </span>
                   <div className="mt-0.5 flex items-center gap-1.5">
                     <p className="select-text font-mono text-white">
                       {selectedGuild.channelId || "Not configured"}
@@ -471,7 +611,9 @@ export function AdminServersPage() {
                     {selectedGuild.channelId && (
                       <button
                         type="button"
-                        onClick={() => void copyId(selectedGuild.channelId, "Channel ID")}
+                        onClick={() =>
+                          void copyId(selectedGuild.channelId, "Channel ID")
+                        }
                         aria-label="Copy Alert Channel ID"
                         className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-white cursor-pointer"
                       >
@@ -485,14 +627,21 @@ export function AdminServersPage() {
                   </div>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Mention Roles Configured</span>
-                  <p className="mt-0.5 text-white">{selectedGuild.roleIds.length}</p>
+                  <span className="text-muted-foreground">
+                    Mention Roles Configured
+                  </span>
+                  <p className="mt-0.5 text-white">
+                    {selectedGuild.roleIds.length}
+                  </p>
                 </div>
                 {selectedGuild.widget && (
                   <div className="sm:col-span-2">
-                    <span className="text-muted-foreground">Deployed Live Status Widget (/widget)</span>
+                    <span className="text-muted-foreground">
+                      Deployed Live Status Widget (/widget)
+                    </span>
                     <p className="mt-0.5 select-text font-mono text-zinc-200">
-                      Ch #{selectedGuild.widget.channelId} &bull; Msg {selectedGuild.widget.messageId}
+                      Ch #{selectedGuild.widget.channelId} &bull; Msg{" "}
+                      {selectedGuild.widget.messageId}
                     </p>
                   </div>
                 )}
@@ -517,10 +666,18 @@ export function AdminServersPage() {
                           <p className="font-medium text-white">
                             {log.listingName} ({log.method})
                           </p>
-                          {log.error && <p className="text-red-400">{log.error}</p>}
+                          {log.error && (
+                            <p className="text-red-400">{log.error}</p>
+                          )}
                         </div>
                         <div className="text-right tabular-nums">
-                          <Badge variant={log.status === "delivered" ? "success" : "destructive"}>
+                          <Badge
+                            variant={
+                              log.status === "delivered"
+                                ? "success"
+                                : "destructive"
+                            }
+                          >
                             {log.status}
                           </Badge>
                           <p className="mt-1 text-[11px] text-muted-foreground">

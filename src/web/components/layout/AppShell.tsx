@@ -1,3 +1,8 @@
+import {
+  CommandSearch,
+  ViewOptions,
+  useViewPreferences,
+} from "./InterfaceTools";
 import { ReactNode, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { Menu, PanelLeftClose, PanelLeftOpen, Shield } from "lucide-react";
@@ -42,6 +47,7 @@ export function AppShell({
   children: ReactNode;
 }) {
   useSessionSync();
+  const viewPreferences = useViewPreferences();
   const location = useLocation();
   const navigate = useNavigate();
   const { data: session, isLoading } = useSession();
@@ -143,7 +149,13 @@ export function AppShell({
   }
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
+    <div
+      data-density={viewPreferences.density}
+      className="workspace-shell flex min-h-screen bg-background text-foreground"
+    >
+      <a href="#workspace-content" className="skip-link">
+        Skip to content
+      </a>
       {/* Desktop Collapsible Sidebar */}
       <aside
         className={cn(
@@ -230,14 +242,23 @@ export function AppShell({
                   Everfall Limited Watcher
                 </Link>
                 <span className="hidden sm:inline">/</span>
-                <span className="truncate font-medium text-zinc-200">
-                  {title}
+                <span
+                  className="truncate font-medium text-zinc-300"
+                  title={title}
+                >
+                  {title === "Administrator Overview"
+                    ? "Overview"
+                    : title === "Connected Discord Servers"
+                      ? "Servers"
+                      : title}
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
+            <CommandSearch />
+            <ViewOptions />
             <span
               className={cn(
                 "hidden items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold sm:inline-flex",
@@ -256,8 +277,15 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="@container/main mx-auto w-full max-w-6xl flex-1 px-3 py-4 sm:px-5 sm:py-5 lg:px-6">
-          <div className="mb-5 flex flex-col gap-3 border-b border-border pb-4 @3xl/main:flex-row @3xl/main:items-center @3xl/main:justify-between">
+        <main
+          id="workspace-content"
+          tabIndex={-1}
+          className={cn(
+            "workspace-content @container/main mx-auto w-full min-w-0 flex-1 px-3 py-4 outline-none sm:px-5 sm:py-5 lg:px-6",
+            viewPreferences.width === "wide" ? "max-w-[1600px]" : "max-w-6xl",
+          )}
+        >
+          <div className="page-heading mb-4 flex flex-col gap-3 border-b border-border/60 pb-4 @3xl/main:flex-row @3xl/main:items-start @3xl/main:justify-between">
             <div className="flex min-w-0 items-center gap-3">
               {titleAvatar}
               <div className="min-w-0">
@@ -265,7 +293,7 @@ export function AppShell({
                   {title}
                 </h1>
                 {description && (
-                  <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
+                  <p className="mt-1 max-w-[72ch] text-xs leading-relaxed text-muted-foreground sm:text-sm">
                     {description}
                   </p>
                 )}

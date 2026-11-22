@@ -1,3 +1,10 @@
+import { ConfirmOperation } from "@/components/common/ConfirmOperation";
+import { ActionMenu } from "@/components/common/ActionMenu";
+import { QueryState } from "@/components/common/QueryState";
+import {
+  SummaryGrid,
+  SummaryMetric,
+} from "@/components/common/DashboardSummary";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -29,7 +36,13 @@ import { ADMIN_OVERVIEW_KEY } from "./useAdminOverview";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -47,7 +60,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { RichPresenceControls } from "./RichPresenceControls";
 
 export const ADMIN_BOT_KEY = ["admin-bot-state"] as const;
@@ -64,29 +81,52 @@ const OPTION_TYPE_LABELS: Record<number, string> = {
 };
 
 const REQUIRED_PERMISSIONS = [
-  { name: "View Channel / Read Messages", reason: "Inspect target alert & widget channels." },
-  { name: "Send Messages", reason: "Post drop alerts and operator-confirmed /widget embeds." },
-  { name: "Embed Links", reason: "Render structured vehicle cards and live status widgets." },
-  { name: "Use External Emojis", reason: "Display custom application and server emojis inside alerts." },
-  { name: "Manage Messages (Optional)", reason: "Allow cleaning up or pinning deployed status widgets." },
-  { name: "applications.commands OAuth Scope", reason: "Required in invite link so /widget and slash commands register in server." },
+  {
+    name: "View Channel / Read Messages",
+    reason: "Inspect target alert & widget channels.",
+  },
+  {
+    name: "Send Messages",
+    reason: "Post drop alerts and operator-confirmed /widget embeds.",
+  },
+  {
+    name: "Embed Links",
+    reason: "Render structured vehicle cards and live status widgets.",
+  },
+  {
+    name: "Use External Emojis",
+    reason: "Display custom application and server emojis inside alerts.",
+  },
+  {
+    name: "Manage Messages (Optional)",
+    reason: "Allow cleaning up or pinning deployed status widgets.",
+  },
+  {
+    name: "applications.commands OAuth Scope",
+    reason:
+      "Required in invite link so /widget and slash commands register in server.",
+  },
 ];
 
 export function AdminBotPage() {
   const queryClient = useQueryClient();
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const [syncCommands, setSyncCommands] = useState(true);
   const [refreshGuilds, setRefreshGuilds] = useState(true);
   const [refreshWidgets, setRefreshWidgets] = useState(true);
   const [purgeCaches, setPurgeCaches] = useState(true);
-  const [lastRefreshSummary, setLastRefreshSummary] = useState<BotRefreshResponse | null>(null);
-  const [selectedCommand, setSelectedCommand] = useState<BotCommandComparison | null>(null);
+  const [lastRefreshSummary, setLastRefreshSummary] =
+    useState<BotRefreshResponse | null>(null);
+  const [selectedCommand, setSelectedCommand] =
+    useState<BotCommandComparison | null>(null);
   const [activeGuildId, setActiveGuildId] = useState<string | null>(null);
 
-  const { data, isLoading, isFetching, refetch } = useQuery<AdminBotStateResponse>({
-    queryKey: ADMIN_BOT_KEY,
-    queryFn: () => apiFetch<AdminBotStateResponse>("/api/admin/bot"),
-  });
+  const { data, error, isLoading, isFetching, refetch } =
+    useQuery<AdminBotStateResponse>({
+      queryKey: ADMIN_BOT_KEY,
+      queryFn: () => apiFetch<AdminBotStateResponse>("/api/admin/bot"),
+    });
 
   const refreshBotMutation = useMutation({
     mutationFn: (opts?: {
@@ -103,7 +143,7 @@ export function AdminBotPage() {
             refreshGuilds,
             refreshWidgets,
             purgeCaches,
-          }
+          },
         ),
       }),
     onSuccess: (res) => {
@@ -113,10 +153,17 @@ export function AdminBotPage() {
       }
       void queryClient.invalidateQueries({ queryKey: ADMIN_OVERVIEW_KEY });
       const parts: string[] = [];
-      if (res.steps.commands.ran) parts.push(`${res.steps.commands.count} slash commands loaded`);
-      if (res.steps.guilds.ran) parts.push(`${res.steps.guilds.count} connected servers refreshed`);
-      if (res.steps.widgets.ran) parts.push(`${res.steps.widgets.refreshed} widgets updated`);
-      toast.success(parts.length > 0 ? `Bot refreshed: ${parts.join(" • ")}` : "Bot refreshed.");
+      if (res.steps.commands.ran)
+        parts.push(`${res.steps.commands.count} slash commands loaded`);
+      if (res.steps.guilds.ran)
+        parts.push(`${res.steps.guilds.count} connected servers refreshed`);
+      if (res.steps.widgets.ran)
+        parts.push(`${res.steps.widgets.refreshed} widgets updated`);
+      toast.success(
+        parts.length > 0
+          ? `Bot refreshed: ${parts.join(" • ")}`
+          : "Bot refreshed.",
+      );
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to refresh bot.");
@@ -140,7 +187,7 @@ export function AdminBotPage() {
         void queryClient.invalidateQueries({ queryKey: ADMIN_BOT_KEY });
       }
       toast.success(
-        `Registered ${res.registeredCount} global slash command${res.registeredCount === 1 ? "" : "s"} with Discord.`
+        `Registered ${res.registeredCount} global slash command${res.registeredCount === 1 ? "" : "s"} with Discord.`,
       );
     },
     onError: (err: Error) => {
@@ -156,11 +203,13 @@ export function AdminBotPage() {
     onSuccess: (res) => {
       queryClient.setQueryData(ADMIN_BOT_KEY, res);
       toast.success(
-        `Checked command availability across ${res.availability?.length ?? 0} connected server(s).`
+        `Checked command availability across ${res.availability?.length ?? 0} connected server(s).`,
       );
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to verify guild command availability.");
+      toast.error(
+        err.message || "Failed to verify guild command availability.",
+      );
     },
   });
 
@@ -189,12 +238,14 @@ export function AdminBotPage() {
         queryClient.setQueryData(ADMIN_BOT_KEY, res.botState);
       }
       if (res.action === "clear-all") {
-        toast.success(`Cleared guild command overrides across ${res.clearedCount ?? 0} server(s).`);
+        toast.success(
+          `Cleared guild command overrides across ${res.clearedCount ?? 0} server(s).`,
+        );
       } else {
         toast.success(
           res.action === "clear"
             ? "Cleared guild-specific command overrides."
-            : `Synchronized ${res.registeredCount ?? 0} commands directly to server.`
+            : `Synchronized ${res.registeredCount ?? 0} commands directly to server.`,
         );
       }
     },
@@ -219,47 +270,27 @@ export function AdminBotPage() {
     verifyAvailabilityMutation.isPending ||
     guildCommandMutation.isPending;
 
-  const guildInviteMap = new Map((data?.guilds || []).map((g) => [g.id, g.inviteUrl]));
+  const guildInviteMap = new Map(
+    (data?.guilds || []).map((g) => [g.id, g.inviteUrl]),
+  );
+
+  if (error && !data)
+    return (
+      <AppShell requireAdmin title="Bot Control">
+        <QueryState error={error} onRetry={() => void refetch()} />
+      </AppShell>
+    );
 
   return (
     <AppShell
       requireAdmin
       title="Bot Control"
-      description="Inspect live Discord bot identity, verify command availability per server, reload caches, and manage global or per-guild slash commands."
+      description="Check the bot connection, command availability, and server readiness."
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            variant="secondary"
             size="sm"
-            onClick={() => void refetch()}
-            disabled={isFetching || anyMutating}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
-            Check Live State
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => verifyAvailabilityMutation.mutate()}
-            disabled={anyMutating || isLoading}
-          >
-            {verifyAvailabilityMutation.isPending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <SearchCheck className="h-3.5 w-3.5" />
-            )}
-            Verify Command Availability
-          </Button>
-          <Button
-            size="sm"
-            onClick={() =>
-              refreshBotMutation.mutate({
-                syncCommands: true,
-                refreshGuilds: true,
-                refreshWidgets: true,
-                purgeCaches: true,
-              })
-            }
+            onClick={() => setBulkOpen(true)}
             disabled={anyMutating || isLoading}
           >
             {refreshBotMutation.isPending ? (
@@ -267,23 +298,78 @@ export function AdminBotPage() {
             ) : (
               <Bot className="h-3.5 w-3.5" />
             )}
-            Refresh Bot &amp; Load Commands
+            Sync Bot
           </Button>
+          <ActionMenu>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void refetch()}
+              disabled={isFetching || anyMutating}
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`}
+              />
+              Check Connection
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => verifyAvailabilityMutation.mutate()}
+              disabled={anyMutating || isLoading}
+            >
+              {verifyAvailabilityMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <SearchCheck className="h-3.5 w-3.5" />
+              )}
+              Verify Commands
+            </Button>
+          </ActionMenu>
         </div>
       }
     >
+      <ConfirmOperation
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        busy={refreshBotMutation.isPending}
+        title="Synchronize bot and commands?"
+        description="This synchronizes global slash commands, reloads server information, and refreshes deployed widget messages. Listing alerts and role mentions are not sent."
+        action="Sync bot"
+        onConfirm={() =>
+          refreshBotMutation.mutate(
+            {
+              syncCommands: true,
+              refreshGuilds: true,
+              refreshWidgets: true,
+              purgeCaches: true,
+            },
+            { onSuccess: () => setBulkOpen(false) },
+          )
+        }
+      />
       {isLoading || !data ? (
-        <div className="space-y-6">
-          <div className="grid gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-4">
+        <div className="space-y-5">
+          <SummaryGrid>
             {[0, 1, 2, 3].map((idx) => (
               <Skeleton key={idx} className="h-28 w-full rounded-xl" />
             ))}
-          </div>
+          </SummaryGrid>
           <Skeleton className="h-56 w-full rounded-xl" />
           <Skeleton className="h-80 w-full rounded-xl" />
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-5">
+          {error && (
+            <QueryState
+              error={error}
+              title="Showing the last available information"
+              onRetry={() => void refetch()}
+            >
+              The latest refresh failed. Existing information is preserved while
+              you retry.
+            </QueryState>
+          )}
           {/* App ID Mismatch Warning */}
           {data.identity.appIdMismatch && (
             <div className="flex items-start gap-3 rounded-xl border border-red-500/40 bg-red-950/35 p-4 text-xs text-red-200">
@@ -293,105 +379,69 @@ export function AdminBotPage() {
                   Application ID Mismatch Detected
                 </p>
                 <p className="mt-1">
-                  Configured environment ID (<code>{data.identity.envAppId}</code>) does not match
-                  the live Discord bot token application (<code>{data.identity.appId}</code>). Slash
-                  commands and widgets are registered under the authenticated token&apos;s App ID.
+                  Configured environment ID (
+                  <code>{data.identity.envAppId}</code>) does not match the live
+                  Discord bot token application (
+                  <code>{data.identity.appId}</code>). Slash commands and
+                  widgets are registered under the authenticated token&apos;s
+                  App ID.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Status Summary Cards */}
-          <div className="grid gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-4">
-            <Card className="p-5">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Slash Command Sync</span>
-                <Terminal className="h-4 w-4 text-zinc-400" />
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <p className="text-2xl font-bold text-white tabular-nums">
-                  {data.syncedCount} / {data.totalLocalCommands}
-                </p>
-                <Badge variant={data.allInSync ? "success" : "warning"}>
-                  {data.allInSync ? "In Sync" : "Needs Sync"}
-                </Badge>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {data.missingCount > 0
-                  ? `${data.missingCount} missing on Discord`
-                  : data.outdatedCount > 0
-                    ? `${data.outdatedCount} updated in code`
-                    : `${data.totalRemoteCommands} live commands registered`}
-              </p>
-            </Card>
-
-            <Card className="p-5">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Discord Bot Connection</span>
-                <span className="relative flex h-2.5 w-2.5">
-                  <span
-                    className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${
-                      data.identity.ok ? "bg-emerald-400" : "bg-red-400"
-                    }`}
-                  />
-                  <span
-                    className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
-                      data.identity.ok ? "bg-emerald-500" : "bg-red-500"
-                    }`}
-                  />
-                </span>
-              </div>
-              <p className="mt-2 truncate text-lg font-bold text-white">
-                {data.identity.botUser?.username ||
-                  data.identity.application?.name ||
-                  (data.botStatus === "online" ? "Bot Configured" : "Bot Offline")}
-              </p>
-              <p className="mt-1 select-text truncate font-mono text-xs text-muted-foreground">
-                App ID: {data.identity.appId}
-              </p>
-            </Card>
-
-            <Card className="p-5">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Servers &amp; Live Widgets</span>
-                <Server className="h-4 w-4 text-zinc-400" />
-              </div>
-              <p className="mt-2 text-2xl font-bold text-white tabular-nums">
-                {data.counts.connectedServers} Servers
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                {data.counts.deployedWidgets} active /widget deployment
-                {data.counts.deployedWidgets === 1 ? "" : "s"}
-              </p>
-            </Card>
-
-            <Card className="p-5">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Command Sync History</span>
-                <Shield className="h-4 w-4 text-zinc-400" />
-              </div>
-              <p className="mt-2 text-lg font-bold text-white">
-                {data.syncMeta?.lastSuccess?.syncedAt
-                  ? formatLocalTime(data.syncMeta.lastSuccess.syncedAt)
-                  : data.syncMeta?.syncedAt
-                    ? formatLocalTime(data.syncMeta.syncedAt)
-                    : "Not synced yet"}
-              </p>
-              <p className="mt-1 truncate text-xs text-muted-foreground">
-                {data.syncMeta?.lastFailure &&
+          <SummaryGrid>
+            <SummaryMetric
+              label="Command sync"
+              value={data.syncedCount + " / " + data.totalLocalCommands}
+              icon={Terminal}
+              hint={
+                data.allInSync
+                  ? "All commands in sync"
+                  : data.missingCount +
+                    " missing · " +
+                    data.outdatedCount +
+                    " need updating"
+              }
+              tone={data.allInSync ? "neutral" : "warning"}
+            />
+            <SummaryMetric
+              label="Bot connection"
+              value={data.identity.ok ? "Connected" : "Unavailable"}
+              icon={Bot}
+              tone={data.identity.ok ? "success" : "danger"}
+              hint={
+                data.identity.botUser?.username ||
+                data.identity.application?.name ||
+                "Check live state"
+              }
+            />
+            <SummaryMetric
+              label="Servers & widgets"
+              value={data.counts.connectedServers}
+              icon={Server}
+              hint={data.counts.deployedWidgets + " deployed widgets"}
+            />
+            <SummaryMetric
+              label="Last command sync"
+              value={
+                data.syncMeta?.syncedAt
+                  ? formatLocalTime(data.syncMeta.syncedAt)
+                  : "Not yet synced"
+              }
+              icon={Shield}
+              hint={
+                data.syncMeta?.lastFailure &&
                 (!data.syncMeta.lastSuccess ||
-                  data.syncMeta.lastFailure.syncedAt > data.syncMeta.lastSuccess.syncedAt) ? (
-                  <span className="text-red-300">
-                    Last failure: {data.syncMeta.lastFailure.error || "Sync rejected"}
-                  </span>
-                ) : data.syncMeta?.syncedAt ? (
-                  `By ${data.syncMeta.syncedBy} (${data.syncMeta.scope})`
-                ) : (
-                  "Click Synchronize Commands"
-                )}
-              </p>
-            </Card>
-          </div>
+                  data.syncMeta.lastFailure.syncedAt >
+                    data.syncMeta.lastSuccess.syncedAt)
+                  ? "Last attempt failed; review sync history below"
+                  : data.syncMeta?.syncedBy
+                    ? "By " + data.syncMeta.syncedBy
+                    : "Use Synchronize Commands below"
+              }
+            />
+          </SummaryGrid>
 
           {!data.allInSync && (
             <div className="flex flex-col items-start justify-between gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 p-4 @2xl/main:flex-row @2xl/main:items-center">
@@ -431,8 +481,9 @@ export function AdminBotPage() {
               <CardHeader>
                 <CardTitle>Bot Operational Controls</CardTitle>
                 <CardDescription>
-                  Synchronize slash commands, purge stale server caches, update live status widgets,
-                  and verify per-server command registration.
+                  Synchronize slash commands, purge stale server caches, update
+                  live status widgets, and verify per-server command
+                  registration.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
@@ -444,9 +495,12 @@ export function AdminBotPage() {
                       className="mt-0.5"
                     />
                     <div>
-                      <p className="text-sm font-medium text-white">Synchronize Commands</p>
+                      <p className="text-sm font-medium text-white">
+                        Synchronize Commands
+                      </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        Registers all {data.totalLocalCommands} commands globally with Discord.
+                        Registers all {data.totalLocalCommands} commands
+                        globally with Discord.
                       </p>
                     </div>
                   </label>
@@ -458,9 +512,12 @@ export function AdminBotPage() {
                       className="mt-0.5"
                     />
                     <div>
-                      <p className="text-sm font-medium text-white">Refresh Guild Cache</p>
+                      <p className="text-sm font-medium text-white">
+                        Refresh Guild Cache
+                      </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        Clears <code>bot:guilds:cache</code> &amp; stale cache, then pulls fresh guilds.
+                        Clears <code>bot:guilds:cache</code> &amp; stale cache,
+                        then pulls fresh guilds.
                       </p>
                     </div>
                   </label>
@@ -472,9 +529,12 @@ export function AdminBotPage() {
                       className="mt-0.5"
                     />
                     <div>
-                      <p className="text-sm font-medium text-white">Refresh Live Widgets</p>
+                      <p className="text-sm font-medium text-white">
+                        Refresh Live Widgets
+                      </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        Re-syncs all {data.counts.deployedWidgets} active status widget embed
+                        Re-syncs all {data.counts.deployedWidgets} active status
+                        widget embed
                         {data.counts.deployedWidgets === 1 ? "" : "s"}.
                       </p>
                     </div>
@@ -487,9 +547,12 @@ export function AdminBotPage() {
                       className="mt-0.5"
                     />
                     <div>
-                      <p className="text-sm font-medium text-white">Purge Public Edge Cache</p>
+                      <p className="text-sm font-medium text-white">
+                        Purge Public Edge Cache
+                      </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        Clears cached status &amp; listing responses across Cloudflare edge.
+                        Clears cached status &amp; listing responses across
+                        Cloudflare edge.
                       </p>
                     </div>
                   </label>
@@ -508,7 +571,10 @@ export function AdminBotPage() {
                     }
                     disabled={
                       anyMutating ||
-                      (!syncCommands && !refreshGuilds && !refreshWidgets && !purgeCaches)
+                      (!syncCommands &&
+                        !refreshGuilds &&
+                        !refreshWidgets &&
+                        !purgeCaches)
                     }
                   >
                     {refreshBotMutation.isPending ? (
@@ -574,26 +640,34 @@ export function AdminBotPage() {
                   <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">
                     <div className="flex items-center gap-2 font-semibold text-emerald-100">
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
-                      Refresh completed at {formatLocalDateTime(lastRefreshSummary.refreshedAt)}
+                      Refresh completed at{" "}
+                      {formatLocalDateTime(lastRefreshSummary.refreshedAt)}
                     </div>
                     <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-emerald-200/90">
                       {lastRefreshSummary.steps.commands.ran && (
                         <span>
-                          Commands: {lastRefreshSummary.steps.commands.count} loaded globally
+                          Commands: {lastRefreshSummary.steps.commands.count}{" "}
+                          loaded globally
                         </span>
                       )}
                       {lastRefreshSummary.steps.guilds.ran && (
-                        <span>Servers: {lastRefreshSummary.steps.guilds.count} active guilds</span>
+                        <span>
+                          Servers: {lastRefreshSummary.steps.guilds.count}{" "}
+                          active guilds
+                        </span>
                       )}
                       {lastRefreshSummary.steps.widgets.ran && (
                         <span>
-                          Widgets: {lastRefreshSummary.steps.widgets.refreshed} updated
+                          Widgets: {lastRefreshSummary.steps.widgets.refreshed}{" "}
+                          updated
                           {lastRefreshSummary.steps.widgets.failed > 0
                             ? ` (${lastRefreshSummary.steps.widgets.failed} failed)`
                             : ""}
                         </span>
                       )}
-                      {lastRefreshSummary.steps.caches.ran && <span>Edge cache purged</span>}
+                      {lastRefreshSummary.steps.caches.ran && (
+                        <span>Edge cache purged</span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -605,7 +679,8 @@ export function AdminBotPage() {
               <CardHeader>
                 <CardTitle>Bot Identity &amp; Bindings</CardTitle>
                 <CardDescription>
-                  Live Discord application metadata, bindings, and required permissions.
+                  Live Discord application metadata, bindings, and required
+                  permissions.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -628,7 +703,9 @@ export function AdminBotPage() {
                           data.identity.botUser?.username ||
                           "Everfall Limited Watcher"}
                       </p>
-                      <Badge variant={data.identity.ok ? "success" : "destructive"}>
+                      <Badge
+                        variant={data.identity.ok ? "success" : "destructive"}
+                      >
                         {data.identity.ok ? "Authenticated" : "Unverified"}
                       </Badge>
                     </div>
@@ -641,7 +718,9 @@ export function AdminBotPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => void copyText("Application ID", data.identity.appId)}
+                        onClick={() =>
+                          void copyText("Application ID", data.identity.appId)
+                        }
                       >
                         <Copy className="h-3.5 w-3.5" />
                       </Button>
@@ -658,14 +737,16 @@ export function AdminBotPage() {
 
                 <div className="space-y-2 rounded-lg border border-border bg-zinc-950 p-3.5 text-xs">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-muted-foreground">Interactions Endpoint</span>
+                    <span className="text-muted-foreground">
+                      Interactions Endpoint
+                    </span>
                     <button
                       type="button"
                       onClick={() =>
                         void copyText(
                           "Interactions Endpoint URL",
                           data.identity.application?.interactionsEndpointUrl ||
-                            data.environment.interactionsUrl
+                            data.environment.interactionsUrl,
                         )
                       }
                       className="inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1 font-mono text-zinc-200 hover:text-white"
@@ -684,14 +765,26 @@ export function AdminBotPage() {
                     </span>
                     <div className="flex items-center gap-1.5">
                       <Badge
-                        variant={data.environment.botTokenConfigured ? "success" : "destructive"}
+                        variant={
+                          data.environment.botTokenConfigured
+                            ? "success"
+                            : "destructive"
+                        }
                       >
-                        {data.environment.botTokenConfigured ? "Token Ready" : "Missing Token"}
+                        {data.environment.botTokenConfigured
+                          ? "Token Ready"
+                          : "Missing Token"}
                       </Badge>
                       <Badge
-                        variant={data.environment.publicKeyConfigured ? "success" : "warning"}
+                        variant={
+                          data.environment.publicKeyConfigured
+                            ? "success"
+                            : "warning"
+                        }
                       >
-                        {data.environment.publicKeyConfigured ? "Key Set" : "No Key"}
+                        {data.environment.publicKeyConfigured
+                          ? "Key Set"
+                          : "No Key"}
                       </Badge>
                     </div>
                   </div>
@@ -700,8 +793,14 @@ export function AdminBotPage() {
                       <Database className="h-3.5 w-3.5" />
                       Cloudflare D1 Database
                     </span>
-                    <Badge variant={data.environment.d1Bound ? "success" : "destructive"}>
-                      {data.environment.d1Bound ? "DB Bound (Primary)" : "Unavailable"}
+                    <Badge
+                      variant={
+                        data.environment.d1Bound ? "success" : "destructive"
+                      }
+                    >
+                      {data.environment.d1Bound
+                        ? "DB Bound (Primary)"
+                        : "Unavailable"}
                     </Badge>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -709,8 +808,12 @@ export function AdminBotPage() {
                       <Database className="h-3.5 w-3.5" />
                       Workers KV (Legacy Compatibility)
                     </span>
-                    <Badge variant={data.environment.kvBound ? "warning" : "success"}>
-                      {data.environment.kvBound ? "Optional Migration Source" : "Not Required"}
+                    <Badge
+                      variant={data.environment.kvBound ? "warning" : "success"}
+                    >
+                      {data.environment.kvBound
+                        ? "Optional Migration Source"
+                        : "Not Required"}
                     </Badge>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -718,8 +821,12 @@ export function AdminBotPage() {
                       <HardDrive className="h-3.5 w-3.5" />
                       R2 Media Storage
                     </span>
-                    <Badge variant={data.environment.r2Bound ? "success" : "warning"}>
-                      {data.environment.r2Bound ? "everfall-media Bound" : "Required for media writes"}
+                    <Badge
+                      variant={data.environment.r2Bound ? "success" : "warning"}
+                    >
+                      {data.environment.r2Bound
+                        ? "everfall-media Bound"
+                        : "Required for media writes"}
                     </Badge>
                   </div>
                 </div>
@@ -731,8 +838,10 @@ export function AdminBotPage() {
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-emerald-300">Last Success</span>
                         <span className="text-muted-foreground tabular-nums">
-                          {formatLocalDateTime(data.syncMeta.lastSuccess.syncedAt)} (
-                          {data.syncMeta.lastSuccess.commandCount} cmds)
+                          {formatLocalDateTime(
+                            data.syncMeta.lastSuccess.syncedAt,
+                          )}{" "}
+                          ({data.syncMeta.lastSuccess.commandCount} cmds)
                         </span>
                       </div>
                     )}
@@ -759,10 +868,12 @@ export function AdminBotPage() {
             <Card>
               <CardHeader className="flex flex-col gap-3 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
                 <div>
-                  <CardTitle>/widget Registration, Execution &amp; Portal Readiness</CardTitle>
+                  <CardTitle>
+                    /widget Registration, Execution &amp; Portal Readiness
+                  </CardTitle>
                   <CardDescription>
-                    Distinguishes global/guild command registration from Discord Interactions execution
-                    readiness and OAuth install scopes.
+                    Distinguishes global/guild command registration from Discord
+                    Interactions execution readiness and OAuth install scopes.
                   </CardDescription>
                 </div>
                 <Badge
@@ -790,9 +901,14 @@ export function AdminBotPage() {
                       className="rounded-lg border border-border bg-zinc-950/80 p-3.5 text-xs space-y-1.5"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-semibold text-white">{check.label}</span>
+                        <span className="font-semibold text-white">
+                          {check.label}
+                        </span>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <Badge variant="outline" className="text-[10px] uppercase">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] uppercase"
+                          >
                             {check.category}
                           </Badge>
                           <Badge
@@ -812,19 +928,27 @@ export function AdminBotPage() {
                           </Badge>
                         </div>
                       </div>
-                      <p className="text-zinc-300 leading-relaxed">{check.summary}</p>
+                      <p className="text-zinc-300 leading-relaxed">
+                        {check.summary}
+                      </p>
                       {check.remediation && (
-                        <p className="text-[11px] text-amber-300/90">Fix: {check.remediation}</p>
+                        <p className="text-[11px] text-amber-300/90">
+                          Fix: {check.remediation}
+                        </p>
                       )}
                     </div>
                   ))}
                 </div>
                 <div className="rounded-lg border border-border bg-zinc-950/60 p-3 text-xs text-muted-foreground">
-                  <strong className="text-zinc-200">Discord Server Permissions Reminder:</strong>{" "}
-                  <code>/widget</code> requires <code>Manage Server</code> or <code>Administrator</code>{" "}
-                  by default. If a registered command is still hidden inside a specific server, check{" "}
                   <strong className="text-zinc-200">
-                    Server Settings &rarr; Integrations &rarr; Everfall Limited Watcher
+                    Discord Server Permissions Reminder:
+                  </strong>{" "}
+                  <code>/widget</code> requires <code>Manage Server</code> or{" "}
+                  <code>Administrator</code> by default. If a registered command
+                  is still hidden inside a specific server, check{" "}
+                  <strong className="text-zinc-200">
+                    Server Settings &rarr; Integrations &rarr; Everfall Limited
+                    Watcher
                   </strong>{" "}
                   for per-role or per-channel overrides.
                 </div>
@@ -836,18 +960,25 @@ export function AdminBotPage() {
           <Card>
             <CardHeader className="flex flex-col gap-3 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
               <div>
-                <CardTitle>Per-Server /widget &amp; Slash Command Availability</CardTitle>
+                <CardTitle>
+                  Per-Server /widget &amp; Slash Command Availability
+                </CardTitle>
                 <CardDescription>
-                  Detects missing <code>applications.commands</code> OAuth scopes, duplicate global +
-                  guild overrides, or allows instant guild-scoped command sync for troubleshooting.
+                  Detects missing <code>applications.commands</code> OAuth
+                  scopes, duplicate global + guild overrides, or allows instant
+                  guild-scoped command sync for troubleshooting.
                 </CardDescription>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {Boolean(data.availability?.some((r) => r.guildCommandCount > 0)) && (
+                {Boolean(
+                  data.availability?.some((r) => r.guildCommandCount > 0),
+                ) && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => guildCommandMutation.mutate({ action: "clear-all" })}
+                    onClick={() =>
+                      guildCommandMutation.mutate({ action: "clear-all" })
+                    }
                     disabled={anyMutating}
                   >
                     <Trash2 className="h-3.5 w-3.5 text-red-400" />
@@ -872,9 +1003,9 @@ export function AdminBotPage() {
             <CardContent>
               {!data.availability ? (
                 <div className="rounded-lg border border-border bg-zinc-950/60 p-6 text-center text-xs text-muted-foreground">
-                  Click <strong>Run Live Availability Check</strong> to query Discord&apos;s command
-                  scope and registration status for every connected server ({data.guilds?.length ?? 0}{" "}
-                  servers).
+                  Click <strong>Run Live Availability Check</strong> to query
+                  Discord&apos;s command scope and registration status for every
+                  connected server ({data.guilds?.length ?? 0} servers).
                 </div>
               ) : data.availability.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
@@ -886,7 +1017,9 @@ export function AdminBotPage() {
                   <div className="space-y-3 @3xl/main:hidden">
                     {data.availability.map((row) => {
                       const inviteUrl = guildInviteMap.get(row.guildId);
-                      const busy = activeGuildId === row.guildId && guildCommandMutation.isPending;
+                      const busy =
+                        activeGuildId === row.guildId &&
+                        guildCommandMutation.isPending;
                       return (
                         <div
                           key={row.guildId}
@@ -894,7 +1027,9 @@ export function AdminBotPage() {
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <p className="truncate font-semibold text-white">{row.guildName}</p>
+                              <p className="truncate font-semibold text-white">
+                                {row.guildName}
+                              </p>
                               <p className="truncate select-text font-mono text-[11px] text-muted-foreground">
                                 {row.guildId}
                               </p>
@@ -902,7 +1037,8 @@ export function AdminBotPage() {
                             <Badge
                               variant={
                                 row.widgetStatus === "available_global" ||
-                                (row.widgetStatus === "available_guild" && !row.guildWidgetOutdated)
+                                (row.widgetStatus === "available_guild" &&
+                                  !row.guildWidgetOutdated)
                                   ? "success"
                                   : row.widgetStatus === "missing_scope"
                                     ? "destructive"
@@ -931,7 +1067,9 @@ export function AdminBotPage() {
                               ? `${row.guildCommandCount} guild override(s)`
                               : "No commands scope (403)"}
                           </p>
-                          <p className="break-words text-[11px] text-muted-foreground">{row.detail}</p>
+                          <p className="break-words text-[11px] text-muted-foreground">
+                            {row.detail}
+                          </p>
                           <div className="flex flex-wrap items-center gap-1.5 border-t border-border/70 pt-2">
                             {inviteUrl && (
                               <a
@@ -947,7 +1085,9 @@ export function AdminBotPage() {
                             <Button
                               size="sm"
                               variant="secondary"
-                              disabled={busy || anyMutating || !row.hasCommandsScope}
+                              disabled={
+                                busy || anyMutating || !row.hasCommandsScope
+                              }
                               onClick={() => {
                                 setActiveGuildId(row.guildId);
                                 guildCommandMutation.mutate({
@@ -997,17 +1137,23 @@ export function AdminBotPage() {
                           <TableHead>/widget Availability</TableHead>
                           <TableHead>Guild Scope</TableHead>
                           <TableHead>Diagnostic Detail</TableHead>
-                          <TableHead className="text-right">Instant Controls</TableHead>
+                          <TableHead className="text-right">
+                            Instant Controls
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {data.availability.map((row) => {
                           const inviteUrl = guildInviteMap.get(row.guildId);
-                          const busy = activeGuildId === row.guildId && guildCommandMutation.isPending;
+                          const busy =
+                            activeGuildId === row.guildId &&
+                            guildCommandMutation.isPending;
                           return (
                             <TableRow key={row.guildId}>
                               <TableCell>
-                                <p className="font-medium text-white">{row.guildName}</p>
+                                <p className="font-medium text-white">
+                                  {row.guildName}
+                                </p>
                                 <p className="select-text font-mono text-[11px] text-muted-foreground">
                                   {row.guildId}
                                 </p>
@@ -1016,7 +1162,8 @@ export function AdminBotPage() {
                                 <Badge
                                   variant={
                                     row.widgetStatus === "available_global" ||
-                                    (row.widgetStatus === "available_guild" && !row.guildWidgetOutdated)
+                                    (row.widgetStatus === "available_guild" &&
+                                      !row.guildWidgetOutdated)
                                       ? "success"
                                       : row.widgetStatus === "missing_scope"
                                         ? "destructive"
@@ -1029,11 +1176,13 @@ export function AdminBotPage() {
                                       ? row.guildWidgetOutdated
                                         ? "Guild Override (Outdated)"
                                         : "Available (Guild)"
-                                      : row.widgetStatus === "duplicate_conflict"
+                                      : row.widgetStatus ===
+                                          "duplicate_conflict"
                                         ? "Duplicate (Global + Guild)"
                                         : row.widgetStatus === "missing_scope"
                                           ? "Missing OAuth Scope"
-                                          : row.widgetStatus === "missing_command"
+                                          : row.widgetStatus ===
+                                              "missing_command"
                                             ? "Missing /widget"
                                             : "Error"}
                                 </Badge>
@@ -1062,7 +1211,11 @@ export function AdminBotPage() {
                                   <Button
                                     size="sm"
                                     variant="secondary"
-                                    disabled={busy || anyMutating || !row.hasCommandsScope}
+                                    disabled={
+                                      busy ||
+                                      anyMutating ||
+                                      !row.hasCommandsScope
+                                    }
                                     onClick={() => {
                                       setActiveGuildId(row.guildId);
                                       guildCommandMutation.mutate({
@@ -1113,9 +1266,12 @@ export function AdminBotPage() {
           {/* Required Bot Permissions Reference */}
           <Card>
             <CardHeader>
-              <CardTitle>Required Discord Bot Permissions &amp; Scopes</CardTitle>
+              <CardTitle>
+                Required Discord Bot Permissions &amp; Scopes
+              </CardTitle>
               <CardDescription>
-                Server administrators can always view alerts cleanly when these baseline permissions are present.
+                Server administrators can always view alerts cleanly when these
+                baseline permissions are present.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1137,10 +1293,13 @@ export function AdminBotPage() {
           <Card>
             <CardHeader className="flex flex-col gap-3 @2xl/main:flex-row @2xl/main:items-center @2xl/main:justify-between">
               <div>
-                <CardTitle>Slash Command Definitions ({data.comparisons.length})</CardTitle>
+                <CardTitle>
+                  Slash Command Definitions ({data.comparisons.length})
+                </CardTitle>
                 <CardDescription>
-                  Compares codebase definitions against Discord&apos;s live global command registry.
-                  Click any command row to inspect its JSON schema.
+                  Compares codebase definitions against Discord&apos;s live
+                  global command registry. Click any command row to inspect its
+                  JSON schema.
                 </CardDescription>
               </div>
               <Badge
@@ -1180,13 +1339,23 @@ export function AdminBotPage() {
                             : "Missing"}
                       </Badge>
                     </div>
-                    <p className="text-zinc-300 leading-relaxed">{cmd.description}</p>
+                    <p className="text-zinc-300 leading-relaxed">
+                      {cmd.description}
+                    </p>
                     {cmd.diffReason && (
-                      <p className="break-words text-[11px] text-amber-300">Diff: {cmd.diffReason}</p>
+                      <p className="break-words text-[11px] text-amber-300">
+                        Diff: {cmd.diffReason}
+                      </p>
                     )}
                     <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                      <Badge variant={cmd.defaultMemberPermissions ? "secondary" : "outline"}>
-                        {cmd.defaultMemberPermissions ? "Manage Server" : "Everyone"}
+                      <Badge
+                        variant={
+                          cmd.defaultMemberPermissions ? "secondary" : "outline"
+                        }
+                      >
+                        {cmd.defaultMemberPermissions
+                          ? "Manage Server"
+                          : "Everyone"}
                       </Badge>
                       {cmd.options.map((o) => (
                         <span
@@ -1233,12 +1402,22 @@ export function AdminBotPage() {
                         <TableCell className="max-w-sm text-xs text-zinc-300">
                           <p className="line-clamp-2">{cmd.description}</p>
                           {cmd.diffReason && (
-                            <p className="mt-1 text-[11px] text-amber-300">Diff: {cmd.diffReason}</p>
+                            <p className="mt-1 text-[11px] text-amber-300">
+                              Diff: {cmd.diffReason}
+                            </p>
                           )}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={cmd.defaultMemberPermissions ? "secondary" : "outline"}>
-                            {cmd.defaultMemberPermissions ? "Manage Server" : "Everyone"}
+                          <Badge
+                            variant={
+                              cmd.defaultMemberPermissions
+                                ? "secondary"
+                                : "outline"
+                            }
+                          >
+                            {cmd.defaultMemberPermissions
+                              ? "Manage Server"
+                              : "Everyone"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
@@ -1250,7 +1429,8 @@ export function AdminBotPage() {
                                 key={o.name}
                                 className="mr-1.5 inline-block rounded border border-border bg-zinc-950 px-1.5 py-0.5 font-mono text-[11px] text-zinc-300"
                               >
-                                {o.name}:{OPTION_TYPE_LABELS[o.type] || `#${o.type}`}
+                                {o.name}:
+                                {OPTION_TYPE_LABELS[o.type] || `#${o.type}`}
                               </span>
                             ))
                           )}
@@ -1284,11 +1464,15 @@ export function AdminBotPage() {
               {data.extraRemoteCommands.length > 0 && (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
                   <p className="font-semibold text-amber-100">
-                    Extra commands currently registered on Discord ({data.extraRemoteCommands.length}):
+                    Extra commands currently registered on Discord (
+                    {data.extraRemoteCommands.length}):
                   </p>
                   <p className="mt-1 text-amber-200/80">
-                    {data.extraRemoteCommands.map((c) => `/${c.name}`).join(", ")} — running{" "}
-                    <strong>Synchronize Commands</strong> will replace these with the active list above.
+                    {data.extraRemoteCommands
+                      .map((c) => `/${c.name}`)
+                      .join(", ")}{" "}
+                    — running <strong>Synchronize Commands</strong> will replace
+                    these with the active list above.
                   </p>
                 </div>
               )}
@@ -1308,7 +1492,8 @@ export function AdminBotPage() {
                   /{selectedCommand?.name} — Discord Command Schema
                 </DialogTitle>
                 <DialogDescription>
-                  Payload registered with Discord&apos;s Global Application Commands endpoint.
+                  Payload registered with Discord&apos;s Global Application
+                  Commands endpoint.
                 </DialogDescription>
               </DialogHeader>
               {selectedCommand && (
@@ -1342,16 +1527,21 @@ export function AdminBotPage() {
                         type: selectedCommand.type ?? 1,
                         description: selectedCommand.description,
                         ...(selectedCommand.defaultMemberPermissions
-                          ? { default_member_permissions: selectedCommand.defaultMemberPermissions }
+                          ? {
+                              default_member_permissions:
+                                selectedCommand.defaultMemberPermissions,
+                            }
                           : {}),
-                        integration_types: selectedCommand.integrationTypes ?? [0],
+                        integration_types: selectedCommand.integrationTypes ?? [
+                          0,
+                        ],
                         contexts: selectedCommand.contexts ?? [0],
                         ...(selectedCommand.options.length > 0
                           ? { options: selectedCommand.options }
                           : {}),
                       },
                       null,
-                      2
+                      2,
                     )}
                   </pre>
                   <div className="flex justify-end gap-2">
@@ -1361,7 +1551,7 @@ export function AdminBotPage() {
                       onClick={() =>
                         void copyText(
                           `/${selectedCommand.name} schema`,
-                          JSON.stringify(selectedCommand, null, 2)
+                          JSON.stringify(selectedCommand, null, 2),
                         )
                       }
                     >

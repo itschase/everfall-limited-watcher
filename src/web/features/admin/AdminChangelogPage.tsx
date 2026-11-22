@@ -257,7 +257,7 @@ export function AdminChangelogPage() {
                   <Button
                     variant="ghost"
                     disabled={!dirty || save.isPending}
-                    onClick={() => setDraft(baseline)}
+                    onClick={() => { setDraft(baseline); save.reset(); }}
                   >
                     Cancel
                   </Button>

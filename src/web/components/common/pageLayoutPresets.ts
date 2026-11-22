@@ -12,21 +12,21 @@ export function getSpacingClasses(spacing?: PageLayoutSpacing): {
   switch (spacing) {
     case "compact":
       return {
-        heroPadding: "py-10 sm:py-14",
-        sectionPadding: "py-10 sm:py-12",
+        heroPadding: "py-8 sm:py-12",
+        sectionPadding: "py-8 sm:py-10",
         stackGap: "space-y-6",
       };
     case "spacious":
       return {
-        heroPadding: "py-20 sm:py-28",
-        sectionPadding: "py-18 sm:py-22",
+        heroPadding: "py-16 sm:py-24",
+        sectionPadding: "py-14 sm:py-20",
         stackGap: "space-y-10",
       };
     case "standard":
     default:
       return {
-        heroPadding: "py-16 sm:py-24",
-        sectionPadding: "py-14 sm:py-16",
+        heroPadding: "py-12 sm:py-20",
+        sectionPadding: "py-10 sm:py-14",
         stackGap: "space-y-8",
       };
   }

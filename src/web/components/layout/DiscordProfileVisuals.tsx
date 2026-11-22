@@ -1,4 +1,5 @@
-import { Sparkles } from "lucide-react";
+import { useState } from "react";
+import { Sparkles, UserRound } from "lucide-react";
 import type {
   DiscordNameplateAppearance,
   DiscordPrimaryGuildAppearance,
@@ -28,21 +29,36 @@ export function DiscordProfileAvatar({
   className?: string;
   borderless?: boolean;
 }) {
+  const [failedAvatar, setFailedAvatar] = useState<string | null>(null);
+  const [failedDecoration, setFailedDecoration] = useState<string | null>(null);
   return (
     <span className={cn("relative inline-flex shrink-0", className)}>
-      <img
-        src={avatarUrl || undefined}
-        alt={alt}
-        className={cn(
-          "absolute inset-[8%] h-[84%] w-[84%] rounded-full bg-zinc-900 object-cover",
-          !borderless && "border border-white/10"
-        )}
-      />
-      {decorationUrl && (
+      {avatarUrl && failedAvatar !== avatarUrl ? (
+        <img
+          src={avatarUrl || undefined}
+          alt={alt}
+          onError={() => setFailedAvatar(avatarUrl)}
+          className={cn(
+            "absolute inset-[8%] h-[84%] w-[84%] rounded-full bg-zinc-900 object-cover",
+            !borderless && "border border-white/10",
+          )}
+        />
+      ) : (
+        <span
+          role={alt ? "img" : undefined}
+          aria-label={alt || undefined}
+          aria-hidden={!alt}
+          className="absolute inset-[8%] flex h-[84%] w-[84%] items-center justify-center rounded-full bg-secondary text-muted-foreground"
+        >
+          <UserRound aria-hidden="true" className="h-3/5 w-3/5" />
+        </span>
+      )}
+      {decorationUrl && failedDecoration !== decorationUrl && (
         <img
           src={decorationUrl}
           alt=""
           aria-hidden="true"
+          onError={() => setFailedDecoration(decorationUrl)}
           className="pointer-events-none absolute inset-0 h-full w-full object-contain"
         />
       )}
@@ -59,7 +75,8 @@ export function DiscordNameplateChip({
 }) {
   if (!nameplate || (!nameplate.label && !nameplate.palette)) return null;
   const paletteClass =
-    (nameplate.palette && NAMEPLATE_PALETTE_CLASSES[nameplate.palette.toLowerCase()]) ||
+    (nameplate.palette &&
+      NAMEPLATE_PALETTE_CLASSES[nameplate.palette.toLowerCase()]) ||
     "border-zinc-700 bg-zinc-900 text-zinc-200";
 
   return (
@@ -67,7 +84,7 @@ export function DiscordNameplateChip({
       className={cn(
         "inline-flex max-w-full items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium",
         paletteClass,
-        className
+        className,
       )}
     >
       <Sparkles className="h-3 w-3 shrink-0" />
@@ -89,11 +106,15 @@ export function DiscordPrimaryGuildTag({
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900/90 px-2 py-0.5 text-[10px] font-semibold text-zinc-200",
-        className
+        className,
       )}
     >
       {primaryGuild.badgeUrl && (
-        <img src={primaryGuild.badgeUrl} alt="" className="h-3.5 w-3.5 object-contain" />
+        <img
+          src={primaryGuild.badgeUrl}
+          alt=""
+          className="h-3.5 w-3.5 object-contain"
+        />
       )}
       {primaryGuild.tag}
     </span>

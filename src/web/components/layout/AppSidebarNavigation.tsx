@@ -39,18 +39,18 @@ type NavGroup = {
   icon: LucideIcon;
   items: NavItem[];
 };
-const GENERAL: NavItem[] = [
+export const GENERAL: NavItem[] = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, exact: true },
   { label: "Limited Drop History", to: "/history", icon: History },
   { label: "Changelog", to: "/changelog", icon: FileText },
 ];
-const OVERVIEW: NavItem = {
+export const OVERVIEW: NavItem = {
   label: "Overview",
   to: "/admin",
   icon: Shield,
   exact: true,
 };
-const GROUPS: NavGroup[] = [
+export const GROUPS: NavGroup[] = [
   {
     id: "discord",
     label: "Discord & Servers",

@@ -11,6 +11,9 @@ export interface PublicContentSection {
   alignment: "left" | "center";
   style: "subtle" | "bordered" | "elevated";
   spacing: "compact" | "standard" | "spacious";
+  contentWidth?: "standard" | "wide";
+  iconSize?: "small" | "medium" | "large";
+  buttonStyle?: "outline" | "primary";
 }
 export interface PublicPageExtensions {
   extraSections?: PublicContentSection[];
@@ -75,6 +78,12 @@ export function normalizePageExtensions(
           spacing: ["compact", "spacious"].includes(item.spacing)
             ? item.spacing
             : "standard",
+          contentWidth: item.contentWidth === "wide" ? "wide" : "standard",
+          iconSize:
+            item.iconSize === "small" || item.iconSize === "large"
+              ? item.iconSize
+              : "medium",
+          buttonStyle: item.buttonStyle === "primary" ? "primary" : "outline",
         } as PublicContentSection;
       }),
   };
