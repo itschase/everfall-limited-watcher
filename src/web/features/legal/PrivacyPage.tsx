@@ -50,6 +50,25 @@ export function PrivacyPage() {
           </p>
         </div>
       </section>
+      <section className="mx-auto w-full max-w-6xl px-4 pb-8" aria-labelledby="discord-profile-privacy-title">
+        <div className="rounded-xl border border-border bg-card/70 p-5">
+          <h2 id="discord-profile-privacy-title" className="text-base font-semibold text-foreground">
+            Discord Profile Information
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Discord sign-in uses the existing profile authorization to display the information
+            Discord provides, which may include your username and display name, avatar, banner,
+            accent color, avatar decoration, nameplate, and primary-server tag or badge. For
+            signed-in users, these appearance details are carried in the signed session cookie,
+            which expires after 24 hours; we do not persist them as a separate user profile. The
+            bot creator&apos;s public profile appearance is cached in D1 (with the configured legacy
+            KV fallback) so the public creator card can be rendered while the creator is signed
+            out. Profile images are loaded from Discord&apos;s CDN. The creator card also links to the
+            creator&apos;s GitHub profile; following that link takes you to GitHub and is subject to
+            GitHub&apos;s privacy practices.
+          </p>
+        </div>
+      </section>
       <AutomationNotice kind="privacy" includeTestEvents />
     </PublicLayout>
   );

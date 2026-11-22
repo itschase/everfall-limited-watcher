@@ -40,6 +40,13 @@ import {
   setCachedUserGuilds,
   setMonitorStateValue,
 } from "./d1";
+import {
+  buildDiscordProfileAppearance,
+  EMPTY_DISCORD_PROFILE_APPEARANCE,
+  getDiscordAvatarUrl,
+  normalizeDiscordProfileAppearance,
+  type DiscordProfileAppearance,
+} from "./shared/discordProfile";
 
 const REDIRECT_PATH = "/auth/callback";
 const SESSION_COOKIE = "everfall_session";
@@ -54,6 +61,7 @@ export interface SessionUser {
   username: string;
   avatarUrl: string;
   isAdmin: boolean;
+  profile?: DiscordProfileAppearance | null;
 }
 
 export interface BotGuild {
@@ -496,9 +504,10 @@ export async function createSessionToken(
   userId: string,
   username: string,
   avatarUrl: string,
-  secret: string
+  secret: string,
+  profile?: DiscordProfileAppearance | null
 ): Promise<string> {
-  return signToken({ userId, username, avatarUrl, issuedAt: Date.now() }, secret);
+  return signToken({ userId, username, avatarUrl, profile: profile ?? null, issuedAt: Date.now() }, secret);
 }
 
 export async function createSessionCookie(
@@ -506,9 +515,10 @@ export async function createSessionCookie(
   username: string,
   avatarUrl: string,
   secret: string,
-  isHttps: boolean
+  isHttps: boolean,
+  profile?: DiscordProfileAppearance | null
 ): Promise<string> {
-  const token = await createSessionToken(userId, username, avatarUrl, secret);
+  const token = await createSessionToken(userId, username, avatarUrl, secret, profile);
   return `${SESSION_COOKIE}=${token}; ${getCookieAttributes(isHttps, 86400)}`;
 }
 
@@ -525,6 +535,7 @@ export async function verifySessionCookie(
     userId: string;
     username: string;
     avatarUrl: string;
+    profile?: unknown;
     issuedAt: number;
   }>(value, secret, 86400 * 1000);
   if (
@@ -541,12 +552,19 @@ export async function verifySessionCookie(
     username: parsed.username,
     avatarUrl: parsed.avatarUrl,
     isAdmin: Boolean(primaryAdministratorId) && parsed.userId === primaryAdministratorId,
+    profile: normalizeDiscordProfileAppearance(parsed.profile),
   };
 }
 
 export async function getCreatorProfile(
   env: any
-): Promise<{ id: string; username: string; avatarUrl: string; profileUrl: string }> {
+): Promise<{
+  id: string;
+  username: string;
+  avatarUrl: string;
+  profileUrl: string;
+  profile: DiscordProfileAppearance;
+}> {
   const primaryAdministratorId = String(env.DISCORD_PRIMARY_ADMINISTRATOR || "151037568484507648").trim();
   const profileUrl = /^\d+$/.test(primaryAdministratorId)
     ? `https://discord.com/users/${primaryAdministratorId}`
@@ -560,6 +578,7 @@ export async function getCreatorProfile(
     username: "xchasex",
     avatarUrl: defaultAvatar,
     profileUrl,
+    profile: { ...EMPTY_DISCORD_PROFILE_APPEARANCE },
   };
 
   const cachedProfile = await getCreatorProfileFromStore(env);
@@ -569,6 +588,9 @@ export async function getCreatorProfile(
       username: cachedProfile.username || "xchasex",
       avatarUrl: cachedProfile.avatarUrl || defaultAvatar,
       profileUrl,
+      profile:
+        normalizeDiscordProfileAppearance(cachedProfile.profile ?? cachedProfile) ??
+        { ...EMPTY_DISCORD_PROFILE_APPEARANCE },
     };
   }
 
@@ -582,14 +604,13 @@ export async function getCreatorProfile(
     );
     if (res.ok) {
       const data: any = await res.json();
-      const avatarUrl = data.avatar
-        ? `https://cdn.discordapp.com/avatars/${primaryAdministratorId}/${data.avatar}.png?size=64`
-        : defaultAvatar;
+      const avatarUrl = getDiscordAvatarUrl(primaryAdministratorId, data.avatar, 256);
       const profile = {
         id: primaryAdministratorId,
         username: data.username || "xchasex",
         avatarUrl,
         profileUrl,
+        profile: buildDiscordProfileAppearance(primaryAdministratorId, data),
       };
       await setCreatorProfileInStore(env, profile);
       return profile;
@@ -961,9 +982,8 @@ export async function handleOAuthCallback(request: Request, env: any): Promise<R
     console.error("Discord OAuth user profile is missing a valid user ID");
     return new Response("Discord returned an invalid user profile", { status: 502 });
   }
-  const avatarUrl = userData.avatar
-    ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png?size=64`
-    : `https://cdn.discordapp.com/embed/avatars/${(BigInt(userData.id) >> 22n) % 6n}.png`;
+  const avatarUrl = getDiscordAvatarUrl(userData.id, userData.avatar, 256);
+  const profileAppearance = buildDiscordProfileAppearance(userData.id, userData);
 
   if (userData.id === env.DISCORD_PRIMARY_ADMINISTRATOR) {
     try {
@@ -972,6 +992,7 @@ export async function handleOAuthCallback(request: Request, env: any): Promise<R
         username: userData.username || "xchasex",
         avatarUrl,
         profileUrl: `https://discord.com/users/${userData.id}`,
+        profile: profileAppearance,
         updatedAt: Date.now(),
       });
     } catch (error) {
@@ -998,7 +1019,8 @@ export async function handleOAuthCallback(request: Request, env: any): Promise<R
     userData.id,
     userData.username,
     avatarUrl,
-    sessionSecret
+    sessionSecret,
+    profileAppearance
   );
   const sessionCookie = `${SESSION_COOKIE}=${sessionToken}; ${getCookieAttributes(isHttps, 86400)}`;
   const clearStateCookie = `${OAUTH_STATE_COOKIE}=; ${getCookieAttributes(isHttps, 0)}`;

@@ -82,6 +82,8 @@ export type {
   TemplateVariableValues,
 };
 
+import type { DiscordProfileAppearance } from "../../shared/discordProfile";
+
 export type BotStatus = "online" | "offline";
 
 export interface BotHealthSnapshot {
@@ -103,6 +105,7 @@ export interface SessionUser {
   username: string;
   avatarUrl: string;
   isAdmin: boolean;
+  profile?: DiscordProfileAppearance | null;
 }
 
 export type MonitorLogSource = "manual" | "cron-fetch" | "scrapling" | "scheduled" | "other";
@@ -163,6 +166,7 @@ export interface CreatorProfile {
   username: string;
   avatarUrl: string;
   profileUrl: string;
+  profile?: DiscordProfileAppearance;
 }
 
 export interface SessionResponse {
