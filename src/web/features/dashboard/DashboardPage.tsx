@@ -35,12 +35,7 @@ import { DEFAULT_WIDGET_TEMPLATE } from "../../../shared/presentation";
 import { useAuthActions, useSession } from "@/features/auth/useAuthActions";
 import { AppShell } from "@/components/layout/AppShell";
 import { WidgetPreviewCard } from "@/components/discord/DiscordMessagePreview";
-import { BotCreatorBadge } from "@/components/layout/BotCreatorBadge";
-import {
-  DiscordNameplateChip,
-  DiscordPrimaryGuildTag,
-  DiscordProfileAvatar,
-} from "@/components/layout/DiscordProfileVisuals";
+import { DiscordProfileAvatar } from "@/components/layout/DiscordProfileVisuals";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -1051,6 +1046,17 @@ export function DashboardPage() {
   return (
     <AppShell
       title="Your Managed Discord Servers"
+      titleAvatar={
+        session?.user ? (
+          <DiscordProfileAvatar
+            avatarUrl={session.user.avatarUrl}
+            decorationUrl={session.user.profile?.avatarDecorationUrl}
+            alt=""
+            borderless
+            className="h-10 w-10"
+          />
+        ) : undefined
+      }
       description="Configure alert channels and optional notification roles for Discord servers you manage."
       actions={
         <div className="flex items-center gap-2">
@@ -1070,71 +1076,6 @@ export function DashboardPage() {
         </div>
       }
     >
-      {session?.user && (
-        <Card className="mb-6 overflow-hidden border-zinc-800 bg-zinc-950 p-0">
-          <div
-            className={cn(
-              "relative h-24 overflow-hidden sm:h-28",
-              session.user.profile?.accentColor
-                ? "bg-zinc-900"
-                : "bg-gradient-to-br from-zinc-700/70 via-zinc-900 to-zinc-950"
-            )}
-            style={
-              session.user.profile?.accentColor
-                ? { backgroundColor: session.user.profile.accentColor }
-                : undefined
-            }
-          >
-            {session.user.profile?.bannerUrl && (
-              <img
-                src={session.user.profile.bannerUrl}
-                alt=""
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/75 via-zinc-950/30 to-transparent" />
-          </div>
-          <div className="flex flex-col gap-3 px-4 pb-4 sm:flex-row sm:items-end sm:gap-4">
-            <DiscordProfileAvatar
-              avatarUrl={session.user.avatarUrl}
-              decorationUrl={session.user.profile?.avatarDecorationUrl}
-              alt={session.user.profile?.globalName || session.user.username}
-              className="-mt-8 h-20 w-20 rounded-full bg-zinc-950 sm:-mt-10 sm:h-24 sm:w-24"
-            />
-            <div className="min-w-0 flex-1 pb-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="truncate text-lg font-semibold text-white">
-                  {session.user.profile?.globalName || session.user.username}
-                </h2>
-                {session.user.isAdmin ? (
-                  <BotCreatorBadge />
-                ) : (
-                  <Badge variant="outline" className="border-zinc-700 bg-zinc-900 text-zinc-300">
-                    Server Manager
-                  </Badge>
-                )}
-              </div>
-              <p className="mt-0.5 truncate font-mono text-xs text-zinc-400">
-                @{session.user.username}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <DiscordNameplateChip nameplate={session.user.profile?.nameplate} />
-                <DiscordPrimaryGuildTag primaryGuild={session.user.profile?.primaryGuild} />
-              </div>
-            </div>
-            <a
-              href={`https://discord.com/users/${session.user.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-100 transition hover:border-zinc-600 hover:bg-zinc-800 sm:w-auto"
-            >
-              Open Discord Profile
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          </div>
-        </Card>
-      )}
-
       {/* Compact Overview Strip */}
       <div className="mb-6 grid gap-4 @xl/main:grid-cols-3">
         <Card className="p-4">

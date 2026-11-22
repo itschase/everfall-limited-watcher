@@ -15,7 +15,16 @@ export function PublicLayout({ children }: { children: ReactNode }) {
   });
 
   const user = session?.user;
-  const creator = session?.creatorProfile;
+  const creatorProfile = session?.creatorProfile;
+  const creator =
+    creatorProfile && user?.id === creatorProfile.id
+      ? {
+          ...creatorProfile,
+          username: user.username || creatorProfile.username,
+          avatarUrl: user.avatarUrl || creatorProfile.avatarUrl,
+          profile: user.profile ?? creatorProfile.profile,
+        }
+      : creatorProfile;
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">

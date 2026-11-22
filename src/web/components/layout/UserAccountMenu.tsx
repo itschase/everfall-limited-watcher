@@ -1,17 +1,12 @@
-import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
-  Check,
   ChevronDown,
-  Copy,
-  ExternalLink,
   FileText,
   History,
   LayoutDashboard,
   LogOut,
   Shield,
 } from "lucide-react";
-import { toast } from "sonner";
 import { SessionUser } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { BotCreatorBadge } from "./BotCreatorBadge";
@@ -24,7 +19,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -37,43 +31,47 @@ export function UserAccountMenu({
   onLogout: () => Promise<void> | void;
 }) {
   const navigate = useNavigate();
-  const [copiedId, setCopiedId] = useState(false);
   const displayName = user.profile?.globalName || user.username;
-  const discordProfileUrl = `https://discord.com/users/${user.id}`;
-
-  const copyDiscordId = async () => {
-    try {
-      await navigator.clipboard.writeText(user.id);
-      setCopiedId(true);
-      toast.success("Copied Discord user ID");
-      window.setTimeout(() => setCopiedId(false), 1800);
-    } catch {
-      toast.error("Unable to copy ID");
-    }
-  };
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-2 py-1.5 text-sm font-medium text-white transition hover:bg-secondary sm:px-2.5"
+          className="relative isolate flex cursor-pointer items-center gap-2 overflow-hidden rounded-lg border-0 bg-zinc-950 px-2 py-1.5 text-sm font-medium text-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 sm:px-2.5"
         >
-          <DiscordProfileAvatar
-            avatarUrl={user.avatarUrl}
-            decorationUrl={user.profile?.avatarDecorationUrl}
-            alt={displayName}
-            className="h-7 w-7"
-          />
-          <span className="max-w-[96px] truncate text-xs font-semibold sm:max-w-[120px]">
-            {displayName}
+          {user.profile?.bannerUrl ? (
+            <img
+              src={user.profile.bannerUrl}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 h-full w-full scale-110 object-cover blur-[5px] brightness-[0.4]"
+            />
+          ) : (
+            <span
+              aria-hidden="true"
+              className="absolute inset-0"
+              style={{ backgroundColor: user.profile?.accentColor || "#18181b" }}
+            />
+          )}
+          <span aria-hidden="true" className="absolute inset-0 bg-zinc-950/45" />
+          <span className="relative z-10 inline-flex items-center gap-2">
+            <DiscordProfileAvatar
+              avatarUrl={user.avatarUrl}
+              decorationUrl={user.profile?.avatarDecorationUrl}
+              alt={displayName}
+              className="h-7 w-7"
+            />
+            <span className="max-w-[96px] truncate text-xs font-semibold sm:max-w-[120px]">
+              {displayName}
+            </span>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-zinc-300" />
           </span>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-[min(20rem,calc(100vw-1.5rem))] max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain"
+        className="w-[min(20rem,calc(100vw-1.5rem))] max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain border-0"
       >
         <div className="relative -mx-1.5 -mt-1.5 mb-1 overflow-hidden rounded-t-lg">
           <div
@@ -123,25 +121,6 @@ export function UserAccountMenu({
             <DiscordPrimaryGuildTag primaryGuild={user.profile?.primaryGuild} />
           </div>
         </div>
-        <DropdownMenuLabel className="flex flex-col pb-2">
-          <span className="font-mono text-[11px] font-normal text-muted-foreground">
-            Discord ID: <span className="select-text cursor-text text-zinc-300">{user.id}</span>
-          </span>
-        </DropdownMenuLabel>
-        <DropdownMenuItem asChild>
-          <a href={discordProfileUrl} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="h-4 w-4 text-muted-foreground" />
-            View Discord Profile
-          </a>
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void copyDiscordId()}>
-          {copiedId ? (
-            <Check className="h-4 w-4 text-emerald-400" />
-          ) : (
-            <Copy className="h-4 w-4 text-muted-foreground" />
-          )}
-          Copy Discord ID
-        </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void navigate({ to: "/changelog" })}>
           <FileText className="h-4 w-4" />
           Changelog

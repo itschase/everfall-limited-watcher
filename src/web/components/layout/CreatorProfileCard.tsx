@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Copy, ExternalLink, X } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import { CreatorProfile } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { BotCreatorBadge } from "./BotCreatorBadge";
@@ -21,6 +21,14 @@ function GitHubMark({ className }: { className?: string }) {
   );
 }
 
+function DiscordMark({ className }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M20.32 4.37a19.8 19.8 0 0 0-4.89-1.52.08.08 0 0 0-.08.04c-.21.37-.44.87-.61 1.25a18.3 18.3 0 0 0-5.49 0c-.16-.38-.4-.88-.61-1.25a.08.08 0 0 0-.08-.04 19.7 19.7 0 0 0-4.89 1.52.07.07 0 0 0-.03.03C.53 9.37-.32 14 .1 18.58c0 .02.01.04.03.06a19.9 19.9 0 0 0 6 3.03.08.08 0 0 0 .09-.03c.46-.63.87-1.3 1.23-1.99a.08.08 0 0 0-.04-.11 13 13 0 0 1-1.87-.89.08.08 0 0 1-.01-.13l.37-.29a.07.07 0 0 1 .08-.01c3.93 1.79 8.18 1.79 12.06 0a.07.07 0 0 1 .08.01l.37.29a.08.08 0 0 1-.01.13c-.6.35-1.22.65-1.87.89a.08.08 0 0 0-.04.11c.36.7.77 1.36 1.23 1.99a.08.08 0 0 0 .08.03 19.9 19.9 0 0 0 6.01-3.03.08.08 0 0 0 .03-.06c.5-5.28-.84-9.88-3.55-13.95a.06.06 0 0 0-.03-.03ZM8.02 15.33c-1.18 0-2.16-1.09-2.16-2.42s.96-2.42 2.16-2.42c1.21 0 2.18 1.1 2.16 2.42 0 1.33-.95 2.42-2.16 2.42Zm7.97 0c-1.18 0-2.16-1.09-2.16-2.42s.96-2.42 2.16-2.42c1.21 0 2.18 1.1 2.16 2.42 0 1.33-.95 2.42-2.16 2.42Z" />
+    </svg>
+  );
+}
+
 export function CreatorProfileCard({
   creator,
   className,
@@ -29,7 +37,6 @@ export function CreatorProfileCard({
   className?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -63,14 +70,21 @@ export function CreatorProfileCard({
     };
   }, []);
 
-  const handleCopyId = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (creator.id) {
-      navigator.clipboard.writeText(creator.id).catch(() => {});
-      setCopiedId(true);
-      setTimeout(() => setCopiedId(false), 2000);
-    }
-  };
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleOutsidePointer = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setIsOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsOpen(false);
+    };
+    document.addEventListener("pointerdown", handleOutsidePointer);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointer);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
 
   const profileUrl =
     creator.profileUrl || (creator.id ? `https://discord.com/users/${creator.id}` : undefined);
@@ -90,13 +104,13 @@ export function CreatorProfileCard({
           aria-expanded={isOpen}
           aria-haspopup="dialog"
           onClick={handleTriggerClick}
-          className="group inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-semibold text-white transition hover:border-zinc-600 hover:bg-zinc-900"
+          className="group inline-flex cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-1 py-1 text-sm font-semibold text-zinc-200 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 sm:text-base"
         >
           <DiscordProfileAvatar
             avatarUrl={creator.avatarUrl}
             decorationUrl={creator.profile?.avatarDecorationUrl}
             alt={displayName}
-            className="h-5 w-5 transition group-hover:scale-110"
+            className="h-7 w-7 transition group-hover:scale-110"
           />
           <span className="max-w-[calc(100vw-7rem)] truncate group-hover:text-zinc-100 sm:max-w-none">
             {displayName}
@@ -111,21 +125,19 @@ export function CreatorProfileCard({
           className="fixed inset-x-3 bottom-3 top-auto z-50 mx-auto max-h-[calc(100dvh-1.5rem)] w-auto max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-zinc-700/90 bg-zinc-950 text-left shadow-[0_16px_48px_rgba(0,0,0,0.9)] animate-in fade-in-0 zoom-in-95 duration-150 sm:absolute sm:inset-x-auto sm:bottom-full sm:right-0 sm:top-auto sm:mb-4 sm:max-h-[calc(100dvh-2rem)] sm:w-[min(24rem,calc(100vw-2rem))]"
         >
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+            <div
+              className="absolute inset-0"
+              style={{ backgroundColor: creator.profile?.accentColor || "#18181b" }}
+            />
             {creator.profile?.bannerUrl && (
               <img
                 src={creator.profile.bannerUrl}
                 alt=""
-                className="absolute -inset-[12%] h-[124%] w-[124%] scale-110 object-cover blur-[18px] brightness-[0.32] saturate-75"
+                className="absolute -inset-[12%] h-[124%] w-[124%] scale-110 object-cover blur-[16px] brightness-[0.42] saturate-75"
               />
             )}
-            {!creator.profile?.bannerUrl && (
-              <div
-                className="absolute inset-0"
-                style={{ backgroundColor: creator.profile?.accentColor || "#18181b" }}
-              />
-            )}
-            <div className="absolute inset-0 bg-zinc-950/60" />
-            <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/35 via-zinc-950/70 to-zinc-950/90" />
+            <div className="absolute inset-0 bg-zinc-950/35" />
+            <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/15 via-zinc-950/35 to-zinc-950/65" />
           </div>
 
           <div className="relative z-10">
@@ -178,64 +190,33 @@ export function CreatorProfileCard({
                   </p>
                 </div>
 
-                <a
-                  href="https://github.com/itschase/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Open itschase's GitHub profile"
-                  className="flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950/55 px-2.5 py-1.5 transition hover:border-white/20 hover:bg-zinc-950/75"
-                >
-                  <span className="flex h-7 w-7 items-center justify-center rounded-md border border-zinc-700 bg-zinc-950/90 text-zinc-200">
-                    <GitHubMark className="h-4 w-4" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-medium text-zinc-100">
-                      GitHub <span className="text-zinc-400">· itschase</span>
-                    </span>
-                  </span>
-                  <ExternalLink className="h-3 w-3 text-zinc-500" />
-                </a>
-
-                {creator.id && (
-                  <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span className="shrink-0 text-[10px] uppercase tracking-wider text-zinc-400">
-                      User ID
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleCopyId}
-                      title="Click to copy Discord ID"
-                      className="inline-flex min-w-0 items-center gap-1 rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 font-mono text-[11px] text-zinc-300 hover:border-zinc-700 hover:text-white cursor-pointer"
+                <div className="grid grid-cols-2 gap-2">
+                  <a
+                    href="https://github.com/itschase/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Open itschase's GitHub profile"
+                    className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg bg-zinc-950/65 px-2 py-2 text-xs font-semibold text-zinc-100 transition hover:bg-zinc-950/90"
+                  >
+                    <GitHubMark className="h-4 w-4 shrink-0" />
+                    <span className="truncate">GitHub</span>
+                    <ExternalLink className="h-3 w-3 shrink-0 text-zinc-400" />
+                  </a>
+                  {profileUrl && (
+                    <a
+                      href={profileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Open the creator's Discord profile"
+                      className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg bg-zinc-950/65 px-2 py-2 text-xs font-semibold text-zinc-100 transition hover:bg-zinc-950/90"
                     >
-                      {copiedId ? (
-                        <>
-                          <Check className="h-3 w-3 shrink-0 text-emerald-400" />
-                          <span className="text-emerald-400">Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-3 w-3 shrink-0 text-zinc-500" />
-                          <span className="truncate">{creator.id}</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
+                      <DiscordMark className="h-4 w-4 shrink-0" />
+                      <span className="truncate">Discord</span>
+                      <ExternalLink className="h-3 w-3 shrink-0 text-zinc-400" />
+                    </a>
+                  )}
+                </div>
               </div>
-
-              {profileUrl && (
-                <a
-                  href={profileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 flex w-full items-center justify-center gap-2 border-t border-white/10 pt-3 sm:mt-4 sm:pt-4"
-                >
-                  <span className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-600 bg-zinc-900/90 px-3 py-3 text-sm font-semibold text-zinc-100 shadow-sm transition hover:border-zinc-500 hover:bg-zinc-800">
-                    <span>Open Discord Profile</span>
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </span>
-                </a>
-              )}
             </div>
           </div>
         </div>
