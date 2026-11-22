@@ -92,8 +92,8 @@ export function VehicleDetailCard({
 
       <Card className="overflow-hidden border-border/90 bg-card/95 shadow-[0_8px_32px_rgba(0,0,0,0.45)]">
         {/* Card Header */}
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-6 sm:py-5">
-          <div className="min-w-0 space-y-2">
+        <div className="relative border-b border-border py-4 pl-4 pr-16 sm:py-5 sm:pl-6 sm:pr-20">
+          <div className="min-w-0 space-y-2 break-words">
             <div className="flex flex-wrap items-center gap-2.5">
               <h2 className="text-xl font-bold tracking-tight text-white sm:text-2xl">
                 {displayName}
@@ -146,7 +146,7 @@ export function VehicleDetailCard({
             onClick={onClose}
             aria-label="Close expanded vehicle listing"
             title="Close and return to History"
-            className="h-9 w-9 shrink-0 rounded-lg border border-border/70 bg-zinc-900/70 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+            className="absolute right-4 top-4 h-10 w-10 rounded-lg border border-border/70 bg-zinc-900/70 text-zinc-300 hover:bg-zinc-800 hover:text-white sm:right-6 sm:top-5"
           >
             <X className="h-4 w-4" />
           </Button>

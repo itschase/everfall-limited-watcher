@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-22 — Expanded vehicle close control
+
+- Anchor the expanded listing close button to the header's top-right corner instead of a wrapping flex row. Reserve horizontal space for its 40px target on mobile and desktop, and allow long listing content to wrap without overlapping the control.
+- Preserve the existing accessible label, keyboard behavior, and return-to-history handler.
+
 ## 2026-11-22 — Authenticated listing prices
 
 - Capture explicit structured store amounts/currencies in both monitors and validate them on ingestion. Preserve the last verified price when stock is archived or a response omits pricing; never infer a currency or invent a price.
@@ -169,6 +174,14 @@
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.22.1 | 2026-11-22 | Easier closing of expanded vehicle listings
+
+Expanded vehicle listings now keep their close control in a predictable position, including on phones.
+
+### Fixes
+
+- The close button stays at the top-right of the listing header instead of wrapping beneath vehicle details. Titles and archive information have their own space so the control remains easy to reach.
 
 ## 2026.11.22 | 2026-11-22 | Listing prices for signed-in members
 

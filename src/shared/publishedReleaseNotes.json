@@ -1,5 +1,18 @@
 [
   {
+    "version": "2026.11.22.1",
+    "title": "Easier closing of expanded vehicle listings",
+    "summary": "Expanded vehicle listings now keep their close control in a predictable position, including on phones.",
+    "date": "2026-11-22",
+    "published": true,
+    "highlights": [],
+    "additions": [],
+    "improvements": [],
+    "fixes": [
+      "The close button stays at the top-right of the listing header instead of wrapping beneath vehicle details. Titles and archive information have their own space so the control remains easy to reach."
+    ]
+  },
+  {
     "version": "2026.11.22",
     "title": "Listing prices for signed-in members",
     "summary": "Signed-in members can see recorded store prices alongside available vehicles and retain that information when reviewing archived releases.",
