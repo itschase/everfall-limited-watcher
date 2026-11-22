@@ -9,12 +9,7 @@ import {
 } from "lucide-react";
 import { SessionUser } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { BotCreatorBadge } from "./BotCreatorBadge";
-import {
-  DiscordNameplateChip,
-  DiscordPrimaryGuildTag,
-  DiscordProfileAvatar,
-} from "./DiscordProfileVisuals";
+import { DiscordPrimaryGuildTag, DiscordProfileAvatar } from "./DiscordProfileVisuals";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -108,18 +103,11 @@ export function UserAccountMenu({
               <p className="truncate font-mono text-[11px] text-zinc-400">@{user.username}</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-1.5 px-3 pb-2">
-            {user.isAdmin ? (
-              <BotCreatorBadge />
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] font-semibold text-zinc-300">
-                <Shield className="h-3 w-3" />
-                Server Manager
-              </span>
-            )}
-            <DiscordNameplateChip nameplate={user.profile?.nameplate} />
-            <DiscordPrimaryGuildTag primaryGuild={user.profile?.primaryGuild} />
-          </div>
+          {user.profile?.primaryGuild?.tag && (
+            <div className="flex px-3 pb-2">
+              <DiscordPrimaryGuildTag primaryGuild={user.profile?.primaryGuild} />
+            </div>
+          )}
         </div>
         <DropdownMenuItem onSelect={() => void navigate({ to: "/changelog" })}>
           <FileText className="h-4 w-4" />
