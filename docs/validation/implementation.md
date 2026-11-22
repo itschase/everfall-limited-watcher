@@ -1,5 +1,13 @@
 # Implementation and validation — 2026-11-21
 
+## Sidebar navigation follow-up
+
+- Unified desktop/mobile homepage branding and removed the redundant bottom shortcut. The mobile drawer header stays outside its scrolling navigation pane.
+- Administrator tools now use four collapsible sets plus direct Overview access. Active routes open their set; manual sets/width choices survive in-app navigation in memory only. Compact desktop sets use shared keyboard-accessible menus.
+- Browser-verified at 1440px desktop and 393px/320px mobile: active-page markers, group persistence across routes, compact menus, keyboard Space/Enter toggles, both homepage links, mobile drawer closure on navigation, and no drawer horizontal overflow. At 320x640 the navigation scrolled 24px to reveal Testing while the title remained at the top.
+- Verified reduced-motion emulation removes visible panel/chevron transition delays; restored the browser motion and viewport settings after testing. Fixed Overview's inherited parent-route current marker so only the actual active page is announced.
+- Browser fixture uses a synthetic local identity and in-memory database; no production settings or Discord messages/events were changed.
+
 ## Recovery and usability follow-up
 
 - Addressed the three reviewed defects: per-widget failure isolation, failed pin tracking, and reconciliation of externally ended/deleted test events.

@@ -1,5 +1,23 @@
 [
   {
+    "version": "2026.11.21.3",
+    "title": "A clearer sidebar with everything closer to hand",
+    "summary": "Finding the right page is easier with a more organized sidebar. The Everfall Limited Watcher logo and title now take you straight to the homepage on mobile and desktop, so the extra shortcut at the bottom is no longer needed.",
+    "date": "2026-11-21",
+    "published": true,
+    "highlights": [
+      "Administrator tools are grouped into Discord & Servers, Listings & Media, Website & Content, and Monitoring & Testing. Overview remains a direct link, and your current page automatically reveals its group."
+    ],
+    "additions": [],
+    "improvements": [
+      "Groups expand smoothly, chevrons show their state, and the current page has a clearer highlight. Your open groups and sidebar width choices stay in place as you move between pages.",
+      "The compact desktop sidebar offers labeled group menus, while mobile keeps the title within reach above a separately scrolling list. Keyboard focus and reduced-motion preferences are supported."
+    ],
+    "fixes": [
+      "The mobile sidebar title now works as a homepage link, matching desktop behavior. Long navigation lists no longer push the title out of reach."
+    ]
+  },
+  {
     "version": "2026.11.21.2",
     "title": "Easier recovery, dependable previews, and smoother browsing",
     "summary": "This update makes server management easier to diagnose and recover, keeps test-event previews consistent with what gets deployed, and helps you return to the exact archive view you were browsing. Release-note editing also gains stronger protection for work in progress.",

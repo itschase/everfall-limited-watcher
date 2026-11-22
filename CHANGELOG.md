@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-21 — Organized sidebar and dependable homepage navigation
+
+- Unified mobile and desktop branding into one accessible homepage link, including the icon-only state. The mobile title previously contained no link. Removed the redundant bottom Public Homepage shortcut and kept branding outside the scrollable navigation area.
+- Reorganized administrator tools into Discord & Servers, Listings & Media, Website & Content, and Monitoring & Testing disclosures, with Overview directly accessible. Active routes (including the legacy hero editor) open their group and highlight their link; manually selected groups and desktop collapse choices survive in-app navigation without cookies or browser storage.
+- Added short grid-height/opacity disclosure transitions, rotating chevrons, restrained hover movement, focus indicators, and reduced-motion alternatives. Closed groups are inert and hidden from assistive technology; disclosure buttons expose expanded/control state.
+- Collapsed desktop groups open keyboard-accessible menus with tooltips instead of flattening every administrator link into a long icon rail. Sidebar navigation scrolls independently within the viewport, and route changes reveal the active link without moving the main page.
+- Kept the full product title, neutral Zinc presentation, shared navigation primitives, and existing administrator authorization boundaries.
+
 ## 2026-11-21 — Isolated recovery, permissions, and exact test previews
 
 - Fixed widget failure isolation: a deleted or inaccessible widget no longer skips subsequent widgets in its server. Pin PUT 404 responses remain failures rather than setting a successful pin flag.
@@ -102,6 +110,23 @@
 Only releases inside the markers below are automatically published to signed-in members with the application deployment. Keep this copy focused on user benefits; internal engineering notes belong above. Each version is unique and uses the heading format shown below. Website editor overrides (including withdrawn drafts) take precedence for the same version.
 
 <!-- website-releases:start -->
+
+## 2026.11.21.3 | 2026-11-21 | A clearer sidebar with everything closer to hand
+
+Finding the right page is easier with a more organized sidebar. The Everfall Limited Watcher logo and title now take you straight to the homepage on mobile and desktop, so the extra shortcut at the bottom is no longer needed.
+
+### Highlights
+
+- Administrator tools are grouped into Discord & Servers, Listings & Media, Website & Content, and Monitoring & Testing. Overview remains a direct link, and your current page automatically reveals its group.
+
+### Improvements
+
+- Groups expand smoothly, chevrons show their state, and the current page has a clearer highlight. Your open groups and sidebar width choices stay in place as you move between pages.
+- The compact desktop sidebar offers labeled group menus, while mobile keeps the title within reach above a separately scrolling list. Keyboard focus and reduced-motion preferences are supported.
+
+### Fixes
+
+- The mobile sidebar title now works as a homepage link, matching desktop behavior. Long navigation lists no longer push the title out of reach.
 
 ## 2026.11.21.2 | 2026-11-21 | Easier recovery, dependable previews, and smoother browsing
 

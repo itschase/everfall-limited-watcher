@@ -152,6 +152,10 @@ Run `npm run changelog:generate` and commit `CHANGELOG.md` together with `src/sh
 
 The website release editor remains available for drafts and wording corrections. A saved website version overrides the repository copy of that same version, including when unpublished. Use a new version for a new update; editing the repository cannot republish a version deliberately withdrawn in the website editor. The member Changelog refreshes every minute while open, on focus/reconnect, and through **Refresh Changelog**. The editor warns before leaving unsaved work; simultaneous creation of an existing version returns a conflict rather than replacing it.
 
+## Sidebar navigation
+
+The sidebar logo/title opens the homepage on desktop and mobile. Administrator tools are organized into expandable Discord & Servers, Listings & Media, Website & Content, and Monitoring & Testing groups, with Overview directly accessible. Visiting a page reveals its active group. Group and desktop width choices are retained during in-app navigation, reset on a full reload, and are not written to cookies or browser storage. The compact desktop sidebar opens group menus; the mobile drawer keeps its title above a separately scrolling navigation list. Transitions respect reduced-motion preferences.
+
 ## Automation checks, recovery, and saved previews
 
 Server managers can use **Check Permissions** in Customizations to inspect relevant Discord channel/event access without sending messages. Newly enabled settings are checked when saved. Deploy a widget before checking its channel. Permissions may change afterward; checks are readiness information rather than a delivery guarantee.
